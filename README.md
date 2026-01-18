@@ -1,11 +1,15 @@
-# MostlyLucid.ConsoleImage
+# mostlylucid.consoleimage
 
 High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 **Based on [Alex Harri's excellent article](https://alexharri.com/blog/ascii-rendering)** on ASCII rendering techniques.
 
-[![NuGet](https://img.shields.io/nuget/v/MostlyLucid.ConsoleImage.svg)](https://www.nuget.org/packages/MostlyLucid.ConsoleImage/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![wiggum](wiggum_loop.gif)
+
+[![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
+
+
 
 ## Features
 
@@ -18,6 +22,8 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
   - ANSI colored ASCII characters
   - High-fidelity color blocks using Unicode half-blocks (▀▄)
 - **Auto background detection**: Automatically detects dark/light backgrounds
+- **Floyd-Steinberg dithering**: Error diffusion for smoother gradient rendering
+- **Edge-direction characters**: Uses directional chars (/ \ | -) based on detected edges
 - **AOT compatible**: Works with Native AOT compilation
 - **Cross-platform**: Windows, Linux, macOS (x64 and ARM64)
 
@@ -26,7 +32,7 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 ### NuGet Package (Library)
 
 ```bash
-dotnet add package MostlyLucid.ConsoleImage
+dotnet add package mostlylucid.consoleimage
 ```
 
 ### CLI Tool (Standalone Binaries)
@@ -91,6 +97,15 @@ ascii-image photo.jpg --dark-bg-threshold 0.15 # Suppress dark backgrounds
 
 # Save to file
 ascii-image photo.jpg -o output.txt
+
+# Disable dithering (ON by default for smoother gradients)
+ascii-image photo.jpg --no-dither
+
+# Disable edge-direction characters (ON by default)
+ascii-image photo.jpg --no-edge-chars
+
+# Custom aspect ratio (default: 0.5, meaning chars are 2x taller than wide)
+ascii-image photo.jpg --aspect-ratio 0.6
 ```
 
 ### CLI Options
@@ -116,6 +131,9 @@ ascii-image photo.jpg -o output.txt
 | `--auto-bg` | Auto-detect background | ON |
 | `-b, --blocks` | Use colored Unicode blocks | OFF |
 | `--no-parallel` | Disable parallel processing | Parallel ON |
+| `-a, --aspect-ratio` | Character aspect ratio (width/height) | 0.5 |
+| `--no-dither` | Disable Floyd-Steinberg dithering | Dither ON |
+| `--no-edge-chars` | Disable edge-direction characters | Edge chars ON |
 
 ## Library API
 
@@ -134,7 +152,7 @@ Console.WriteLine(AsciiArt.Render("photo.jpg", 80));
 Console.WriteLine(AsciiArt.RenderColored("photo.jpg"));
 
 // For light terminal backgrounds
-Console.WriteLine(AsciiArt.RenderInverted("photo.jpg"));
+Console.WriteLine(AsciiArt.RenderForLightBackground("photo.jpg"));
 
 // Play animated GIF
 await AsciiArt.PlayGif("animation.gif");
@@ -178,6 +196,9 @@ Console.WriteLine(frame.ToString());      // Plain
 ```csharp
 using ConsoleImage.Core;
 
+// Enable ANSI support on Windows (call once at startup)
+ConsoleHelper.EnableAnsiSupport();
+
 // Uses Unicode half-blocks (▀▄) for 2x vertical resolution
 using var renderer = new ColorBlockRenderer(options);
 string output = renderer.RenderFile("photo.jpg");
@@ -185,7 +206,51 @@ Console.WriteLine(output);
 
 // For animated GIFs
 var frames = renderer.RenderGif("animation.gif");
-// frames include diff-optimized content for smooth playback
+foreach (var frame in frames)
+{
+    Console.WriteLine(frame.Content);
+    Thread.Sleep(frame.DelayMs);
+}
+```
+
+### ANSI Support on Windows
+
+For colored output and animations to work correctly on Windows, you may need to enable virtual terminal processing:
+
+```csharp
+using ConsoleImage.Core;
+
+// Call once at application startup
+ConsoleHelper.EnableAnsiSupport();
+
+// Now ANSI colors and cursor control will work
+Console.WriteLine(AsciiArt.RenderColored("photo.jpg"));
+```
+
+Modern terminals like Windows Terminal have this enabled by default, but older consoles (cmd.exe, older PowerShell) may need this call.
+
+### Spectre.Console Integration
+
+The library output is compatible with Spectre.Console. You can embed ASCII art in Spectre panels:
+
+```csharp
+using Spectre.Console;
+using ConsoleImage.Core;
+
+var ascii = AsciiArt.Render("photo.jpg", 60);
+var panel = new Panel(new Markup(ascii))
+{
+    Header = new PanelHeader("My Image"),
+    Border = BoxBorder.Rounded
+};
+AnsiConsole.Write(panel);
+```
+
+For colored output with Spectre.Console, use the raw ANSI string:
+
+```csharp
+// Spectre.Console handles ANSI escape codes automatically
+AnsiConsole.Write(new Text(AsciiArt.RenderColored("photo.jpg")));
 ```
 
 ### Animated GIFs
@@ -329,4 +394,4 @@ dotnet publish ConsoleImage/ConsoleImage.csproj \
 
 ## License
 
-MIT License
+This is free and unencumbered software released into the public domain. See [UNLICENSE](UNLICENSE) for details.

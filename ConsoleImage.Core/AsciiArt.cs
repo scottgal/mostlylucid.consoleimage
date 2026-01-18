@@ -58,13 +58,15 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Convert an image file to inverted ASCII art (for dark terminals).
+    /// Convert an image file to non-inverted ASCII art (for light terminal backgrounds).
+    /// Default rendering is inverted for dark terminals; this is for light backgrounds.
     /// </summary>
     /// <param name="path">Path to the image file</param>
-    /// <returns>ASCII art string (inverted)</returns>
-    public static string RenderInverted(string path)
+    /// <returns>ASCII art string (non-inverted, for light backgrounds)</returns>
+    public static string RenderForLightBackground(string path)
     {
-        using var renderer = new AsciiRenderer();
+        var options = new RenderOptions { Invert = false, UseColor = false };
+        using var renderer = new AsciiRenderer(options);
         return renderer.RenderFile(path).ToString();
     }
 

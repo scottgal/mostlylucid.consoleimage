@@ -8,7 +8,14 @@
       "Bash(dir \"F:\\\\Gifs\")",
       "Bash(.ascii-image.exe:*)",
       "Bash(dotnet pack:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(grep:*)",
+      "Bash(copy \"C:\\\\Blog\\\\mostlylucidweb\\\\Umami.Net\\\\icon.png\" \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\icon.png\")",
+      "Bash(cmd /c copy \"C:\\\\Blog\\\\mostlylucidweb\\\\Umami.Net\\\\icon.png\" \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\icon.png\")",
+      "Bash(dir:*)",
+      "Bash(cmd /c \"copy /Y \"\"C:\\\\Blog\\\\mostlylucidweb\\\\Umami.Net\\\\icon.png\"\" \"\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\icon.png\"\"\")",
+      "Bash(powershell -Command:*)",
+      "Bash(curl:*)"
     ]
   }
 }

@@ -128,6 +128,27 @@ public class RenderOptions
     public bool PreBufferFrames { get; set; } = true;
 
     /// <summary>
+    /// Frame sampling rate for animations. 1 = every frame, 2 = every 2nd frame, etc.
+    /// Higher values reduce memory usage and processing time but may cause choppy playback.
+    /// Default: 1 (no frame skipping)
+    /// </summary>
+    public int FrameSampleRate { get; set; } = 1;
+
+    /// <summary>
+    /// Enable Floyd-Steinberg dithering for smoother gradients.
+    /// Spreads quantization error to neighboring pixels for better gradient rendering.
+    /// NOTE: Currently disabled by default pending stability fixes.
+    /// </summary>
+    public bool EnableDithering { get; set; } = false;
+
+    /// <summary>
+    /// Enable edge-direction aware character selection.
+    /// Uses directional characters (/ \ | -) based on detected edge angles.
+    /// NOTE: Currently disabled by default pending stability fixes.
+    /// </summary>
+    public bool EnableEdgeDirectionChars { get; set; } = false;
+
+    /// <summary>
     /// Gets the effective character set, considering presets
     /// </summary>
     [JsonIgnore]
@@ -309,6 +330,9 @@ public class RenderOptions
         DarkBackgroundThreshold = DarkBackgroundThreshold,
         AutoBackgroundSuppression = AutoBackgroundSuppression,
         UseParallelProcessing = UseParallelProcessing,
-        PreBufferFrames = PreBufferFrames
+        PreBufferFrames = PreBufferFrames,
+        FrameSampleRate = FrameSampleRate,
+        EnableDithering = EnableDithering,
+        EnableEdgeDirectionChars = EnableEdgeDirectionChars
     };
 }

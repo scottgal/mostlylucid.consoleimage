@@ -53,43 +53,86 @@ public class ColorBlockRenderer : IDisposable
     /// </summary>
     public string RenderImage(Image<Rgba32> image)
     {
-        // For half-block rendering, we want double the vertical resolution
-        // since each character represents 2 pixels vertically
-        int maxWidth = _options.MaxWidth;
-        int maxHeight = _options.MaxHeight * 2; // Double vertical for half-blocks
-
-        // Calculate aspect ratio
-        float imageAspect = (float)image.Width / image.Height;
-        float charAspect = _options.CharacterAspectRatio * 2; // Account for half-blocks
-
-        int outputWidth, outputHeight;
-        if (imageAspect > (float)maxWidth / maxHeight * charAspect)
-        {
-            outputWidth = maxWidth;
-            outputHeight = (int)(maxWidth / imageAspect * charAspect);
-        }
-        else
-        {
-            outputHeight = maxHeight;
-            outputWidth = (int)(maxHeight * imageAspect / charAspect);
-        }
+        // For half-block rendering, each character represents 2 pixels vertically
+        // Calculate output dimensions in PIXELS (not characters)
+        var (pixelWidth, pixelHeight) = CalculatePixelDimensions(image.Width, image.Height);
 
         // Ensure even height for half-block pairing
-        outputHeight = Math.Max(2, outputHeight);
-        if (outputHeight % 2 != 0) outputHeight++;
+        if (pixelHeight % 2 != 0) pixelHeight++;
 
-        // Resize image to target dimensions
+        // Resize image to target pixel dimensions
         using var resized = image.Clone(ctx =>
         {
             ctx.Resize(new ResizeOptions
             {
-                Size = new Size(outputWidth, outputHeight),
+                Size = new Size(pixelWidth, pixelHeight),
                 Mode = ResizeMode.Stretch,
                 Sampler = KnownResamplers.Lanczos3
             });
         });
 
         return RenderPixels(resized);
+    }
+
+    /// <summary>
+    /// Calculate output dimensions in PIXELS for half-block rendering.
+    /// Half-blocks give 2x vertical resolution, so we need to account for this differently
+    /// than regular ASCII rendering.
+    /// </summary>
+    private (int width, int height) CalculatePixelDimensions(int imageWidth, int imageHeight)
+    {
+        float imageAspect = (float)imageWidth / imageHeight;
+
+        // For half-blocks: each character cell displays 2 vertical pixels
+        // So if we want N character rows, we need N*2 pixel rows
+        // Character cells are typically 2:1 (height:width), but half-blocks make them effectively 1:1
+        // So we use aspect ratio of 1.0 for half-block rendering
+
+        int maxPixelWidth = _options.Width ?? _options.MaxWidth;
+        int maxPixelHeight = (_options.Height ?? _options.MaxHeight) * 2; // *2 for half-blocks
+
+        int outputWidth, outputHeight;
+
+        if (_options.Width.HasValue)
+        {
+            // User specified width - calculate height to maintain aspect ratio
+            outputWidth = _options.Width.Value;
+            outputHeight = (int)(outputWidth / imageAspect);
+        }
+        else if (_options.Height.HasValue)
+        {
+            // User specified height in character rows - convert to pixels
+            outputHeight = _options.Height.Value * 2;
+            outputWidth = (int)(outputHeight * imageAspect);
+        }
+        else
+        {
+            // Auto-calculate from max dimensions
+            if (imageAspect > (float)maxPixelWidth / maxPixelHeight)
+            {
+                outputWidth = maxPixelWidth;
+                outputHeight = (int)(outputWidth / imageAspect);
+            }
+            else
+            {
+                outputHeight = maxPixelHeight;
+                outputWidth = (int)(outputHeight * imageAspect);
+            }
+        }
+
+        // Clamp to max dimensions
+        if (outputWidth > maxPixelWidth)
+        {
+            outputWidth = maxPixelWidth;
+            outputHeight = (int)(outputWidth / imageAspect);
+        }
+        if (outputHeight > maxPixelHeight)
+        {
+            outputHeight = maxPixelHeight;
+            outputWidth = (int)(outputHeight * imageAspect);
+        }
+
+        return (Math.Max(1, outputWidth), Math.Max(2, outputHeight));
     }
 
     private string RenderPixels(Image<Rgba32> image)
@@ -172,17 +215,22 @@ public class ColorBlockRenderer : IDisposable
     {
         var frames = new List<ColorBlockFrame>();
 
-        for (int i = 0; i < image.Frames.Count; i++)
+        // Determine frame step for sampling (skip frames for efficiency)
+        int frameStep = Math.Max(1, _options.FrameSampleRate);
+
+        for (int i = 0; i < image.Frames.Count; i += frameStep)
         {
             using var frameImage = image.Frames.CloneFrame(i);
 
-            int delayMs = 100;
             var metadata = image.Frames[i].Metadata.GetGifMetadata();
+
+            int delayMs = 100;
             if (metadata.FrameDelay > 0)
             {
                 delayMs = metadata.FrameDelay * 10;
             }
-            delayMs = (int)(delayMs / _options.AnimationSpeedMultiplier);
+            // Adjust delay to account for skipped frames
+            delayMs = (int)((delayMs * frameStep) / _options.AnimationSpeedMultiplier);
 
             string content = RenderImage(frameImage);
             frames.Add(new ColorBlockFrame(content, delayMs));

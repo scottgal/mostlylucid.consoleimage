@@ -2,6 +2,8 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 // Animation player for displaying animated GIFs in the console
 
+using System.Linq;
+
 namespace ConsoleImage.Core;
 
 /// <summary>
@@ -64,39 +66,34 @@ public class AsciiAnimationPlayer : IDisposable
         if (_frames.Count == 0)
             return;
 
+        // Ensure ANSI escape sequences are enabled on Windows
+        ConsoleHelper.EnableAnsiSupport();
+
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var token = _cts.Token;
 
         int loops = 0;
-        int frameHeight = _frames[0].Height;
-        int startRow = Console.CursorTop;
 
-        // Pre-buffer frame strings - use diff rendering if enabled
-        string[] frameStrings;
-        if (_useDiffRendering && _frames.Count > 1)
+        // Pre-buffer frame lines for line-by-line rendering
+        // Use StringSplitOptions to handle \r\n properly and avoid empty entries
+        var frameLines = new string[_frames.Count][];
+        int maxHeight = 0;
+        for (int i = 0; i < _frames.Count; i++)
         {
-            frameStrings = FrameDiffer.ComputeDiffs(_frames, _useColor);
-        }
-        else
-        {
-            frameStrings = new string[_frames.Count];
-            for (int i = 0; i < _frames.Count; i++)
-            {
-                frameStrings[i] = _useColor ? _frames[i].ToAnsiString() : _frames[i].ToString();
-            }
+            string frameStr = _useColor ? _frames[i].ToAnsiString() : _frames[i].ToString();
+            // Split by \n and remove any trailing \r from Windows line endings
+            frameLines[i] = frameStr.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+            if (frameLines[i].Length > maxHeight)
+                maxHeight = frameLines[i].Length;
         }
 
-        // Hide cursor for smoother animation
-        Console.Write("\x1b[?25l");
-
-        // Save cursor position
-        Console.Write("\x1b[s");
-
-        // Flush to ensure cursor is hidden before we start
-        Console.Out.Flush();
+        // Hide cursor (may fail in non-interactive environments)
+        try { Console.CursorVisible = false; } catch { }
 
         try
         {
+            bool firstFrame = true;
+
             while (!token.IsCancellationRequested)
             {
                 for (int i = 0; i < _frames.Count; i++)
@@ -105,28 +102,26 @@ public class AsciiAnimationPlayer : IDisposable
 
                     CurrentFrame = i;
 
-                    // Start synchronized output - terminal will batch until SyncEnd
-                    Console.Write(SyncStart);
-
-                    // For diff rendering: first frame or after loop needs full render
-                    // For non-diff: always restore position
-                    if (!_useDiffRendering || i == 0)
+                    // Move cursor up to overwrite previous frame (except first frame)
+                    if (!firstFrame)
                     {
-                        Console.Write("\x1b[u"); // Restore to saved position
+                        // Move up (maxHeight - 1) lines because we're ON the last line, not below it
+                        Console.Write($"\x1b[{maxHeight - 1}A"); // Move up N lines in one command
+                        Console.Write("\r"); // Return to start of line
                     }
+                    firstFrame = false;
 
-                    // Write the frame (or diff)
-                    Console.Write(frameStrings[i]);
-
-                    if (!_useDiffRendering || i == 0)
+                    // Write frame line by line, padding to maxHeight
+                    var lines = frameLines[i];
+                    for (int lineIdx = 0; lineIdx < maxHeight; lineIdx++)
                     {
-                        Console.Write("\x1b[0m");
+                        Console.Write("\x1b[2K"); // Clear entire line
+                        if (lineIdx < lines.Length)
+                            Console.Write(lines[lineIdx]);
+                        if (lineIdx < maxHeight - 1)
+                            Console.WriteLine();
                     }
-
-                    // End synchronized output - terminal renders atomically now
-                    Console.Write(SyncEnd);
-
-                    // Flush to ensure frame is displayed immediately
+                    Console.Write("\x1b[0m");
                     Console.Out.Flush();
 
                     FrameRendered?.Invoke(this, new FrameRenderedEventArgs(i, _frames.Count));
@@ -150,11 +145,8 @@ public class AsciiAnimationPlayer : IDisposable
         }
         finally
         {
-            // Show cursor again
-            Console.Write("\x1b[?25h");
-
-            // Move cursor below the animation
-            Console.Write($"\x1b[{startRow + frameHeight + 1};1H");
+            try { Console.CursorVisible = true; } catch { }
+            Console.WriteLine();
             AnimationCompleted?.Invoke(this, EventArgs.Empty);
         }
     }

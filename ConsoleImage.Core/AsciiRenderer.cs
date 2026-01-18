@@ -32,7 +32,7 @@ public class AsciiRenderer : IDisposable
         (0.83f, 0.70f),  // Bottom-right (raised)
     ];
 
-    // 9 external sampling positions for directional contrast (per article)
+    // 10 external sampling positions for directional contrast (per article)
     // These reach outside the cell boundaries to detect edges
     // Positions correspond to the 3x2 internal grid:
     //   [E0] [E1] [E2] [E3]     <- Above top row
@@ -148,6 +148,14 @@ public class AsciiRenderer : IDisposable
         var internalVectors = new ShapeVector[height, width];
         var externalVectors = new float[height, width, 10];
 
+        // Pre-compute edge direction info if needed
+        float[,]? edgeMagnitudes = null;
+        float[,]? edgeAngles = null;
+        if (_options.EnableEdgeDirectionChars)
+        {
+            (edgeMagnitudes, edgeAngles) = EdgeDirection.ComputeEdges(image, width, height);
+        }
+
         if (_options.UseParallelProcessing && height > 4)
         {
             // First pass: compute all vectors
@@ -169,11 +177,21 @@ public class AsciiRenderer : IDisposable
                 }
             });
 
-            // Second pass: apply contrast and find characters
+            // Apply dithering if enabled (must be done sequentially due to error diffusion)
+            if (_options.EnableDithering)
+            {
+                // Apply contrast first, then dither
+                ApplyContrastToVectors(internalVectors, externalVectors, width, height);
+                int numChars = (_options.CharacterSet ?? CharacterMap.DefaultCharacterSet).Length;
+                internalVectors = Dithering.ApplyToShapeVectors(internalVectors, numChars);
+            }
+
+            // Second pass: find characters
             Parallel.For(0, height, y =>
             {
                 ProcessRowWithContrast(image, characters, colors, internalVectors,
-                                       externalVectors, width, height, cellWidth, cellHeight, y, shouldInvert);
+                                       externalVectors, width, height, cellWidth, cellHeight, y, shouldInvert,
+                                       edgeMagnitudes, edgeAngles, skipContrast: _options.EnableDithering);
             });
         }
         else
@@ -197,42 +215,88 @@ public class AsciiRenderer : IDisposable
                 }
             }
 
+            // Apply dithering if enabled
+            if (_options.EnableDithering)
+            {
+                ApplyContrastToVectors(internalVectors, externalVectors, width, height);
+                int numChars = (_options.CharacterSet ?? CharacterMap.DefaultCharacterSet).Length;
+                internalVectors = Dithering.ApplyToShapeVectors(internalVectors, numChars);
+            }
+
             for (int y = 0; y < height; y++)
             {
                 ProcessRowWithContrast(image, characters, colors, internalVectors,
-                                       externalVectors, width, height, cellWidth, cellHeight, y, shouldInvert);
+                                       externalVectors, width, height, cellWidth, cellHeight, y, shouldInvert,
+                                       edgeMagnitudes, edgeAngles, skipContrast: _options.EnableDithering);
             }
         }
 
         return new AsciiFrame(characters, colors, delayMs);
     }
 
+    /// <summary>
+    /// Apply contrast enhancement to all vectors (used when dithering is enabled)
+    /// </summary>
+    private void ApplyContrastToVectors(ShapeVector[,] vectors, float[,,] externalVectors, int width, int height)
+    {
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                var vector = vectors[y, x];
+
+                if (_options.DirectionalContrastStrength > 0)
+                {
+                    vector = ApplyDirectionalContrastFrom10Circles(vector, externalVectors, x, y,
+                                                                    width, height, _options.ContrastPower);
+                }
+                else if (_options.ContrastPower > 1.0f)
+                {
+                    vector = vector.ApplyContrast(_options.ContrastPower);
+                }
+
+                vectors[y, x] = vector;
+            }
+        }
+    }
+
     private void ProcessRowWithContrast(Image<Rgba32> image, char[,] characters, Rgb24[,]? colors,
                                          ShapeVector[,] internalVectors, float[,,] externalVectors,
                                          int width, int height, int cellWidth, int cellHeight, int y,
-                                         bool shouldInvert)
+                                         bool shouldInvert, float[,]? edgeMagnitudes = null,
+                                         float[,]? edgeAngles = null, bool skipContrast = false)
     {
         for (int x = 0; x < width; x++)
         {
             var vector = internalVectors[y, x];
 
-            // Per Alex Harri's article:
-            // If directional contrast is enabled, apply max-then-contrast
-            // Otherwise, apply global contrast enhancement only
-            if (_options.DirectionalContrastStrength > 0)
+            // Apply contrast if not already applied (during dithering)
+            if (!skipContrast)
             {
-                // Directional contrast: max(internal, external) then apply contrast
-                vector = ApplyDirectionalContrastFrom10Circles(vector, externalVectors, x, y,
-                                                                width, height, _options.ContrastPower);
-            }
-            else if (_options.ContrastPower > 1.0f)
-            {
-                // Global contrast enhancement only (no directional)
-                vector = vector.ApplyContrast(_options.ContrastPower);
+                // Per Alex Harri's article:
+                // If directional contrast is enabled, apply max-then-contrast
+                // Otherwise, apply global contrast enhancement only
+                if (_options.DirectionalContrastStrength > 0)
+                {
+                    // Directional contrast: max(internal, external) then apply contrast
+                    vector = ApplyDirectionalContrastFrom10Circles(vector, externalVectors, x, y,
+                                                                    width, height, _options.ContrastPower);
+                }
+                else if (_options.ContrastPower > 1.0f)
+                {
+                    // Global contrast enhancement only (no directional)
+                    vector = vector.ApplyContrast(_options.ContrastPower);
+                }
             }
 
             // Find best matching character
             char c = _characterMap.FindBestMatch(vector);
+
+            // Apply edge direction override if enabled and edge is strong enough
+            if (edgeMagnitudes != null && edgeAngles != null)
+            {
+                c = EdgeDirection.BlendCharacter(c, edgeAngles[y, x], edgeMagnitudes[y, x]);
+            }
 
             if (shouldInvert)
             {
@@ -430,23 +494,34 @@ public class AsciiRenderer : IDisposable
     private List<AsciiFrame> RenderGifFrames(Image<Rgba32> image)
     {
         var (width, height) = _options.CalculateDimensions(image.Width, image.Height);
-        var frames = new AsciiFrame[image.Frames.Count];
 
         int cellWidth = Math.Max(4, image.Width / width);
         int cellHeight = Math.Max(4, image.Height / height);
 
-        if (_options.UseParallelProcessing && image.Frames.Count > 2)
+        // Determine frame step for sampling (skip frames for efficiency)
+        int frameStep = Math.Max(1, _options.FrameSampleRate);
+
+        // Calculate how many frames we'll actually render
+        int frameCount = (image.Frames.Count + frameStep - 1) / frameStep;
+        var frames = new AsciiFrame[frameCount];
+        var frameIndices = new int[frameCount];
+        for (int i = 0; i < frameCount; i++)
         {
-            Parallel.For(0, image.Frames.Count, i =>
+            frameIndices[i] = i * frameStep;
+        }
+
+        if (_options.UseParallelProcessing && frameCount > 2)
+        {
+            Parallel.For(0, frameCount, i =>
             {
-                frames[i] = RenderGifFrame(image, i, width, height, cellWidth, cellHeight);
+                frames[i] = RenderGifFrame(image, frameIndices[i], width, height, cellWidth, cellHeight, frameStep);
             });
         }
         else
         {
-            for (int i = 0; i < image.Frames.Count; i++)
+            for (int i = 0; i < frameCount; i++)
             {
-                frames[i] = RenderGifFrame(image, i, width, height, cellWidth, cellHeight);
+                frames[i] = RenderGifFrame(image, frameIndices[i], width, height, cellWidth, cellHeight, frameStep);
             }
         }
 
@@ -454,17 +529,20 @@ public class AsciiRenderer : IDisposable
     }
 
     private AsciiFrame RenderGifFrame(Image<Rgba32> image, int frameIndex, int width, int height,
-                                       int cellWidth, int cellHeight)
+                                       int cellWidth, int cellHeight, int frameStep = 1)
     {
-        using var frameImage = image.Frames.CloneFrame(frameIndex);
+        // Get frame metadata first
+        var metadata = image.Frames[frameIndex].Metadata.GetGifMetadata();
 
         int delayMs = 100;
-        var metadata = image.Frames[frameIndex].Metadata.GetGifMetadata();
         if (metadata.FrameDelay > 0)
         {
             delayMs = metadata.FrameDelay * 10;
         }
-        delayMs = (int)(delayMs / _options.AnimationSpeedMultiplier);
+        // Adjust delay to account for skipped frames
+        delayMs = (int)((delayMs * frameStep) / _options.AnimationSpeedMultiplier);
+
+        using var frameImage = image.Frames.CloneFrame(frameIndex);
 
         int targetWidth = width * cellWidth;
         int targetHeight = height * cellHeight;

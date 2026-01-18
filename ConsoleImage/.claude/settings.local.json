@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c:*)",
+      "Bash(powershell -Command:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.sixlabors.com)"
+    ]
+  }
+}

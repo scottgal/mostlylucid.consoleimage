@@ -4,149 +4,156 @@
 using System.CommandLine;
 using ConsoleImage.Core;
 
+// Enable ANSI escape sequence processing on Windows consoles
+ConsoleHelper.EnableAnsiSupport();
+
 // Create root command
-var rootCommand = new RootCommand("Convert images to ASCII art using shape-matching algorithm")
-{
-    Name = "ascii-image"
-};
+var rootCommand = new RootCommand("Convert images to ASCII art using shape-matching algorithm");
 
 // Input file argument
-var inputArg = new Argument<FileInfo>(
-    name: "input",
-    description: "Path to the image or GIF file to convert");
+var inputArg = new Argument<FileInfo>("input")
+{
+    Description = "Path to the image or GIF file to convert"
+};
 
-// Options
-var widthOption = new Option<int?>(
-    aliases: ["--width", "-w"],
-    description: "Output width in characters");
+// Options - System.CommandLine 2.0.2 API
+var widthOption = new Option<int?>("--width") { Description = "Output width in characters" };
+widthOption.Aliases.Add("-w");
 
-var heightOption = new Option<int?>(
-    aliases: ["--height", "-h"],
-    description: "Output height in characters");
+var heightOption = new Option<int?>("--height") { Description = "Output height in characters (auto-calculated from width by default)" };
+heightOption.Aliases.Add("-h");
 
-var maxWidthOption = new Option<int>(
-    aliases: ["--max-width"],
-    getDefaultValue: () => 120,
-    description: "Maximum output width");
+var aspectRatioOption = new Option<float?>("--aspect-ratio") { Description = "Character aspect ratio (default: 0.5, meaning chars are 2x taller than wide)" };
+aspectRatioOption.Aliases.Add("-a");
 
-var maxHeightOption = new Option<int>(
-    aliases: ["--max-height"],
-    getDefaultValue: () => 60,
-    description: "Maximum output height");
+var maxWidthOption = new Option<int>("--max-width")
+{
+    Description = "Maximum output width",
+    DefaultValueFactory = _ => 120
+};
 
-var noColorOption = new Option<bool>(
-    aliases: ["--no-color"],
-    description: "Disable colored output (monochrome)");
+var maxHeightOption = new Option<int>("--max-height")
+{
+    Description = "Maximum output height",
+    DefaultValueFactory = _ => 60
+};
 
-var noInvertOption = new Option<bool>(
-    aliases: ["--no-invert"],
-    description: "Don't invert output (for light backgrounds)");
+var noColorOption = new Option<bool>("--no-color") { Description = "Disable colored output (monochrome)" };
 
-var contrastOption = new Option<float>(
-    aliases: ["--contrast"],
-    getDefaultValue: () => 2.5f,
-    description: "Contrast enhancement power (1.0 = none, higher = more contrast)");
+var noInvertOption = new Option<bool>("--no-invert") { Description = "Don't invert output (for light backgrounds)" };
 
-var charsetOption = new Option<string?>(
-    aliases: ["--charset"],
-    description: "Custom character set (ordered from light to dark)");
+var contrastOption = new Option<float>("--contrast")
+{
+    Description = "Contrast enhancement power (1.0 = none, higher = more contrast)",
+    DefaultValueFactory = _ => 2.5f
+};
 
-var presetOption = new Option<string?>(
-    aliases: ["--preset", "-p"],
-    description: "Character set preset: default, simple, block");
+var charsetOption = new Option<string?>("--charset") { Description = "Custom character set (ordered from light to dark)" };
 
-var outputOption = new Option<FileInfo?>(
-    aliases: ["--output", "-o"],
-    description: "Write output to file instead of console");
+var presetOption = new Option<string?>("--preset") { Description = "Character set preset: default, simple, block" };
+presetOption.Aliases.Add("-p");
 
-var noAnimateOption = new Option<bool>(
-    aliases: ["--no-animate"],
-    description: "Don't animate GIFs - just show first frame");
+var outputOption = new Option<FileInfo?>("--output") { Description = "Write output to file instead of console" };
+outputOption.Aliases.Add("-o");
 
-var speedOption = new Option<float>(
-    aliases: ["--speed", "-s"],
-    getDefaultValue: () => 1.0f,
-    description: "Animation speed multiplier");
+var noAnimateOption = new Option<bool>("--no-animate") { Description = "Don't animate GIFs - just show first frame" };
 
-var loopOption = new Option<int>(
-    aliases: ["--loop", "-l"],
-    getDefaultValue: () => 0,
-    description: "Number of animation loops (0 = infinite, default)");
+var speedOption = new Option<float>("--speed")
+{
+    Description = "Animation speed multiplier",
+    DefaultValueFactory = _ => 1.0f
+};
+speedOption.Aliases.Add("-s");
 
-var edgeOption = new Option<bool>(
-    aliases: ["--edge", "-e"],
-    description: "Enable edge detection to enhance foreground visibility");
+var loopOption = new Option<int>("--loop")
+{
+    Description = "Number of animation loops (0 = infinite, default)",
+    DefaultValueFactory = _ => 0
+};
+loopOption.Aliases.Add("-l");
 
-var bgThresholdOption = new Option<float?>(
-    aliases: ["--bg-threshold"],
-    description: "Background suppression threshold (0.0-1.0). Pixels above this brightness are suppressed.");
+var frameSampleOption = new Option<int>("--frame-sample")
+{
+    Description = "Frame sampling rate (1 = every frame, 2 = every 2nd, etc.). Higher values reduce processing time.",
+    DefaultValueFactory = _ => 1
+};
+frameSampleOption.Aliases.Add("-f");
 
-var darkBgThresholdOption = new Option<float?>(
-    aliases: ["--dark-bg-threshold"],
-    description: "Dark background suppression threshold (0.0-1.0). Pixels below this brightness are suppressed.");
+var edgeOption = new Option<bool>("--edge") { Description = "Enable edge detection to enhance foreground visibility" };
+edgeOption.Aliases.Add("-e");
 
-var autoBgOption = new Option<bool>(
-    aliases: ["--auto-bg"],
-    description: "Automatically detect and suppress background");
+var bgThresholdOption = new Option<float?>("--bg-threshold") { Description = "Background suppression threshold (0.0-1.0). Pixels above this brightness are suppressed." };
 
-var colorBlocksOption = new Option<bool>(
-    aliases: ["--blocks", "-b"],
-    description: "Use colored Unicode blocks for high-fidelity output (requires 24-bit color terminal)");
+var darkBgThresholdOption = new Option<float?>("--dark-bg-threshold") { Description = "Dark background suppression threshold (0.0-1.0). Pixels below this brightness are suppressed." };
 
-var noParallelOption = new Option<bool>(
-    aliases: ["--no-parallel"],
-    description: "Disable parallel processing");
+var autoBgOption = new Option<bool>("--auto-bg") { Description = "Automatically detect and suppress background" };
+
+var colorBlocksOption = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks for high-fidelity output (requires 24-bit color terminal)" };
+colorBlocksOption.Aliases.Add("-b");
+
+var noParallelOption = new Option<bool>("--no-parallel") { Description = "Disable parallel processing" };
+
+var noDitherOption = new Option<bool>("--no-dither") { Description = "Disable Floyd-Steinberg dithering" };
+
+var noEdgeDirOption = new Option<bool>("--no-edge-chars") { Description = "Disable directional characters (/ \\ | -)" };
 
 // Add options to root command
-rootCommand.AddArgument(inputArg);
-rootCommand.AddOption(widthOption);
-rootCommand.AddOption(heightOption);
-rootCommand.AddOption(maxWidthOption);
-rootCommand.AddOption(maxHeightOption);
-rootCommand.AddOption(noColorOption);
-rootCommand.AddOption(noInvertOption);
-rootCommand.AddOption(contrastOption);
-rootCommand.AddOption(charsetOption);
-rootCommand.AddOption(presetOption);
-rootCommand.AddOption(outputOption);
-rootCommand.AddOption(noAnimateOption);
-rootCommand.AddOption(speedOption);
-rootCommand.AddOption(loopOption);
-rootCommand.AddOption(edgeOption);
-rootCommand.AddOption(bgThresholdOption);
-rootCommand.AddOption(darkBgThresholdOption);
-rootCommand.AddOption(autoBgOption);
-rootCommand.AddOption(colorBlocksOption);
-rootCommand.AddOption(noParallelOption);
+rootCommand.Arguments.Add(inputArg);
+rootCommand.Options.Add(widthOption);
+rootCommand.Options.Add(heightOption);
+rootCommand.Options.Add(aspectRatioOption);
+rootCommand.Options.Add(maxWidthOption);
+rootCommand.Options.Add(maxHeightOption);
+rootCommand.Options.Add(noColorOption);
+rootCommand.Options.Add(noInvertOption);
+rootCommand.Options.Add(contrastOption);
+rootCommand.Options.Add(charsetOption);
+rootCommand.Options.Add(presetOption);
+rootCommand.Options.Add(outputOption);
+rootCommand.Options.Add(noAnimateOption);
+rootCommand.Options.Add(speedOption);
+rootCommand.Options.Add(loopOption);
+rootCommand.Options.Add(frameSampleOption);
+rootCommand.Options.Add(edgeOption);
+rootCommand.Options.Add(bgThresholdOption);
+rootCommand.Options.Add(darkBgThresholdOption);
+rootCommand.Options.Add(autoBgOption);
+rootCommand.Options.Add(colorBlocksOption);
+rootCommand.Options.Add(noParallelOption);
+rootCommand.Options.Add(noDitherOption);
+rootCommand.Options.Add(noEdgeDirOption);
 
-rootCommand.SetHandler(async (context) =>
+rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
-    var input = context.ParseResult.GetValueForArgument(inputArg);
-    var width = context.ParseResult.GetValueForOption(widthOption);
-    var height = context.ParseResult.GetValueForOption(heightOption);
-    var maxWidth = context.ParseResult.GetValueForOption(maxWidthOption);
-    var maxHeight = context.ParseResult.GetValueForOption(maxHeightOption);
-    var noColor = context.ParseResult.GetValueForOption(noColorOption);
-    var noInvert = context.ParseResult.GetValueForOption(noInvertOption);
-    var contrast = context.ParseResult.GetValueForOption(contrastOption);
-    var charset = context.ParseResult.GetValueForOption(charsetOption);
-    var preset = context.ParseResult.GetValueForOption(presetOption);
-    var output = context.ParseResult.GetValueForOption(outputOption);
-    var noAnimate = context.ParseResult.GetValueForOption(noAnimateOption);
-    var speed = context.ParseResult.GetValueForOption(speedOption);
-    var loop = context.ParseResult.GetValueForOption(loopOption);
-    var enableEdge = context.ParseResult.GetValueForOption(edgeOption);
-    var bgThreshold = context.ParseResult.GetValueForOption(bgThresholdOption);
-    var darkBgThreshold = context.ParseResult.GetValueForOption(darkBgThresholdOption);
-    var autoBg = context.ParseResult.GetValueForOption(autoBgOption);
-    var colorBlocks = context.ParseResult.GetValueForOption(colorBlocksOption);
-    var noParallel = context.ParseResult.GetValueForOption(noParallelOption);
+    var input = parseResult.GetValue(inputArg)!;
+    var width = parseResult.GetValue(widthOption);
+    var height = parseResult.GetValue(heightOption);
+    var aspectRatio = parseResult.GetValue(aspectRatioOption);
+    var maxWidth = parseResult.GetValue(maxWidthOption);
+    var maxHeight = parseResult.GetValue(maxHeightOption);
+    var noColor = parseResult.GetValue(noColorOption);
+    var noInvert = parseResult.GetValue(noInvertOption);
+    var contrast = parseResult.GetValue(contrastOption);
+    var charset = parseResult.GetValue(charsetOption);
+    var preset = parseResult.GetValue(presetOption);
+    var output = parseResult.GetValue(outputOption);
+    var noAnimate = parseResult.GetValue(noAnimateOption);
+    var speed = parseResult.GetValue(speedOption);
+    var loop = parseResult.GetValue(loopOption);
+    var frameSample = parseResult.GetValue(frameSampleOption);
+    var enableEdge = parseResult.GetValue(edgeOption);
+    var bgThreshold = parseResult.GetValue(bgThresholdOption);
+    var darkBgThreshold = parseResult.GetValue(darkBgThresholdOption);
+    var autoBg = parseResult.GetValue(autoBgOption);
+    var colorBlocks = parseResult.GetValue(colorBlocksOption);
+    var noParallel = parseResult.GetValue(noParallelOption);
+    var noDither = parseResult.GetValue(noDitherOption);
+    var noEdgeChars = parseResult.GetValue(noEdgeDirOption);
 
     if (!input.Exists)
     {
         Console.Error.WriteLine($"Error: File not found: {input.FullName}");
-        context.ExitCode = 1;
-        return;
+        return 1;
     }
 
     // Determine character set
@@ -165,6 +172,7 @@ rootCommand.SetHandler(async (context) =>
     {
         Width = width,
         Height = height,
+        CharacterAspectRatio = aspectRatio ?? 0.5f,
         MaxWidth = maxWidth,
         MaxHeight = maxHeight,
         UseColor = !noColor || colorBlocks,
@@ -173,11 +181,14 @@ rootCommand.SetHandler(async (context) =>
         CharacterSet = characterSet,
         AnimationSpeedMultiplier = speed,
         LoopCount = loop,
+        FrameSampleRate = frameSample,
         EnableEdgeDetection = enableEdge,
         BackgroundThreshold = bgThreshold,
         DarkBackgroundThreshold = darkBgThreshold,
         AutoBackgroundSuppression = autoBg,
-        UseParallelProcessing = !noParallel
+        UseParallelProcessing = !noParallel,
+        EnableDithering = !noDither,
+        EnableEdgeDirectionChars = !noEdgeChars
     };
 
     try
@@ -199,7 +210,7 @@ rootCommand.SetHandler(async (context) =>
                     Console.WriteLine($"Playing {frames.Count} frames in color block mode (Press Ctrl+C to stop)...");
                     Console.WriteLine();
 
-                    using var cts = new CancellationTokenSource();
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     Console.CancelKeyPress += (s, e) =>
                     {
                         e.Cancel = true;
@@ -209,46 +220,55 @@ rootCommand.SetHandler(async (context) =>
                     var token = cts.Token;
                     int loopsDone = 0;
 
-                    // Pre-compute diffs for smoother rendering
-                    var frameDiffs = FrameDiffer.ComputeColorBlockDiffs(frames);
+                    // Pre-split all frames and find max height
+                    // Remove trailing \r from Windows line endings
+                    var frameLines = new string[frames.Count][];
+                    int maxFrameHeight = 0;
+                    for (int f = 0; f < frames.Count; f++)
+                    {
+                        frameLines[f] = frames[f].Content.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+                        if (frameLines[f].Length > maxFrameHeight)
+                            maxFrameHeight = frameLines[f].Length;
+                    }
 
-                    // DECSET 2026 synchronized output for flicker-free rendering
-                    const string SyncStart = "\x1b[?2026h";
-                    const string SyncEnd = "\x1b[?2026l";
-
-                    // Hide cursor and save position
-                    Console.Write("\x1b[?25l");
-                    Console.Write("\x1b[s");
-                    Console.Out.Flush();
+                    // Hide cursor (may fail in non-interactive environments)
+                    try { Console.CursorVisible = false; } catch { }
 
                     try
                     {
+                        bool firstFrame = true;
+
                         while (!token.IsCancellationRequested)
                         {
                             for (int i = 0; i < frames.Count; i++)
                             {
                                 if (token.IsCancellationRequested) break;
 
-                                // Start synchronized output
-                                Console.Write(SyncStart);
-
-                                // First frame needs full position restore
-                                if (i == 0)
+                                // Move cursor up to overwrite previous frame (except first frame)
+                                if (!firstFrame)
                                 {
-                                    Console.Write("\x1b[u");
+                                    // Move up (maxFrameHeight - 1) lines because we're ON the last line, not below it
+                                    Console.Write($"\x1b[{maxFrameHeight - 1}A");
+                                    Console.Write("\r");
                                 }
+                                firstFrame = false;
 
-                                Console.Write(frameDiffs[i]);
+                                // Write frame line by line, padding to maxFrameHeight
+                                var lines = frameLines[i];
+                                for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
+                                {
+                                    Console.Write("\x1b[2K"); // Clear entire line
+                                    if (lineIdx < lines.Length)
+                                        Console.Write(lines[lineIdx]);
+                                    if (lineIdx < maxFrameHeight - 1)
+                                        Console.WriteLine();
+                                }
                                 Console.Write("\x1b[0m");
-
-                                // End synchronized output - renders atomically
-                                Console.Write(SyncEnd);
                                 Console.Out.Flush();
 
                                 int delayMs = frames[i].DelayMs;
                                 if (delayMs > 0)
                                 {
-                                    // Responsive delay - check cancellation every 50ms
                                     int remaining = delayMs;
                                     while (remaining > 0 && !token.IsCancellationRequested)
                                     {
@@ -267,8 +287,7 @@ rootCommand.SetHandler(async (context) =>
                     catch (OperationCanceledException) { }
                     finally
                     {
-                        // Show cursor again
-                        Console.Write("\x1b[?25h");
+                        try { Console.CursorVisible = true; } catch { }
                         Console.WriteLine();
                     }
                 }
@@ -309,7 +328,7 @@ rootCommand.SetHandler(async (context) =>
                     Console.WriteLine();
 
                     using var player = new AsciiAnimationPlayer(frames, !noColor, loop);
-                    using var cts = new CancellationTokenSource();
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
                     Console.CancelKeyPress += (s, e) =>
                     {
@@ -363,15 +382,16 @@ rootCommand.SetHandler(async (context) =>
                 OutputFrame(frame, !noColor, output);
             }
         }
+        return 0;
     }
     catch (Exception ex)
     {
         Console.Error.WriteLine($"Error: {ex.Message}");
-        context.ExitCode = 1;
+        return 1;
     }
 });
 
-return await rootCommand.InvokeAsync(args);
+return await rootCommand.Parse(args).InvokeAsync();
 
 static void OutputFrame(AsciiFrame frame, bool useColor, FileInfo? output)
 {
