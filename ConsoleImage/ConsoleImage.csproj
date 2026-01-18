@@ -5,7 +5,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <AssemblyName>ascii-image</AssemblyName>
+        <AssemblyName>consoleimage</AssemblyName>
 
         <!-- AOT Compilation Support -->
         <PublishAot>true</PublishAot>

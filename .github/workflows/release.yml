@@ -106,11 +106,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p ./archive/${{ matrix.artifact }}
-          # Copy only the executable (lowercase name)
+          # Copy only the executable
           if [ "${{ matrix.ext }}" == ".exe" ]; then
-            cp ./publish/${{ matrix.artifact }}/ConsoleImage.exe ./archive/${{ matrix.artifact }}/consoleimage.exe
+            cp ./publish/${{ matrix.artifact }}/consoleimage.exe ./archive/${{ matrix.artifact }}/
           else
-            cp ./publish/${{ matrix.artifact }}/ConsoleImage ./archive/${{ matrix.artifact }}/consoleimage
+            cp ./publish/${{ matrix.artifact }}/consoleimage ./archive/${{ matrix.artifact }}/
             chmod +x ./archive/${{ matrix.artifact }}/consoleimage
           fi
           # Copy README
