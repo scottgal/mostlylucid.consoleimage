@@ -2,6 +2,8 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 // Character shape vector generation using font rendering
 
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
@@ -12,31 +14,55 @@ namespace ConsoleImage.Core;
 
 /// <summary>
 /// Generates shape vectors for ASCII characters by rendering them and sampling regions.
+/// Uses staggered sampling circles as described in Alex Harri's article.
+/// Thread-safe for concurrent rendering operations.
 /// </summary>
 public class CharacterMap
 {
     private readonly Dictionary<char, ShapeVector> _vectors = new();
     private readonly KdTree _kdTree;
-    private readonly Dictionary<int, char> _cache = new();
+    private readonly ConcurrentDictionary<int, char> _cache = new();
     private readonly int _cacheBits;
+
+    // Sampling circle configuration - staggered pattern
+    // Left circles are lowered, right circles are raised to minimize gaps
+    private static readonly (float X, float Y)[] SamplingPositions =
+    [
+        (0.25f, 0.20f),  // Top-left (raised)
+        (0.75f, 0.13f),  // Top-right (more raised)
+        (0.25f, 0.50f),  // Middle-left
+        (0.75f, 0.50f),  // Middle-right
+        (0.25f, 0.87f),  // Bottom-left (more lowered)
+        (0.75f, 0.80f),  // Bottom-right (lowered)
+    ];
+
+    private const float SamplingRadius = 0.20f; // Radius as fraction of cell size
+    private const int SamplesPerCircle = 37;    // Number of samples per circle for accuracy
 
     /// <summary>
     /// Default ASCII character set suitable for art rendering
+    /// Ordered from lightest to darkest
     /// </summary>
     public static readonly string DefaultCharacterSet =
-        " .`'^\",:;!i><~+_-?][}{1)(|/\\tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+        " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
     /// <summary>
     /// Simple character set for basic rendering
     /// </summary>
     public static readonly string SimpleCharacterSet =
-        " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+        " .:-=+*#%@";
 
     /// <summary>
     /// Block character set for high-density output
     /// </summary>
     public static readonly string BlockCharacterSet =
         " ░▒▓█";
+
+    /// <summary>
+    /// Extended character set with more gradations
+    /// </summary>
+    public static readonly string ExtendedCharacterSet =
+        " `.-':_,^=;><+!rc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
 
     /// <summary>
     /// Gets the shape vector for a character
@@ -49,7 +75,7 @@ public class CharacterMap
     public IEnumerable<char> Characters => _vectors.Keys;
 
     public CharacterMap(string? characterSet = null, string? fontFamily = null,
-                        int cellSize = 16, int cacheBits = 5)
+                        int cellSize = 32, int cacheBits = 5)
     {
         _cacheBits = cacheBits;
         characterSet ??= DefaultCharacterSet;
@@ -73,8 +99,7 @@ public class CharacterMap
             _vectors[c] = vector;
         }
 
-        // Normalize vectors so the space character maps to (0,0,0,0,0,0)
-        // and the densest character maps closer to (1,1,1,1,1,1)
+        // Normalize vectors
         NormalizeVectors();
     }
 
@@ -86,7 +111,6 @@ public class CharacterMap
         {
             if (!SystemFonts.TryGet(fontFamily, out family))
             {
-                // Fall back to a monospace font
                 family = GetDefaultMonospaceFont();
             }
         }
@@ -95,12 +119,11 @@ public class CharacterMap
             family = GetDefaultMonospaceFont();
         }
 
-        return family.CreateFont(cellSize, FontStyle.Regular);
+        return family.CreateFont(cellSize * 0.9f, FontStyle.Regular);
     }
 
     private static FontFamily GetDefaultMonospaceFont()
     {
-        // Try common monospace fonts in order of preference
         string[] monospaceFonts = ["Consolas", "Courier New", "Lucida Console",
                                    "DejaVu Sans Mono", "Liberation Mono", "monospace"];
 
@@ -110,7 +133,6 @@ public class CharacterMap
                 return family;
         }
 
-        // Fall back to first available font
         var families = SystemFonts.Families.ToList();
         if (families.Count == 0)
             throw new InvalidOperationException("No fonts available on system");
@@ -123,77 +145,123 @@ public class CharacterMap
         // Create a cell-sized image to render the character
         using var image = new Image<L8>(cellSize, cellSize, new L8(255)); // White background
 
-        // Render the character in black
+        // Render the character in black, centered
         string text = c.ToString();
+
+        // Measure text to center it
+        var bounds = TextMeasurer.MeasureBounds(text, new TextOptions(font));
+
+        float offsetX = (cellSize - bounds.Width) / 2 - bounds.X;
+        float offsetY = (cellSize - bounds.Height) / 2 - bounds.Y;
+
         var textOptions = new RichTextOptions(font)
         {
-            Origin = new PointF(0, 0),
+            Origin = new PointF(offsetX, offsetY),
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top
         };
 
         image.Mutate(ctx => ctx.DrawText(textOptions, text, Color.Black));
 
-        // Sample 6 regions using circles
-        return SampleRegions(image, cellSize);
+        // Sample 6 regions using staggered circles
+        return SampleCharacterRegions(image, cellSize);
     }
 
-    private static ShapeVector SampleRegions(Image<L8> image, int cellSize)
+    private static ShapeVector SampleCharacterRegions(Image<L8> image, int cellSize)
     {
-        // Define 6 sampling regions (2x3 grid)
-        // Each region is sampled with multiple points for anti-aliasing
-        float regionWidth = cellSize / 2f;
-        float regionHeight = cellSize / 3f;
+        Span<float> values = stackalloc float[6];
+        float radius = SamplingRadius * cellSize;
 
-        float[] values = new float[6];
-
-        for (int row = 0; row < 3; row++)
+        for (int i = 0; i < 6; i++)
         {
-            for (int col = 0; col < 2; col++)
-            {
-                int index = row * 2 + col;
-                float centerX = (col + 0.5f) * regionWidth;
-                float centerY = (row + 0.5f) * regionHeight;
-                float radius = MathF.Min(regionWidth, regionHeight) * 0.4f;
+            float centerX = SamplingPositions[i].X * cellSize;
+            float centerY = SamplingPositions[i].Y * cellSize;
 
-                values[index] = SampleCircle(image, centerX, centerY, radius);
-            }
+            values[i] = SampleCircleCoverage(image, centerX, centerY, radius);
         }
 
         return new ShapeVector(values);
     }
 
-    private static float SampleCircle(Image<L8> image, float centerX, float centerY, float radius)
+    /// <summary>
+    /// Sample coverage within a circle - returns fraction of dark pixels (0-1)
+    /// Uses concentric ring sampling for accuracy
+    /// </summary>
+    private static float SampleCircleCoverage(Image<L8> image, float centerX, float centerY, float radius)
     {
-        // Supersample with multiple points in a circle pattern
-        const int samples = 12;
         float total = 0;
-        int validSamples = 0;
+        int sampleCount = 0;
 
+        // Sample in concentric rings for even distribution
         // Center point
-        int cx = (int)centerX;
-        int cy = (int)centerY;
-        if (cx >= 0 && cx < image.Width && cy >= 0 && cy < image.Height)
+        if (TrySamplePoint(image, centerX, centerY, out float centerVal))
         {
-            total += 1f - image[cx, cy].PackedValue / 255f; // Invert: black = 1, white = 0
-            validSamples++;
+            total += centerVal;
+            sampleCount++;
         }
 
-        // Points around the circle
-        for (int i = 0; i < samples; i++)
+        // Inner ring (6 points at 0.4 * radius)
+        float innerRadius = radius * 0.4f;
+        for (int i = 0; i < 6; i++)
         {
-            float angle = i * MathF.PI * 2 / samples;
-            int x = (int)(centerX + MathF.Cos(angle) * radius);
-            int y = (int)(centerY + MathF.Sin(angle) * radius);
+            float angle = i * MathF.PI * 2 / 6;
+            float x = centerX + MathF.Cos(angle) * innerRadius;
+            float y = centerY + MathF.Sin(angle) * innerRadius;
 
-            if (x >= 0 && x < image.Width && y >= 0 && y < image.Height)
+            if (TrySamplePoint(image, x, y, out float val))
             {
-                total += 1f - image[x, y].PackedValue / 255f;
-                validSamples++;
+                total += val;
+                sampleCount++;
             }
         }
 
-        return validSamples > 0 ? total / validSamples : 0;
+        // Middle ring (12 points at 0.7 * radius)
+        float midRadius = radius * 0.7f;
+        for (int i = 0; i < 12; i++)
+        {
+            float angle = i * MathF.PI * 2 / 12 + MathF.PI / 12; // Offset by half step
+            float x = centerX + MathF.Cos(angle) * midRadius;
+            float y = centerY + MathF.Sin(angle) * midRadius;
+
+            if (TrySamplePoint(image, x, y, out float val))
+            {
+                total += val;
+                sampleCount++;
+            }
+        }
+
+        // Outer ring (18 points at radius)
+        for (int i = 0; i < 18; i++)
+        {
+            float angle = i * MathF.PI * 2 / 18;
+            float x = centerX + MathF.Cos(angle) * radius;
+            float y = centerY + MathF.Sin(angle) * radius;
+
+            if (TrySamplePoint(image, x, y, out float val))
+            {
+                total += val;
+                sampleCount++;
+            }
+        }
+
+        return sampleCount > 0 ? total / sampleCount : 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TrySamplePoint(Image<L8> image, float x, float y, out float coverage)
+    {
+        int ix = (int)x;
+        int iy = (int)y;
+
+        if (ix >= 0 && ix < image.Width && iy >= 0 && iy < image.Height)
+        {
+            // Convert: white (255) = 0 coverage, black (0) = 1 coverage
+            coverage = 1f - image[ix, iy].PackedValue / 255f;
+            return true;
+        }
+
+        coverage = 0;
+        return false;
     }
 
     private void NormalizeVectors()
@@ -201,14 +269,15 @@ public class CharacterMap
         if (_vectors.Count == 0) return;
 
         // Find max value across all vectors
-        float maxValue = _vectors.Values
-            .SelectMany(v => new[] { v.TopLeft, v.TopRight, v.MiddleLeft,
-                                     v.MiddleRight, v.BottomLeft, v.BottomRight })
-            .Max();
+        float maxValue = 0;
+        foreach (var v in _vectors.Values)
+        {
+            maxValue = MathF.Max(maxValue, v.Max());
+        }
 
         if (maxValue <= 0) return;
 
-        // Normalize all vectors
+        // Normalize all vectors so max is 1.0
         var normalized = new Dictionary<char, ShapeVector>();
         foreach (var (c, v) in _vectors)
         {
@@ -230,22 +299,22 @@ public class CharacterMap
     }
 
     /// <summary>
-    /// Find the best matching character for a shape vector
+    /// Find the best matching character for a shape vector.
+    /// Thread-safe with internal caching for repeated lookups.
     /// </summary>
     public char FindBestMatch(in ShapeVector target)
     {
-        // Check cache first
         int cacheKey = target.GetQuantizedKey(_cacheBits);
+
+        // Try to get from cache first (fast path)
         if (_cache.TryGetValue(cacheKey, out char cached))
             return cached;
 
-        // Use k-d tree for fast lookup
-        char result = _kdTree.FindNearest(target);
+        // Copy to allow use in lambda (in parameters can't be captured)
+        var targetCopy = target;
 
-        // Cache the result
-        _cache[cacheKey] = result;
-
-        return result;
+        // Use GetOrAdd for thread-safe caching
+        return _cache.GetOrAdd(cacheKey, _ => _kdTree.FindNearest(targetCopy));
     }
 
     /// <summary>

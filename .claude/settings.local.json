@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:alexharri.com)",
-      "Bash(dotnet restore:*)"
+      "Bash(dotnet restore:*)",
+      "Bash(dir \"F:\\\\Gifs\" /b)",
+      "Bash(dotnet run:*)",
+      "Bash(dir \"F:\\\\Gifs\")",
+      "Bash(.ascii-image.exe:*)"
     ]
   }
 }

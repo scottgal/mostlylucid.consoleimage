@@ -59,7 +59,17 @@ public class AsciiAnimationPlayer : IDisposable
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         int loops = 0;
-        int startRow = Console.CursorTop;
+
+        // Get safe starting position within buffer bounds
+        int frameHeight = _frames[0].Height;
+        int bufferHeight = Console.BufferHeight;
+        int windowHeight = Console.WindowHeight;
+
+        // Ensure we have enough space for the animation
+        int startRow = Math.Min(Console.CursorTop, Math.Max(0, bufferHeight - frameHeight - 1));
+
+        // If frame is taller than window, we'll need to scroll
+        bool needsScroll = frameHeight >= windowHeight;
 
         try
         {
@@ -70,15 +80,29 @@ public class AsciiAnimationPlayer : IDisposable
                     CurrentFrame = i;
                     var frame = _frames[i];
 
-                    // Move cursor to start position
-                    Console.SetCursorPosition(0, startRow);
+                    // Move cursor to start position (with bounds check)
+                    int safeRow = Math.Max(0, Math.Min(startRow, bufferHeight - 1));
+                    try
+                    {
+                        Console.SetCursorPosition(0, safeRow);
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        // Fallback: just use current position
+                        Console.SetCursorPosition(0, 0);
+                    }
 
                     // Render frame
                     string output = _useColor ? frame.ToAnsiString() : frame.ToString();
                     Console.Write(output);
 
-                    // Clear any remaining content from previous frame
-                    Console.Write(new string(' ', Console.WindowWidth - Console.CursorLeft));
+                    // Clear any remaining content from previous frame (with bounds check)
+                    int cursorLeft = Console.CursorLeft;
+                    int windowWidth = Console.WindowWidth;
+                    if (cursorLeft < windowWidth)
+                    {
+                        Console.Write(new string(' ', windowWidth - cursorLeft));
+                    }
 
                     FrameRendered?.Invoke(this, new FrameRenderedEventArgs(i, _frames.Count));
 
@@ -100,8 +124,16 @@ public class AsciiAnimationPlayer : IDisposable
         }
         finally
         {
-            // Move cursor below the animation
-            Console.SetCursorPosition(0, startRow + _frames[0].Height);
+            // Move cursor below the animation (with bounds check)
+            try
+            {
+                int endRow = Math.Min(startRow + frameHeight, bufferHeight - 1);
+                Console.SetCursorPosition(0, endRow);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // Just move to a safe position
+            }
             AnimationCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
