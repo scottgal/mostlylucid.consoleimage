@@ -1,0 +1,36 @@
+name: Publish NuGet
+
+on:
+  push:
+    tags:
+      - 'consoleimage-v*.*.*'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Build & Pack
+      run: |
+        dotnet restore ConsoleImage.Core/ConsoleImage.Core.csproj
+        dotnet pack ConsoleImage.Core/ConsoleImage.Core.csproj -c Release -o ./artifacts
+
+    - name: NuGet Login (OIDC)
+      id: nuget
+      uses: NuGet/login@v1
+      with:
+        user: 'mostlylucid'
+
+    - name: Publish
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

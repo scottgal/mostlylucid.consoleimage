@@ -12,6 +12,7 @@ public class AsciiAnimationPlayer : IDisposable
     private readonly IReadOnlyList<AsciiFrame> _frames;
     private readonly bool _useColor;
     private readonly int _loopCount;
+    private readonly bool _useDiffRendering;
     private CancellationTokenSource? _cts;
     private Task? _playTask;
     private bool _disposed;
@@ -41,11 +42,12 @@ public class AsciiAnimationPlayer : IDisposable
     /// </summary>
     public bool IsPlaying => _playTask != null && !_playTask.IsCompleted;
 
-    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0)
+    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0, bool useDiffRendering = true)
     {
         _frames = frames ?? throw new ArgumentNullException(nameof(frames));
         _useColor = useColor;
         _loopCount = loopCount;
+        _useDiffRendering = useDiffRendering;
     }
 
     /// <summary>
@@ -57,59 +59,71 @@ public class AsciiAnimationPlayer : IDisposable
             return;
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = _cts.Token;
 
         int loops = 0;
-
-        // Get safe starting position within buffer bounds
         int frameHeight = _frames[0].Height;
-        int bufferHeight = Console.BufferHeight;
-        int windowHeight = Console.WindowHeight;
+        int startRow = Console.CursorTop;
 
-        // Ensure we have enough space for the animation
-        int startRow = Math.Min(Console.CursorTop, Math.Max(0, bufferHeight - frameHeight - 1));
+        // Pre-buffer frame strings - use diff rendering if enabled
+        string[] frameStrings;
+        if (_useDiffRendering && _frames.Count > 1)
+        {
+            frameStrings = FrameDiffer.ComputeDiffs(_frames, _useColor);
+        }
+        else
+        {
+            frameStrings = new string[_frames.Count];
+            for (int i = 0; i < _frames.Count; i++)
+            {
+                frameStrings[i] = _useColor ? _frames[i].ToAnsiString() : _frames[i].ToString();
+            }
+        }
 
-        // If frame is taller than window, we'll need to scroll
-        bool needsScroll = frameHeight >= windowHeight;
+        // Hide cursor for smoother animation
+        Console.Write("\x1b[?25l");
+
+        // Save cursor position
+        Console.Write("\x1b[s");
+
+        // Flush to ensure cursor is hidden before we start
+        Console.Out.Flush();
 
         try
         {
-            while (!_cts.Token.IsCancellationRequested)
+            while (!token.IsCancellationRequested)
             {
-                for (int i = 0; i < _frames.Count && !_cts.Token.IsCancellationRequested; i++)
+                for (int i = 0; i < _frames.Count; i++)
                 {
+                    if (token.IsCancellationRequested) break;
+
                     CurrentFrame = i;
-                    var frame = _frames[i];
 
-                    // Move cursor to start position (with bounds check)
-                    int safeRow = Math.Max(0, Math.Min(startRow, bufferHeight - 1));
-                    try
+                    // For diff rendering: first frame or after loop needs full render
+                    // For non-diff: always restore position
+                    if (!_useDiffRendering || i == 0)
                     {
-                        Console.SetCursorPosition(0, safeRow);
-                    }
-                    catch (ArgumentOutOfRangeException)
-                    {
-                        // Fallback: just use current position
-                        Console.SetCursorPosition(0, 0);
+                        Console.Write("\x1b[u"); // Restore to saved position
                     }
 
-                    // Render frame
-                    string output = _useColor ? frame.ToAnsiString() : frame.ToString();
-                    Console.Write(output);
+                    // Write the frame (or diff)
+                    Console.Write(frameStrings[i]);
 
-                    // Clear any remaining content from previous frame (with bounds check)
-                    int cursorLeft = Console.CursorLeft;
-                    int windowWidth = Console.WindowWidth;
-                    if (cursorLeft < windowWidth)
+                    if (!_useDiffRendering || i == 0)
                     {
-                        Console.Write(new string(' ', windowWidth - cursorLeft));
+                        Console.Write("\x1b[0m");
                     }
+
+                    // Flush immediately for smooth display
+                    Console.Out.Flush();
 
                     FrameRendered?.Invoke(this, new FrameRenderedEventArgs(i, _frames.Count));
 
-                    // Wait for frame delay
-                    if (frame.DelayMs > 0)
+                    // Wait for frame delay with responsive cancellation
+                    int delayMs = _frames[i].DelayMs;
+                    if (delayMs > 0)
                     {
-                        await Task.Delay(frame.DelayMs, _cts.Token);
+                        await ResponsiveDelay(delayMs, token);
                     }
                 }
 
@@ -120,21 +134,39 @@ public class AsciiAnimationPlayer : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Animation was stopped
+            // Animation was stopped - this is expected
         }
         finally
         {
-            // Move cursor below the animation (with bounds check)
+            // Show cursor again
+            Console.Write("\x1b[?25h");
+
+            // Move cursor below the animation
+            Console.Write($"\x1b[{startRow + frameHeight + 1};1H");
+            AnimationCompleted?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// Delay that responds quickly to cancellation
+    /// </summary>
+    private static async Task ResponsiveDelay(int totalMs, CancellationToken token)
+    {
+        const int chunkMs = 50; // Check cancellation every 50ms
+        int remaining = totalMs;
+
+        while (remaining > 0 && !token.IsCancellationRequested)
+        {
+            int delay = Math.Min(remaining, chunkMs);
             try
             {
-                int endRow = Math.Min(startRow + frameHeight, bufferHeight - 1);
-                Console.SetCursorPosition(0, endRow);
+                await Task.Delay(delay, token);
             }
-            catch (ArgumentOutOfRangeException)
+            catch (OperationCanceledException)
             {
-                // Just move to a safe position
+                break;
             }
-            AnimationCompleted?.Invoke(this, EventArgs.Empty);
+            remaining -= delay;
         }
     }
 

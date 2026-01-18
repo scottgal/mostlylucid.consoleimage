@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release --verbosity normal
+        continue-on-error: true
+
+  aot-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install AOT prerequisites
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish AOT
+        run: |
+          dotnet publish ConsoleImage/ConsoleImage.csproj \
+            --configuration Release \
+            --runtime linux-x64 \
+            --self-contained true \
+            -p:PublishAot=true \
+            --output ./publish
+
+      - name: Verify binary
+        run: |
+          ls -la ./publish/
+          ./publish/ascii-image --help

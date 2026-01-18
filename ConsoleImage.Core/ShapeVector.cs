@@ -12,8 +12,9 @@ namespace ConsoleImage.Core;
 
 /// <summary>
 /// Represents a 6-dimensional shape vector used for character matching.
-/// The six dimensions correspond to sampling regions:
-/// top-left, top-right, middle-left, middle-right, bottom-left, bottom-right
+/// The six dimensions correspond to sampling regions in a 3x2 grid:
+/// [0] top-left, [1] top-center, [2] top-right
+/// [3] bottom-left, [4] bottom-center, [5] bottom-right
 /// Uses SIMD operations where available for fast distance calculations.
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]

@@ -122,6 +122,12 @@ public class RenderOptions
     public bool UseParallelProcessing { get; set; } = true;
 
     /// <summary>
+    /// Pre-buffer all frames before playback for smoother animation (default: true).
+    /// When false, frames are rendered on-demand which uses less memory but may stutter.
+    /// </summary>
+    public bool PreBufferFrames { get; set; } = true;
+
+    /// <summary>
     /// Gets the effective character set, considering presets
     /// </summary>
     [JsonIgnore]
@@ -302,6 +308,7 @@ public class RenderOptions
         BackgroundThreshold = BackgroundThreshold,
         DarkBackgroundThreshold = DarkBackgroundThreshold,
         AutoBackgroundSuppression = AutoBackgroundSuppression,
-        UseParallelProcessing = UseParallelProcessing
+        UseParallelProcessing = UseParallelProcessing,
+        PreBufferFrames = PreBufferFrames
     };
 }

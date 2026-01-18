@@ -206,27 +206,58 @@ rootCommand.SetHandler(async (context) =>
                         cts.Cancel();
                     };
 
-                    int startRow = Console.CursorTop;
-                    int loops = 0;
+                    var token = cts.Token;
+                    int loopsDone = 0;
 
-                    while (!cts.Token.IsCancellationRequested)
+                    // Pre-compute diffs for smoother rendering
+                    var frameDiffs = FrameDiffer.ComputeColorBlockDiffs(frames);
+
+                    // Hide cursor and save position
+                    Console.Write("\x1b[?25l");
+                    Console.Write("\x1b[s");
+
+                    try
                     {
-                        foreach (var frame in frames)
+                        while (!token.IsCancellationRequested)
                         {
-                            if (cts.Token.IsCancellationRequested) break;
-
-                            try { Console.SetCursorPosition(0, startRow); } catch { }
-                            Console.Write(frame.Content);
-                            Console.Write("\x1b[0m");
-
-                            if (frame.DelayMs > 0)
+                            for (int i = 0; i < frames.Count; i++)
                             {
-                                await Task.Delay(frame.DelayMs, cts.Token);
-                            }
-                        }
+                                if (token.IsCancellationRequested) break;
 
-                        loops++;
-                        if (loop > 0 && loops >= loop) break;
+                                // First frame needs full position restore
+                                if (i == 0)
+                                {
+                                    Console.Write("\x1b[u");
+                                }
+
+                                Console.Write(frameDiffs[i]);
+                                Console.Write("\x1b[0m");
+
+                                int delayMs = frames[i].DelayMs;
+                                if (delayMs > 0)
+                                {
+                                    // Responsive delay - check cancellation every 50ms
+                                    int remaining = delayMs;
+                                    while (remaining > 0 && !token.IsCancellationRequested)
+                                    {
+                                        int delay = Math.Min(remaining, 50);
+                                        try { await Task.Delay(delay, token); }
+                                        catch (OperationCanceledException) { break; }
+                                        remaining -= delay;
+                                    }
+                                }
+                            }
+
+                            loopsDone++;
+                            if (loop > 0 && loopsDone >= loop) break;
+                        }
+                    }
+                    catch (OperationCanceledException) { }
+                    finally
+                    {
+                        // Show cursor again
+                        Console.Write("\x1b[?25h");
+                        Console.WriteLine();
                     }
                 }
                 else

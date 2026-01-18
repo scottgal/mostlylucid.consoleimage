@@ -6,7 +6,9 @@
       "Bash(dir \"F:\\\\Gifs\" /b)",
       "Bash(dotnet run:*)",
       "Bash(dir \"F:\\\\Gifs\")",
-      "Bash(.ascii-image.exe:*)"
+      "Bash(.ascii-image.exe:*)",
+      "Bash(dotnet pack:*)",
+      "WebSearch"
     ]
   }
 }

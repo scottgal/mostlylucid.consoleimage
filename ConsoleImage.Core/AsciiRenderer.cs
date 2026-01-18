@@ -19,30 +19,38 @@ public class AsciiRenderer : IDisposable
     private readonly RenderOptions _options;
     private bool _disposed;
 
-    // Same staggered sampling positions as CharacterMap
+    // Same staggered sampling positions as CharacterMap (3x2 grid per article)
+    // Layout:  [0]  [1]  [2]   <- Top row
+    //          [3]  [4]  [5]   <- Bottom row
     private static readonly (float X, float Y)[] InternalSamplingPositions =
     [
-        (0.25f, 0.20f),  // Top-left
-        (0.75f, 0.13f),  // Top-right
-        (0.25f, 0.50f),  // Middle-left
-        (0.75f, 0.50f),  // Middle-right
-        (0.25f, 0.87f),  // Bottom-left
-        (0.75f, 0.80f),  // Bottom-right
+        (0.17f, 0.30f),  // Top-left (lowered)
+        (0.50f, 0.25f),  // Top-center
+        (0.83f, 0.20f),  // Top-right (raised)
+        (0.17f, 0.80f),  // Bottom-left (lowered)
+        (0.50f, 0.75f),  // Bottom-center
+        (0.83f, 0.70f),  // Bottom-right (raised)
     ];
 
-    // 9 external sampling positions for directional contrast
-    // Arranged in a 3x3 grid around the cell
+    // 9 external sampling positions for directional contrast (per article)
+    // These reach outside the cell boundaries to detect edges
+    // Positions correspond to the 3x2 internal grid:
+    //   [E0] [E1] [E2] [E3]     <- Above top row
+    //   [E4]  0    1    2  [E5] <- Top row with left/right external
+    //   [E6]  3    4    5  [E7] <- Bottom row with left/right external
+    //   [E8] [E9] [E10][E11]    <- Below bottom row
     private static readonly (float X, float Y)[] ExternalSamplingPositions =
     [
-        (-0.25f, 0.17f),   // Left-top
-        (-0.25f, 0.50f),   // Left-middle
-        (-0.25f, 0.83f),   // Left-bottom
-        (0.50f, -0.17f),   // Top-center
-        (1.25f, 0.17f),    // Right-top
-        (1.25f, 0.50f),    // Right-middle
-        (1.25f, 0.83f),    // Right-bottom
-        (0.50f, 1.17f),    // Bottom-center
-        (0.50f, 0.50f),    // Center (for reference)
+        (0.17f, -0.10f),  // Above top-left
+        (0.50f, -0.10f),  // Above top-center
+        (0.83f, -0.10f),  // Above top-right
+        (-0.15f, 0.30f),  // Left of top-left
+        (1.15f, 0.20f),   // Right of top-right
+        (-0.15f, 0.80f),  // Left of bottom-left
+        (1.15f, 0.70f),   // Right of bottom-right
+        (0.17f, 1.10f),   // Below bottom-left
+        (0.50f, 1.10f),   // Below bottom-center
+        (0.83f, 1.10f),   // Below bottom-right
     ];
 
     private const float SamplingRadius = 0.18f;
@@ -138,7 +146,7 @@ public class AsciiRenderer : IDisposable
 
         // Pre-compute all internal vectors for directional contrast
         var internalVectors = new ShapeVector[height, width];
-        var externalVectors = new float[height, width, 9];
+        var externalVectors = new float[height, width, 10];
 
         if (_options.UseParallelProcessing && height > 4)
         {
@@ -208,17 +216,19 @@ public class AsciiRenderer : IDisposable
         {
             var vector = internalVectors[y, x];
 
-            // Apply global contrast enhancement
-            if (_options.ContrastPower > 1.0f)
-            {
-                vector = vector.ApplyContrast(_options.ContrastPower);
-            }
-
-            // Apply directional contrast using 9 external circles
+            // Per Alex Harri's article:
+            // If directional contrast is enabled, apply max-then-contrast
+            // Otherwise, apply global contrast enhancement only
             if (_options.DirectionalContrastStrength > 0)
             {
-                vector = ApplyDirectionalContrastFrom9Circles(vector, externalVectors, x, y,
-                                                               width, height, _options.DirectionalContrastStrength);
+                // Directional contrast: max(internal, external) then apply contrast
+                vector = ApplyDirectionalContrastFrom10Circles(vector, externalVectors, x, y,
+                                                                width, height, _options.ContrastPower);
+            }
+            else if (_options.ContrastPower > 1.0f)
+            {
+                // Global contrast enhancement only (no directional)
+                vector = vector.ApplyContrast(_options.ContrastPower);
             }
 
             // Find best matching character
@@ -240,47 +250,53 @@ public class AsciiRenderer : IDisposable
         }
     }
 
-    private static ShapeVector ApplyDirectionalContrastFrom9Circles(
+    private static ShapeVector ApplyDirectionalContrastFrom10Circles(
         ShapeVector vector, float[,,] externalVectors, int x, int y,
-        int width, int height, float strength)
+        int width, int height, float contrastPower)
     {
-        // Each internal circle is affected by nearby external circles
-        // This creates edge enhancement at region boundaries
+        // Per Alex Harri's article: take MAX of internal and corresponding external values,
+        // then apply contrast enhancement. This enhances edges by boosting values
+        // where either the internal or external region has content.
 
-        Span<float> adjusted = stackalloc float[6];
+        Span<float> maxed = stackalloc float[6];
 
-        // Get the 9 external values for this cell (or neighbors)
-        Span<float> ext = stackalloc float[9];
-        for (int i = 0; i < 9; i++)
+        // Get the 10 external values for this cell
+        Span<float> ext = stackalloc float[10];
+        for (int i = 0; i < 10; i++)
         {
             ext[i] = externalVectors[y, x, i];
         }
 
-        // Internal position 0 (top-left) affected by: left-top (0), top-center (3)
-        adjusted[0] = vector.TopLeft * (1 - strength * MathF.Max(ext[0], ext[3]));
+        // Internal layout (3x2):
+        //   [0]  [1]  [2]   <- Top row
+        //   [3]  [4]  [5]   <- Bottom row
+        // External layout:
+        //   [0]  [1]  [2]      <- Above
+        //   [3]  INT  INT [4]  <- Left/Right of top
+        //   [5]  INT  INT [6]  <- Left/Right of bottom
+        //   [7]  [8]  [9]      <- Below
 
-        // Internal position 1 (top-right) affected by: top-center (3), right-top (4)
-        adjusted[1] = vector.TopRight * (1 - strength * MathF.Max(ext[3], ext[4]));
+        // Position 0 (top-left): affected by above-left (0) and left-of-top (3)
+        maxed[0] = MathF.Max(vector[0], MathF.Max(ext[0], ext[3]));
 
-        // Internal position 2 (middle-left) affected by: left-middle (1)
-        adjusted[2] = vector.MiddleLeft * (1 - strength * ext[1]);
+        // Position 1 (top-center): affected by above-center (1)
+        maxed[1] = MathF.Max(vector[1], ext[1]);
 
-        // Internal position 3 (middle-right) affected by: right-middle (5)
-        adjusted[3] = vector.MiddleRight * (1 - strength * ext[5]);
+        // Position 2 (top-right): affected by above-right (2) and right-of-top (4)
+        maxed[2] = MathF.Max(vector[2], MathF.Max(ext[2], ext[4]));
 
-        // Internal position 4 (bottom-left) affected by: left-bottom (2), bottom-center (7)
-        adjusted[4] = vector.BottomLeft * (1 - strength * MathF.Max(ext[2], ext[7]));
+        // Position 3 (bottom-left): affected by left-of-bottom (5) and below-left (7)
+        maxed[3] = MathF.Max(vector[3], MathF.Max(ext[5], ext[7]));
 
-        // Internal position 5 (bottom-right) affected by: bottom-center (7), right-bottom (6)
-        adjusted[5] = vector.BottomRight * (1 - strength * MathF.Max(ext[7], ext[6]));
+        // Position 4 (bottom-center): affected by below-center (8)
+        maxed[4] = MathF.Max(vector[4], ext[8]);
 
-        // Clamp to non-negative
-        for (int i = 0; i < 6; i++)
-        {
-            adjusted[i] = MathF.Max(0, adjusted[i]);
-        }
+        // Position 5 (bottom-right): affected by right-of-bottom (6) and below-right (9)
+        maxed[5] = MathF.Max(vector[5], MathF.Max(ext[6], ext[9]));
 
-        return new ShapeVector(adjusted);
+        // Apply contrast enhancement to the maxed vector (per article formula)
+        var maxedVector = new ShapeVector(maxed);
+        return maxedVector.ApplyContrast(contrastPower);
     }
 
     private void SampleExternalCircles(Image<Rgba32> image, int cellX, int cellY,
@@ -289,12 +305,13 @@ public class AsciiRenderer : IDisposable
     {
         float radius = SamplingRadius * MathF.Min(cellWidth, cellHeight);
 
-        for (int i = 0; i < 9; i++)
+        for (int i = 0; i < 10; i++)
         {
             float sampleX = cellX + ExternalSamplingPositions[i].X * cellWidth;
             float sampleY = cellY + ExternalSamplingPositions[i].Y * cellHeight;
 
-            externalVectors[y, x, i] = SampleCircleLightness(image, sampleX, sampleY, radius);
+            // Sample coverage (darkness) not lightness - to match internal sampling
+            externalVectors[y, x, i] = 1f - SampleCircleLightness(image, sampleX, sampleY, radius);
         }
     }
 

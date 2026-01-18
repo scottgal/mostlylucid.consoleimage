@@ -24,16 +24,18 @@ public class CharacterMap
     private readonly ConcurrentDictionary<int, char> _cache = new();
     private readonly int _cacheBits;
 
-    // Sampling circle configuration - staggered pattern
-    // Left circles are lowered, right circles are raised to minimize gaps
+    // Sampling circle configuration - 3x2 staggered pattern (per Alex Harri's article)
+    // 3 columns, 2 rows - left circles lowered, right circles raised to minimize gaps
+    // Layout:  [0]  [1]  [2]   <- Top row
+    //          [3]  [4]  [5]   <- Bottom row
     private static readonly (float X, float Y)[] SamplingPositions =
     [
-        (0.25f, 0.20f),  // Top-left (raised)
-        (0.75f, 0.13f),  // Top-right (more raised)
-        (0.25f, 0.50f),  // Middle-left
-        (0.75f, 0.50f),  // Middle-right
-        (0.25f, 0.87f),  // Bottom-left (more lowered)
-        (0.75f, 0.80f),  // Bottom-right (lowered)
+        (0.17f, 0.30f),  // Top-left (lowered)
+        (0.50f, 0.25f),  // Top-center
+        (0.83f, 0.20f),  // Top-right (raised)
+        (0.17f, 0.80f),  // Bottom-left (lowered)
+        (0.50f, 0.75f),  // Bottom-center
+        (0.83f, 0.70f),  // Bottom-right (raised)
     ];
 
     private const float SamplingRadius = 0.20f; // Radius as fraction of cell size
