@@ -212,9 +212,14 @@ rootCommand.SetHandler(async (context) =>
                     // Pre-compute diffs for smoother rendering
                     var frameDiffs = FrameDiffer.ComputeColorBlockDiffs(frames);
 
+                    // DECSET 2026 synchronized output for flicker-free rendering
+                    const string SyncStart = "\x1b[?2026h";
+                    const string SyncEnd = "\x1b[?2026l";
+
                     // Hide cursor and save position
                     Console.Write("\x1b[?25l");
                     Console.Write("\x1b[s");
+                    Console.Out.Flush();
 
                     try
                     {
@@ -224,6 +229,9 @@ rootCommand.SetHandler(async (context) =>
                             {
                                 if (token.IsCancellationRequested) break;
 
+                                // Start synchronized output
+                                Console.Write(SyncStart);
+
                                 // First frame needs full position restore
                                 if (i == 0)
                                 {
@@ -232,6 +240,10 @@ rootCommand.SetHandler(async (context) =>
 
                                 Console.Write(frameDiffs[i]);
                                 Console.Write("\x1b[0m");
+
+                                // End synchronized output - renders atomically
+                                Console.Write(SyncEnd);
+                                Console.Out.Flush();
 
                                 int delayMs = frames[i].DelayMs;
                                 if (delayMs > 0)

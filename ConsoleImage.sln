@@ -10,6 +10,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "solution", "solution", "{94
 		.github\workflows\release.yml = .github\workflows\release.yml
 		README.md = README.md
 		.gitignore = .gitignore
+		.github\workflows\publish-nuget.yml = .github\workflows\publish-nuget.yml
 	EndProjectSection
 EndProject
 Global

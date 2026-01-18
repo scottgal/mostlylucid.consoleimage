@@ -5,7 +5,8 @@
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Plays ASCII art animations in the console
+/// Plays ASCII art animations in the console.
+/// Uses DECSET 2026 synchronized output for flicker-free rendering on supported terminals.
 /// </summary>
 public class AsciiAnimationPlayer : IDisposable
 {
@@ -16,6 +17,11 @@ public class AsciiAnimationPlayer : IDisposable
     private CancellationTokenSource? _cts;
     private Task? _playTask;
     private bool _disposed;
+
+    // DECSET 2026 - Synchronized Output (supported by WezTerm, Windows Terminal, Ghostty, Alacritty, etc.)
+    // Batches all output until reset, then renders atomically - eliminates flicker
+    private const string SyncStart = "\x1b[?2026h";
+    private const string SyncEnd = "\x1b[?2026l";
 
     /// <summary>
     /// Event raised when a frame is rendered
@@ -99,6 +105,9 @@ public class AsciiAnimationPlayer : IDisposable
 
                     CurrentFrame = i;
 
+                    // Start synchronized output - terminal will batch until SyncEnd
+                    Console.Write(SyncStart);
+
                     // For diff rendering: first frame or after loop needs full render
                     // For non-diff: always restore position
                     if (!_useDiffRendering || i == 0)
@@ -114,7 +123,10 @@ public class AsciiAnimationPlayer : IDisposable
                         Console.Write("\x1b[0m");
                     }
 
-                    // Flush immediately for smooth display
+                    // End synchronized output - terminal renders atomically now
+                    Console.Write(SyncEnd);
+
+                    // Flush to ensure frame is displayed immediately
                     Console.Out.Flush();
 
                     FrameRendered?.Invoke(this, new FrameRenderedEventArgs(i, _frames.Count));

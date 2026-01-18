@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'consoleimage-v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.0.0)'
+        required: true
 
 permissions:
   id-token: write
@@ -20,6 +25,10 @@ jobs:
     - uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
+
+    - name: Create version tag for MinVer (workflow_dispatch)
+      if: github.event_name == 'workflow_dispatch'
+      run: git tag "consoleimage-v${{ github.event.inputs.version }}"
 
     - name: Build & Pack
       run: |

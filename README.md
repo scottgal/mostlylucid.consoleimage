@@ -291,7 +291,17 @@ For GIFs, frame differencing computes only changed pixels between frames, using 
 - **SIMD optimized**: Uses `Vector128`/`Vector256` for distance calculations
 - **Parallel processing**: Multi-threaded rendering for large images
 - **Caching**: Quantized vector lookups cached with 5-bit precision
-- **Diff rendering**: Animations only update changed pixels
+
+### Animation Smoothness
+
+Multiple techniques ensure flicker-free animation:
+
+- **DECSET 2026 Synchronized Output**: Batches frame output for atomic rendering (supported by Windows Terminal, WezTerm, Ghostty, Alacritty, iTerm2)
+- **Diff rendering**: Only updates changed pixels between frames using ANSI cursor positioning
+- **Cursor hiding**: `\x1b[?25l` hides cursor during playback
+- **Cursor save/restore**: `\x1b[s` / `\x1b[u` for consistent frame positioning
+- **Pre-buffering**: All frames converted to strings before playback
+- **Immediate flush**: `Console.Out.Flush()` after each frame
 
 ## Building from Source
 
