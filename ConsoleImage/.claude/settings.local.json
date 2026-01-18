@@ -4,7 +4,12 @@
       "Bash(cmd /c:*)",
       "Bash(powershell -Command:*)",
       "WebSearch",
-      "WebFetch(domain:docs.sixlabors.com)"
+      "WebFetch(domain:docs.sixlabors.com)",
+      "Bash(dotnet run:*)",
+      "Bash(dir:*)",
+      "WebFetch(domain:www.uninformativ.de)",
+      "WebFetch(domain:movq.de)",
+      "Bash(magick identify:*)"
     ]
   }
 }

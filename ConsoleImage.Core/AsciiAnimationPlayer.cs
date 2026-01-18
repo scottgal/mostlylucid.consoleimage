@@ -16,6 +16,7 @@ public class AsciiAnimationPlayer : IDisposable
     private readonly bool _useColor;
     private readonly int _loopCount;
     private readonly bool _useDiffRendering;
+    private readonly bool _useAltScreen;
     private CancellationTokenSource? _cts;
     private Task? _playTask;
     private bool _disposed;
@@ -24,6 +25,13 @@ public class AsciiAnimationPlayer : IDisposable
     // Batches all output until reset, then renders atomically - eliminates flicker
     private const string SyncStart = "\x1b[?2026h";
     private const string SyncEnd = "\x1b[?2026l";
+
+    // Alternate screen buffer - prevents animation from trashing scrollback
+    private const string AltScreenEnter = "\x1b[?1049h";
+    private const string AltScreenExit = "\x1b[?1049l";
+    private const string CursorHome = "\x1b[H";
+    private const string CursorHide = "\x1b[?25l";
+    private const string CursorShow = "\x1b[?25h";
 
     /// <summary>
     /// Event raised when a frame is rendered
@@ -50,12 +58,13 @@ public class AsciiAnimationPlayer : IDisposable
     /// </summary>
     public bool IsPlaying => _playTask != null && !_playTask.IsCompleted;
 
-    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0, bool useDiffRendering = true)
+    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0, bool useDiffRendering = true, bool useAltScreen = true)
     {
         _frames = frames ?? throw new ArgumentNullException(nameof(frames));
         _useColor = useColor;
         _loopCount = loopCount;
         _useDiffRendering = useDiffRendering;
+        _useAltScreen = useAltScreen;
     }
 
     /// <summary>
@@ -87,13 +96,15 @@ public class AsciiAnimationPlayer : IDisposable
                 maxHeight = frameLines[i].Length;
         }
 
-        // Hide cursor (may fail in non-interactive environments)
-        try { Console.CursorVisible = false; } catch { }
+        // Enter alternate screen buffer if enabled (preserves scrollback)
+        if (_useAltScreen)
+        {
+            Console.Write(AltScreenEnter);
+        }
+        Console.Write(CursorHide);
 
         try
         {
-            bool firstFrame = true;
-
             while (!token.IsCancellationRequested)
             {
                 for (int i = 0; i < _frames.Count; i++)
@@ -102,14 +113,11 @@ public class AsciiAnimationPlayer : IDisposable
 
                     CurrentFrame = i;
 
-                    // Move cursor up to overwrite previous frame (except first frame)
-                    if (!firstFrame)
-                    {
-                        // Move up (maxHeight - 1) lines because we're ON the last line, not below it
-                        Console.Write($"\x1b[{maxHeight - 1}A"); // Move up N lines in one command
-                        Console.Write("\r"); // Return to start of line
-                    }
-                    firstFrame = false;
+                    // Start synchronized output batch
+                    Console.Write(SyncStart);
+
+                    // Home cursor instead of moving up (faster, less flicker)
+                    Console.Write(CursorHome);
 
                     // Write frame line by line, padding to maxHeight
                     var lines = frameLines[i];
@@ -122,6 +130,9 @@ public class AsciiAnimationPlayer : IDisposable
                             Console.WriteLine();
                     }
                     Console.Write("\x1b[0m");
+
+                    // End synchronized output - flush atomically
+                    Console.Write(SyncEnd);
                     Console.Out.Flush();
 
                     FrameRendered?.Invoke(this, new FrameRenderedEventArgs(i, _frames.Count));
@@ -145,8 +156,15 @@ public class AsciiAnimationPlayer : IDisposable
         }
         finally
         {
-            try { Console.CursorVisible = true; } catch { }
-            Console.WriteLine();
+            Console.Write(CursorShow);
+            if (_useAltScreen)
+            {
+                Console.Write(AltScreenExit);
+            }
+            else
+            {
+                Console.WriteLine();
+            }
             AnimationCompleted?.Invoke(this, EventArgs.Empty);
         }
     }

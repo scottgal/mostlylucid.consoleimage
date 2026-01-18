@@ -50,7 +50,7 @@ var contrastOption = new Option<float>("--contrast")
 
 var charsetOption = new Option<string?>("--charset") { Description = "Custom character set (ordered from light to dark)" };
 
-var presetOption = new Option<string?>("--preset") { Description = "Character set preset: default, simple, block" };
+var presetOption = new Option<string?>("--preset") { Description = "Character set preset: extended (default), simple, block, classic" };
 presetOption.Aliases.Add("-p");
 
 var outputOption = new Option<FileInfo?>("--output") { Description = "Write output to file instead of console" };
@@ -91,6 +91,11 @@ var autoBgOption = new Option<bool>("--auto-bg") { Description = "Automatically 
 var colorBlocksOption = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks for high-fidelity output (requires 24-bit color terminal)" };
 colorBlocksOption.Aliases.Add("-b");
 
+var brailleOption = new Option<bool>("--braille") { Description = "Use braille characters for ultra-high resolution (2x4 dots per cell)" };
+brailleOption.Aliases.Add("-B");
+
+var noAltScreenOption = new Option<bool>("--no-alt-screen") { Description = "Disable alternate screen buffer for animations (keeps output in scrollback)" };
+
 var noParallelOption = new Option<bool>("--no-parallel") { Description = "Disable parallel processing" };
 
 var noDitherOption = new Option<bool>("--no-dither") { Description = "Disable Floyd-Steinberg dithering" };
@@ -119,6 +124,8 @@ rootCommand.Options.Add(bgThresholdOption);
 rootCommand.Options.Add(darkBgThresholdOption);
 rootCommand.Options.Add(autoBgOption);
 rootCommand.Options.Add(colorBlocksOption);
+rootCommand.Options.Add(brailleOption);
+rootCommand.Options.Add(noAltScreenOption);
 rootCommand.Options.Add(noParallelOption);
 rootCommand.Options.Add(noDitherOption);
 rootCommand.Options.Add(noEdgeDirOption);
@@ -146,6 +153,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var darkBgThreshold = parseResult.GetValue(darkBgThresholdOption);
     var autoBg = parseResult.GetValue(autoBgOption);
     var colorBlocks = parseResult.GetValue(colorBlocksOption);
+    var braille = parseResult.GetValue(brailleOption);
+    var noAltScreen = parseResult.GetValue(noAltScreenOption);
     var noParallel = parseResult.GetValue(noParallelOption);
     var noDither = parseResult.GetValue(noDitherOption);
     var noEdgeChars = parseResult.GetValue(noEdgeDirOption);
@@ -158,13 +167,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     // Determine character set
     string? characterSet = charset;
-    if (string.IsNullOrEmpty(characterSet) && !string.IsNullOrEmpty(preset))
+    if (string.IsNullOrEmpty(characterSet))
     {
-        characterSet = preset.ToLowerInvariant() switch
+        characterSet = (preset?.ToLowerInvariant()) switch
         {
             "simple" => CharacterMap.SimpleCharacterSet,
             "block" => CharacterMap.BlockCharacterSet,
-            "default" or _ => CharacterMap.DefaultCharacterSet
+            "classic" => CharacterMap.DefaultCharacterSet,
+            _ => CharacterMap.ExtendedCharacterSet  // Extended is the default (better quality)
         };
     }
 
@@ -207,9 +217,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                 if (frames.Count > 1)
                 {
-                    Console.WriteLine($"Playing {frames.Count} frames in color block mode (Press Ctrl+C to stop)...");
-                    Console.WriteLine();
-
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     Console.CancelKeyPress += (s, e) =>
                     {
@@ -221,7 +228,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     int loopsDone = 0;
 
                     // Pre-split all frames and find max height
-                    // Remove trailing \r from Windows line endings
                     var frameLines = new string[frames.Count][];
                     int maxFrameHeight = 0;
                     for (int f = 0; f < frames.Count; f++)
@@ -231,29 +237,26 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                             maxFrameHeight = frameLines[f].Length;
                     }
 
-                    // Hide cursor (may fail in non-interactive environments)
-                    try { Console.CursorVisible = false; } catch { }
+                    // Enter alternate screen buffer if enabled (preserves scrollback)
+                    if (!noAltScreen)
+                        Console.Write("\x1b[?1049h");
+                    Console.Write("\x1b[?25l"); // Hide cursor
 
                     try
                     {
-                        bool firstFrame = true;
-
                         while (!token.IsCancellationRequested)
                         {
                             for (int i = 0; i < frames.Count; i++)
                             {
                                 if (token.IsCancellationRequested) break;
 
-                                // Move cursor up to overwrite previous frame (except first frame)
-                                if (!firstFrame)
-                                {
-                                    // Move up (maxFrameHeight - 1) lines because we're ON the last line, not below it
-                                    Console.Write($"\x1b[{maxFrameHeight - 1}A");
-                                    Console.Write("\r");
-                                }
-                                firstFrame = false;
+                                // Start synchronized output batch (DECSET 2026)
+                                Console.Write("\x1b[?2026h");
 
-                                // Write frame line by line, padding to maxFrameHeight
+                                // Home cursor instead of moving up
+                                Console.Write("\x1b[H");
+
+                                // Write frame line by line
                                 var lines = frameLines[i];
                                 for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
                                 {
@@ -264,6 +267,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                                         Console.WriteLine();
                                 }
                                 Console.Write("\x1b[0m");
+
+                                // End synchronized output - flush atomically
+                                Console.Write("\x1b[?2026l");
                                 Console.Out.Flush();
 
                                 int delayMs = frames[i].DelayMs;
@@ -287,8 +293,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     catch (OperationCanceledException) { }
                     finally
                     {
-                        try { Console.CursorVisible = true; } catch { }
-                        Console.WriteLine();
+                        Console.Write("\x1b[?25h"); // Show cursor
+                        if (!noAltScreen)
+                            Console.Write("\x1b[?1049l"); // Exit alternate screen
                     }
                 }
                 else
@@ -312,6 +319,112 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 }
             }
         }
+        else if (braille)
+        {
+            // Braille rendering (2x4 dots per cell)
+            using var brailleRenderer = new BrailleRenderer(options);
+
+            if (isGif && !noAnimate)
+            {
+                var frames = brailleRenderer.RenderGif(input.FullName);
+
+                if (frames.Count > 1)
+                {
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    Console.CancelKeyPress += (s, e) =>
+                    {
+                        e.Cancel = true;
+                        cts.Cancel();
+                    };
+
+                    var token = cts.Token;
+                    int loopsDone = 0;
+
+                    var frameLines = new string[frames.Count][];
+                    int maxFrameHeight = 0;
+                    for (int f = 0; f < frames.Count; f++)
+                    {
+                        frameLines[f] = frames[f].Content.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+                        if (frameLines[f].Length > maxFrameHeight)
+                            maxFrameHeight = frameLines[f].Length;
+                    }
+
+                    // Enter alternate screen buffer if enabled
+                    if (!noAltScreen)
+                        Console.Write("\x1b[?1049h");
+                    Console.Write("\x1b[?25l"); // Hide cursor
+
+                    try
+                    {
+                        while (!token.IsCancellationRequested)
+                        {
+                            for (int i = 0; i < frames.Count; i++)
+                            {
+                                if (token.IsCancellationRequested) break;
+
+                                Console.Write("\x1b[?2026h"); // Start sync
+                                Console.Write("\x1b[H"); // Home cursor
+
+                                var lines = frameLines[i];
+                                for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
+                                {
+                                    Console.Write("\x1b[2K");
+                                    if (lineIdx < lines.Length)
+                                        Console.Write(lines[lineIdx]);
+                                    if (lineIdx < maxFrameHeight - 1)
+                                        Console.WriteLine();
+                                }
+                                Console.Write("\x1b[0m");
+                                Console.Write("\x1b[?2026l"); // End sync
+                                Console.Out.Flush();
+
+                                int delayMs = frames[i].DelayMs;
+                                if (delayMs > 0)
+                                {
+                                    int remaining = delayMs;
+                                    while (remaining > 0 && !token.IsCancellationRequested)
+                                    {
+                                        int delay = Math.Min(remaining, 50);
+                                        try { await Task.Delay(delay, token); }
+                                        catch (OperationCanceledException) { break; }
+                                        remaining -= delay;
+                                    }
+                                }
+                            }
+
+                            loopsDone++;
+                            if (loop > 0 && loopsDone >= loop) break;
+                        }
+                    }
+                    catch (OperationCanceledException) { }
+                    finally
+                    {
+                        Console.Write("\x1b[?25h"); // Show cursor
+                        if (!noAltScreen)
+                            Console.Write("\x1b[?1049l"); // Exit alt screen
+                    }
+                }
+                else
+                {
+                    Console.WriteLine(frames[0].Content);
+                    Console.Write("\x1b[0m");
+                }
+            }
+            else
+            {
+                string result = brailleRenderer.RenderFile(input.FullName);
+                if (output != null)
+                {
+                    File.WriteAllText(output.FullName, result);
+                    Console.WriteLine($"Written to {output.FullName}");
+                }
+                else
+                {
+                    Console.WriteLine(result);
+                    Console.Write("\x1b[0m");
+                }
+            }
+        }
         else
         {
             // Standard ASCII rendering
@@ -324,10 +437,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                 if (frames.Count > 1)
                 {
-                    Console.WriteLine($"Playing {frames.Count} frames (Press Ctrl+C to stop)...");
-                    Console.WriteLine();
-
-                    using var player = new AsciiAnimationPlayer(frames, !noColor, loop);
+                    using var player = new AsciiAnimationPlayer(frames, !noColor, loop, true, !noAltScreen);
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
                     Console.CancelKeyPress += (s, e) =>

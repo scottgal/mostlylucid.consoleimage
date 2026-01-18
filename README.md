@@ -4,7 +4,7 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 **Based on [Alex Harri's excellent article](https://alexharri.com/blog/ascii-rendering)** on ASCII rendering techniques.
 
-![wiggum](wiggum_loop.gif)
+<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_loop.gif" width="50%" alt="ConsoleImage Demo">
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -17,12 +17,14 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 - **3×2 staggered sampling grid**: 6 sampling circles arranged per Alex Harri's article for accurate shape matching
 - **K-D tree optimization**: Fast nearest-neighbor search in 6D vector space
 - **Contrast enhancement**: Global power function + directional contrast with 10 external sampling circles
-- **Animated GIF support**: Smooth playback with diff rendering (only updates changed pixels)
-- **Color modes**:
-  - ANSI colored ASCII characters
+- **Animated GIF support**: Smooth flicker-free playback with DECSET 2026 synchronized output
+- **Multiple render modes**:
+  - ANSI colored ASCII characters (extended 91-char set by default)
   - High-fidelity color blocks using Unicode half-blocks (▀▄)
+  - Ultra-high resolution braille characters (2×4 dots per cell)
 - **Auto background detection**: Automatically detects dark/light backgrounds
 - **Floyd-Steinberg dithering**: Error diffusion for smoother gradient rendering
+- **Adaptive thresholding**: Otsu's method for optimal braille binarization
 - **Edge-direction characters**: Uses directional chars (/ \ | -) based on detected edges
 - **AOT compatible**: Works with Native AOT compilation
 - **Cross-platform**: Windows, Linux, macOS (x64 and ARM64)
@@ -37,16 +39,14 @@ dotnet add package mostlylucid.consoleimage
 
 ### CLI Tool (Standalone Binaries)
 
-Download from [GitHub Releases](https://github.com/scottgal/ConsoleImage/releases):
+Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
 
 | Platform | Download |
 |----------|----------|
-| Windows x64 | `ascii-image-win-x64.zip` |
-| Windows ARM64 | `ascii-image-win-arm64.zip` |
-| Linux x64 | `ascii-image-linux-x64.tar.gz` |
-| Linux ARM64 | `ascii-image-linux-arm64.tar.gz` |
-| macOS x64 | `ascii-image-osx-x64.tar.gz` |
-| macOS ARM64 | `ascii-image-osx-arm64.tar.gz` |
+| Windows x64 | `consoleimage-win-x64.zip` |
+| Linux x64 | `consoleimage-linux-x64.tar.gz` |
+| Linux ARM64 | `consoleimage-linux-arm64.tar.gz` |
+| macOS ARM64 | `consoleimage-osx-arm64.tar.gz` |
 
 ## Quick Start
 
@@ -62,50 +62,62 @@ Console.WriteLine(AsciiArt.Render("photo.jpg"));
 
 ```bash
 # Basic - color and animation ON by default
-ascii-image photo.jpg
+consoleimage photo.jpg
 
 # Specify width
-ascii-image photo.jpg -w 80
+consoleimage photo.jpg -w 80
 
 # Disable color (monochrome)
-ascii-image photo.jpg --no-color
+consoleimage photo.jpg --no-color
 
 # High-fidelity color blocks (requires 24-bit color terminal)
-ascii-image photo.jpg --blocks
+consoleimage photo.jpg --blocks
+
+# Ultra-high resolution braille mode (2x4 dots per cell)
+consoleimage photo.jpg --braille
 
 # Play animated GIF (animates by default)
-ascii-image animation.gif
+consoleimage animation.gif
+
+# Braille animation
+consoleimage animation.gif --braille
 
 # Don't animate, just show first frame
-ascii-image animation.gif --no-animate
+consoleimage animation.gif --no-animate
 
 # Control animation loops (0 = infinite, default)
-ascii-image animation.gif --loop 3
+consoleimage animation.gif --loop 3
 
 # Speed up animation
-ascii-image animation.gif --speed 2.0
+consoleimage animation.gif --speed 2.0
 
 # For light terminal backgrounds
-ascii-image photo.jpg --no-invert
+consoleimage photo.jpg --no-invert
 
 # Edge detection for enhanced foreground
-ascii-image photo.jpg --edge
+consoleimage photo.jpg --edge
 
 # Manual background suppression
-ascii-image photo.jpg --bg-threshold 0.85      # Suppress light backgrounds
-ascii-image photo.jpg --dark-bg-threshold 0.15 # Suppress dark backgrounds
+consoleimage photo.jpg --bg-threshold 0.85      # Suppress light backgrounds
+consoleimage photo.jpg --dark-bg-threshold 0.15 # Suppress dark backgrounds
 
 # Save to file
-ascii-image photo.jpg -o output.txt
+consoleimage photo.jpg -o output.txt
 
 # Disable dithering (ON by default for smoother gradients)
-ascii-image photo.jpg --no-dither
+consoleimage photo.jpg --no-dither
 
 # Disable edge-direction characters (ON by default)
-ascii-image photo.jpg --no-edge-chars
+consoleimage photo.jpg --no-edge-chars
 
 # Custom aspect ratio (default: 0.5, meaning chars are 2x taller than wide)
-ascii-image photo.jpg --aspect-ratio 0.6
+consoleimage photo.jpg --aspect-ratio 0.6
+
+# Character set presets
+consoleimage photo.jpg -p simple    # Minimal: .:-=+*#%@
+consoleimage photo.jpg -p block     # Unicode blocks: ░▒▓█
+consoleimage photo.jpg -p classic   # Original 71-char set
+# (extended 91-char set is the default)
 ```
 
 ### CLI Options
@@ -120,16 +132,19 @@ ascii-image photo.jpg --aspect-ratio 0.6
 | `--no-invert` | Don't invert (for light backgrounds) | Invert ON |
 | `--contrast` | Contrast power (1.0 = none) | 2.5 |
 | `--charset` | Custom character set | - |
-| `-p, --preset` | Preset: default, simple, block | default |
+| `-p, --preset` | Preset: extended, simple, block, classic | extended |
 | `-o, --output` | Write to file | Console |
 | `--no-animate` | Don't animate GIFs | Animate ON |
 | `-s, --speed` | Animation speed multiplier | 1.0 |
 | `-l, --loop` | Animation loop count (0 = infinite) | 0 |
+| `-f, --frame-sample` | Frame sampling rate (skip frames) | 1 |
 | `-e, --edge` | Enable edge detection | OFF |
 | `--bg-threshold` | Light background threshold (0.0-1.0) | Auto |
 | `--dark-bg-threshold` | Dark background threshold (0.0-1.0) | Auto |
 | `--auto-bg` | Auto-detect background | ON |
-| `-b, --blocks` | Use colored Unicode blocks | OFF |
+| `-b, --blocks` | Use colored Unicode half-blocks | OFF |
+| `-B, --braille` | Use braille characters (2×4 dots/cell) | OFF |
+| `--no-alt-screen` | Keep animation in scrollback | Alt screen ON |
 | `--no-parallel` | Disable parallel processing | Parallel ON |
 | `-a, --aspect-ratio` | Character aspect ratio (width/height) | 0.5 |
 | `--no-dither` | Disable Floyd-Steinberg dithering | Dither ON |
@@ -304,10 +319,10 @@ Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 
 | Preset | Characters | Use Case |
 |--------|------------|----------|
-| `default` | 70 ASCII chars | General purpose |
+| `extended` | 91 ASCII chars | **Default** - Maximum detail |
 | `simple` | ` .:-=+*#%@` | Quick renders |
-| `block` | ` ░▒▓█` | High density |
-| `extended` | 95 characters | Maximum detail |
+| `block` | ` ░▒▓█` | High density blocks |
+| `classic` | 71 ASCII chars | Original algorithm set |
 
 ## How It Works
 
@@ -371,7 +386,7 @@ Multiple techniques ensure flicker-free animation:
 ## Building from Source
 
 ```bash
-git clone https://github.com/scottgal/ConsoleImage.git
+git clone https://github.com/scottgal/mostlylucid.consoleimage.git
 cd ConsoleImage
 dotnet build
 dotnet run --project ConsoleImage -- path/to/image.jpg
