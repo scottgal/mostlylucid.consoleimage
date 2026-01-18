@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+
+        <!-- AOT Compatibility -->
+        <IsAotCompatible>true</IsAotCompatible>
+        <IsTrimmable>true</IsTrimmable>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+        <!-- NuGet Package Properties -->
+        <PackageId>MostlyLucid.ConsoleImage</PackageId>
+        <Version>1.0.0</Version>
+        <Authors>Scott Galloway</Authors>
+        <Description>High-quality ASCII art renderer using shape-matching algorithm based on Alex Harri's approach (https://alexharri.com/blog/ascii-rendering). Converts images and animated GIFs to ASCII art with edge detection and contrast enhancement. AOT compatible.</Description>
+        <PackageTags>ascii;art;image;console;gif;animation;rendering;aot</PackageTags>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RepositoryUrl>https://github.com/scottgal/ConsoleImage</RepositoryUrl>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="SixLabors.ImageSharp" Version="3.1.7" />
+        <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.4" />
+        <PackageReference Include="SixLabors.Fonts" Version="2.1.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="..\README.md" Pack="true" PackagePath="\" Condition="Exists('..\README.md')" />
+    </ItemGroup>
+
+</Project>
