@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+
+        <!-- NuGet Package Properties -->
+        <PackageId>mostlylucid.consoleimage.spectre</PackageId>
+        <Authors>Scott Galloway</Authors>
+        <MinVerTagPrefix>consoleimage-spectre-v</MinVerTagPrefix>
+        <Description>Spectre.Console integration for ConsoleImage. Provides IRenderable implementations for displaying ASCII art, color blocks, and braille images within Spectre.Console layouts. Supports animated GIFs with Live display.</Description>
+        <PackageTags>ascii;art;image;console;spectre;spectre.console;gif;animation;rendering</PackageTags>
+        <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <RepositoryUrl>https://github.com/scottgal/ConsoleImage</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Spectre.Console" Version="0.54.0" />
+        <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="..\README.md" Pack="true" PackagePath="\" Condition="Exists('..\README.md')" />
+        <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')" />
+    </ItemGroup>
+
+</Project>

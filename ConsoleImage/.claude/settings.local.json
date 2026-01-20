@@ -11,7 +11,9 @@
       "WebFetch(domain:movq.de)",
       "Bash(magick identify:*)",
       "Bash(dotnet new:*)",
-      "Bash(dotnet add:*)"
+      "Bash(dotnet add:*)",
+      "Bash(del \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Spectre\\\\Class1.cs\")",
+      "Bash(dotnet remove:*)"
     ]
   }
 }

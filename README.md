@@ -137,6 +137,7 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `--no-animate` | Don't animate GIFs | Animate ON |
 | `-s, --speed` | Animation speed multiplier | 1.0 |
 | `-l, --loop` | Animation loop count (0 = infinite) | 0 |
+| `-r, --framerate` | Fixed framerate in FPS (overrides GIF timing) | GIF timing |
 | `-f, --frame-sample` | Frame sampling rate (skip frames) | 1 |
 | `-e, --edge` | Enable edge detection | OFF |
 | `--bg-threshold` | Light background threshold (0.0-1.0) | Auto |
@@ -149,6 +150,7 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `-a, --aspect-ratio` | Character aspect ratio (width/height) | 0.5 |
 | `--no-dither` | Disable Floyd-Steinberg dithering | Dither ON |
 | `--no-edge-chars` | Disable edge-direction characters | Edge chars ON |
+| `-j, --json` | Output as JSON (for LLM tool calls) | OFF |
 
 ## Library API
 
@@ -246,24 +248,59 @@ Modern terminals like Windows Terminal have this enabled by default, but older c
 
 ### Spectre.Console Integration
 
-The library output is compatible with Spectre.Console. You can embed ASCII art in Spectre panels:
+Install the dedicated Spectre.Console package for native `IRenderable` support:
+
+```bash
+dotnet add package mostlylucid.consoleimage.spectre
+```
+
+```csharp
+using ConsoleImage.Core;
+using ConsoleImage.Spectre;
+using Spectre.Console;
+
+// Static images as native Spectre renderables
+AnsiConsole.Write(new AsciiImage("photo.png"));
+AnsiConsole.Write(new ColorBlockImage("photo.png"));  // High-fidelity
+AnsiConsole.Write(new BrailleImage("photo.png"));     // Ultra-high res
+
+// Use in any Spectre layout
+AnsiConsole.Write(new Panel(new AsciiImage("photo.png"))
+    .Header("My Image")
+    .Border(BoxBorder.Rounded));
+
+// Side-by-side images
+AnsiConsole.Write(new Columns(
+    new Panel(new AsciiImage("a.png")).Header("Image A"),
+    new Panel(new AsciiImage("b.png")).Header("Image B")
+));
+
+// Animated GIFs with Live display
+var animation = new AnimatedImage("clip.gif", AnimationMode.ColorBlock);
+await animation.PlayAsync(cancellationToken);
+
+// Side-by-side animations
+var anim1 = new AnimatedImage("a.gif");
+var anim2 = new AnimatedImage("b.gif");
+await AnsiConsole.Live(new Columns(anim1, anim2))
+    .StartAsync(async ctx => {
+        while (!token.IsCancellationRequested) {
+            anim1.TryAdvanceFrame();
+            anim2.TryAdvanceFrame();
+            ctx.Refresh();
+            await Task.Delay(16);
+        }
+    });
+```
+
+#### Without the Spectre package
+
+The core library output is also compatible with Spectre.Console directly:
 
 ```csharp
 using Spectre.Console;
 using ConsoleImage.Core;
 
-var ascii = AsciiArt.Render("photo.jpg", 60);
-var panel = new Panel(new Markup(ascii))
-{
-    Header = new PanelHeader("My Image"),
-    Border = BoxBorder.Rounded
-};
-AnsiConsole.Write(panel);
-```
-
-For colored output with Spectre.Console, use the raw ANSI string:
-
-```csharp
 // Spectre.Console handles ANSI escape codes automatically
 AnsiConsole.Write(new Text(AsciiArt.RenderColored("photo.jpg")));
 ```

@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+    <ProjectReference Include="..\ConsoleImage.Spectre\ConsoleImage.Spectre.csproj" />
   </ItemGroup>
 
 </Project>

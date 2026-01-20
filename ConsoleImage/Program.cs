@@ -105,6 +105,9 @@ var noDitherOption = new Option<bool>("--no-dither") { Description = "Disable Fl
 
 var noEdgeDirOption = new Option<bool>("--no-edge-chars") { Description = "Disable directional characters (/ \\ | -)" };
 
+var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (for LLM tool calls and programmatic use)" };
+jsonOption.Aliases.Add("-j");
+
 // Add options to root command
 rootCommand.Arguments.Add(inputArg);
 rootCommand.Options.Add(widthOption);
@@ -133,6 +136,7 @@ rootCommand.Options.Add(noAltScreenOption);
 rootCommand.Options.Add(noParallelOption);
 rootCommand.Options.Add(noDitherOption);
 rootCommand.Options.Add(noEdgeDirOption);
+rootCommand.Options.Add(jsonOption);
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
@@ -163,9 +167,19 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var noParallel = parseResult.GetValue(noParallelOption);
     var noDither = parseResult.GetValue(noDitherOption);
     var noEdgeChars = parseResult.GetValue(noEdgeDirOption);
+    var jsonOutput = parseResult.GetValue(jsonOption);
+
+    // JSON mode helper - manual serialization for AOT compatibility
+    void OutputJson(string json) => Console.WriteLine(json);
+    string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t").Replace("\x1b", "\\u001b");
 
     if (!input.Exists)
     {
+        if (jsonOutput)
+        {
+            OutputJson($"{{\"success\":false,\"error\":\"File not found: {JsonEscape(input.FullName)}\"}}");
+            return 1;
+        }
         Console.Error.WriteLine($"Error: File not found: {input.FullName}");
         return 1;
     }
@@ -514,13 +528,32 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 // Render single image
                 var frame = renderer.RenderFile(input.FullName);
-                OutputFrame(frame, !noColor, output);
+                if (jsonOutput)
+                {
+                    OutputJson($@"{{
+  ""success"": true,
+  ""type"": ""image"",
+  ""width"": {frame.Width},
+  ""height"": {frame.Height},
+  ""content"": ""{JsonEscape(frame.ToString())}"",
+  ""ansiContent"": ""{JsonEscape(frame.ToAnsiString())}""
+}}");
+                }
+                else
+                {
+                    OutputFrame(frame, !noColor, output);
+                }
             }
         }
         return 0;
     }
     catch (Exception ex)
     {
+        if (jsonOutput)
+        {
+            OutputJson($"{{\"success\":false,\"error\":\"{JsonEscape(ex.Message)}\"}}");
+            return 1;
+        }
         Console.Error.WriteLine($"Error: {ex.Message}");
         return 1;
     }
