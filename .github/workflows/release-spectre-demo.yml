@@ -1,0 +1,155 @@
+name: Release Spectre Demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., 1.0.0)'
+        required: true
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            artifact: consoleimage-spectre-demo-win-x64
+            ext: .exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            artifact: consoleimage-spectre-demo-linux-x64
+            ext: ''
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            artifact: consoleimage-spectre-demo-linux-arm64
+            ext: ''
+          - os: macos-latest
+            rid: osx-arm64
+            artifact: consoleimage-spectre-demo-osx-arm64
+            ext: ''
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Publish self-contained
+        shell: bash
+        run: |
+          dotnet publish ConsoleImage.SpectreDemo/ConsoleImage.SpectreDemo.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o ./publish/${{ matrix.artifact }}
+
+      - name: Prepare archive contents
+        shell: bash
+        run: |
+          mkdir -p ./archive/${{ matrix.artifact }}
+          # Copy the executable
+          if [ "${{ matrix.ext }}" == ".exe" ]; then
+            cp ./publish/${{ matrix.artifact }}/ConsoleImage.SpectreDemo.exe ./archive/${{ matrix.artifact }}/consoleimage-spectre-demo.exe
+          else
+            cp ./publish/${{ matrix.artifact }}/ConsoleImage.SpectreDemo ./archive/${{ matrix.artifact }}/consoleimage-spectre-demo
+            chmod +x ./archive/${{ matrix.artifact }}/consoleimage-spectre-demo
+          fi
+          # Copy README
+          cp README.md ./archive/${{ matrix.artifact }}/
+
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd archive
+          Compress-Archive -Path ${{ matrix.artifact }}/* -DestinationPath ${{ matrix.artifact }}.zip
+        shell: pwsh
+
+      - name: Archive (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cd archive/${{ matrix.artifact }}
+          tar -czvf ../${{ matrix.artifact }}.tar.gz *
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: archive/${{ matrix.artifact }}.*
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      - name: Determine version
+        id: version
+        run: |
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          echo "tag_name=spectre-demo-v${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: ConsoleImage Spectre Demo ${{ steps.version.outputs.version }}
+          body: |
+            ## Spectre.Console Integration Demo
+
+            Demonstrates ConsoleImage integration with Spectre.Console, including:
+            - Static images in Spectre layouts (panels, columns)
+            - Animated GIF playback with Live display
+            - Side-by-side animations
+            - Multiple render modes (ASCII, ColorBlock, Braille)
+
+            ### Usage
+            ```bash
+            # Single image
+            consoleimage-spectre-demo image.png
+
+            # Multiple images side by side
+            consoleimage-spectre-demo a.png b.png
+
+            # Animated GIFs
+            consoleimage-spectre-demo animation.gif
+
+            # Color block mode
+            consoleimage-spectre-demo image.png --blocks
+
+            # Braille mode
+            consoleimage-spectre-demo image.png --braille
+            ```
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

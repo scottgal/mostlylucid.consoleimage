@@ -1,0 +1,52 @@
+name: Publish Spectre NuGet
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.0.0)'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Create version tag for MinVer
+      run: git tag "consoleimage-spectre-v${{ github.event.inputs.version }}"
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build & Pack Core (dependency)
+      run: |
+        dotnet build ConsoleImage.Core/ConsoleImage.Core.csproj -c Release
+        dotnet pack ConsoleImage.Core/ConsoleImage.Core.csproj -c Release -o ./artifacts
+
+    - name: Build & Pack Spectre
+      run: |
+        dotnet build ConsoleImage.Spectre/ConsoleImage.Spectre.csproj -c Release
+        dotnet pack ConsoleImage.Spectre/ConsoleImage.Spectre.csproj -c Release -o ./artifacts
+
+    - name: List artifacts
+      run: ls -la ./artifacts
+
+    - name: NuGet Login (OIDC)
+      id: nuget
+      uses: NuGet/login@v1
+      with:
+        user: 'mostlylucid'
+
+    - name: Publish Spectre package
+      run: dotnet nuget push ./artifacts/mostlylucid.consoleimage.spectre.*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
