@@ -58,14 +58,17 @@ public class AsciiAnimationPlayer : IDisposable
     /// </summary>
     public bool IsPlaying => _playTask != null && !_playTask.IsCompleted;
 
-    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0, bool useDiffRendering = true, bool useAltScreen = true)
+    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0, bool useDiffRendering = true, bool useAltScreen = true, float? targetFps = null)
     {
         _frames = frames ?? throw new ArgumentNullException(nameof(frames));
         _useColor = useColor;
         _loopCount = loopCount;
         _useDiffRendering = useDiffRendering;
         _useAltScreen = useAltScreen;
+        _targetFps = targetFps;
     }
+
+    private readonly float? _targetFps;
 
     /// <summary>
     /// Play the animation in the console
@@ -83,18 +86,47 @@ public class AsciiAnimationPlayer : IDisposable
 
         int loops = 0;
 
-        // Pre-buffer frame lines for line-by-line rendering
-        // Use StringSplitOptions to handle \r\n properly and avoid empty entries
-        var frameLines = new string[_frames.Count][];
+        // Pre-build entire frame buffers as single atomic strings
+        // This eliminates flicker by writing everything in one Console.Write call
+        var frameBuffers = new string[_frames.Count];
         int maxHeight = 0;
+
+        // First pass: determine max height
+        var frameLines = new string[_frames.Count][];
         for (int i = 0; i < _frames.Count; i++)
         {
             string frameStr = _useColor ? _frames[i].ToAnsiString() : _frames[i].ToString();
-            // Split by \n and remove any trailing \r from Windows line endings
             frameLines[i] = frameStr.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
             if (frameLines[i].Length > maxHeight)
                 maxHeight = frameLines[i].Length;
         }
+
+        // Second pass: build atomic frame buffers
+        for (int i = 0; i < _frames.Count; i++)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append(SyncStart);  // Begin synchronized output
+            sb.Append(CursorHome); // Home cursor
+
+            var lines = frameLines[i];
+            for (int lineIdx = 0; lineIdx < maxHeight; lineIdx++)
+            {
+                sb.Append("\x1b[2K"); // Clear entire line
+                if (lineIdx < lines.Length)
+                    sb.Append(lines[lineIdx]);
+                sb.Append("\x1b[0m"); // Reset colors at end of each line
+                if (lineIdx < maxHeight - 1)
+                    sb.Append('\n');
+            }
+
+            sb.Append(SyncEnd); // End synchronized output
+            frameBuffers[i] = sb.ToString();
+        }
+
+        // Calculate fixed frame delay if target FPS is set
+        int? fixedDelayMs = _targetFps.HasValue && _targetFps.Value > 0
+            ? (int)(1000f / _targetFps.Value)
+            : null;
 
         // Enter alternate screen buffer if enabled (preserves scrollback)
         if (_useAltScreen)
@@ -113,32 +145,15 @@ public class AsciiAnimationPlayer : IDisposable
 
                     CurrentFrame = i;
 
-                    // Start synchronized output batch
-                    Console.Write(SyncStart);
-
-                    // Home cursor instead of moving up (faster, less flicker)
-                    Console.Write(CursorHome);
-
-                    // Write frame line by line, padding to maxHeight
-                    var lines = frameLines[i];
-                    for (int lineIdx = 0; lineIdx < maxHeight; lineIdx++)
-                    {
-                        Console.Write("\x1b[2K"); // Clear entire line
-                        if (lineIdx < lines.Length)
-                            Console.Write(lines[lineIdx]);
-                        if (lineIdx < maxHeight - 1)
-                            Console.WriteLine();
-                    }
-                    Console.Write("\x1b[0m");
-
-                    // End synchronized output - flush atomically
-                    Console.Write(SyncEnd);
+                    // Write entire frame atomically - single Console.Write eliminates flicker
+                    Console.Write(frameBuffers[i]);
                     Console.Out.Flush();
 
                     FrameRendered?.Invoke(this, new FrameRenderedEventArgs(i, _frames.Count));
 
                     // Wait for frame delay with responsive cancellation
-                    int delayMs = _frames[i].DelayMs;
+                    // Use fixed delay if target FPS is set, otherwise use frame's embedded delay
+                    int delayMs = fixedDelayMs ?? _frames[i].DelayMs;
                     if (delayMs > 0)
                     {
                         await ResponsiveDelay(delayMs, token);

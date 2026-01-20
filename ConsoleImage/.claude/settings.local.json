@@ -9,7 +9,9 @@
       "Bash(dir:*)",
       "WebFetch(domain:www.uninformativ.de)",
       "WebFetch(domain:movq.de)",
-      "Bash(magick identify:*)"
+      "Bash(magick identify:*)",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet add:*)"
     ]
   }
 }

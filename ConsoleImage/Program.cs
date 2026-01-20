@@ -72,6 +72,9 @@ var loopOption = new Option<int>("--loop")
 };
 loopOption.Aliases.Add("-l");
 
+var framerateOption = new Option<float?>("--framerate") { Description = "Fixed framerate in FPS (overrides GIF timing)" };
+framerateOption.Aliases.Add("-r");
+
 var frameSampleOption = new Option<int>("--frame-sample")
 {
     Description = "Frame sampling rate (1 = every frame, 2 = every 2nd, etc.). Higher values reduce processing time.",
@@ -118,6 +121,7 @@ rootCommand.Options.Add(outputOption);
 rootCommand.Options.Add(noAnimateOption);
 rootCommand.Options.Add(speedOption);
 rootCommand.Options.Add(loopOption);
+rootCommand.Options.Add(framerateOption);
 rootCommand.Options.Add(frameSampleOption);
 rootCommand.Options.Add(edgeOption);
 rootCommand.Options.Add(bgThresholdOption);
@@ -147,6 +151,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var noAnimate = parseResult.GetValue(noAnimateOption);
     var speed = parseResult.GetValue(speedOption);
     var loop = parseResult.GetValue(loopOption);
+    var framerate = parseResult.GetValue(framerateOption);
     var frameSample = parseResult.GetValue(frameSampleOption);
     var enableEdge = parseResult.GetValue(edgeOption);
     var bgThreshold = parseResult.GetValue(bgThresholdOption);
@@ -227,7 +232,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     var token = cts.Token;
                     int loopsDone = 0;
 
-                    // Pre-split all frames and find max height
+                    // Pre-build atomic frame buffers to eliminate flicker
                     var frameLines = new string[frames.Count][];
                     int maxFrameHeight = 0;
                     for (int f = 0; f < frames.Count; f++)
@@ -236,6 +241,32 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         if (frameLines[f].Length > maxFrameHeight)
                             maxFrameHeight = frameLines[f].Length;
                     }
+
+                    // Build atomic frame buffers
+                    var frameBuffers = new string[frames.Count];
+                    for (int f = 0; f < frames.Count; f++)
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        sb.Append("\x1b[?2026h"); // Start sync
+                        sb.Append("\x1b[H");      // Home cursor
+                        var lines = frameLines[f];
+                        for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
+                        {
+                            sb.Append("\x1b[2K");
+                            if (lineIdx < lines.Length)
+                                sb.Append(lines[lineIdx]);
+                            sb.Append("\x1b[0m");
+                            if (lineIdx < maxFrameHeight - 1)
+                                sb.Append('\n');
+                        }
+                        sb.Append("\x1b[?2026l"); // End sync
+                        frameBuffers[f] = sb.ToString();
+                    }
+
+                    // Calculate fixed frame delay if framerate is set
+                    int? fixedDelayMs = framerate.HasValue && framerate.Value > 0
+                        ? (int)(1000f / framerate.Value)
+                        : null;
 
                     // Enter alternate screen buffer if enabled (preserves scrollback)
                     if (!noAltScreen)
@@ -250,29 +281,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                             {
                                 if (token.IsCancellationRequested) break;
 
-                                // Start synchronized output batch (DECSET 2026)
-                                Console.Write("\x1b[?2026h");
-
-                                // Home cursor instead of moving up
-                                Console.Write("\x1b[H");
-
-                                // Write frame line by line
-                                var lines = frameLines[i];
-                                for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
-                                {
-                                    Console.Write("\x1b[2K"); // Clear entire line
-                                    if (lineIdx < lines.Length)
-                                        Console.Write(lines[lineIdx]);
-                                    if (lineIdx < maxFrameHeight - 1)
-                                        Console.WriteLine();
-                                }
-                                Console.Write("\x1b[0m");
-
-                                // End synchronized output - flush atomically
-                                Console.Write("\x1b[?2026l");
+                                // Write entire frame atomically
+                                Console.Write(frameBuffers[i]);
                                 Console.Out.Flush();
 
-                                int delayMs = frames[i].DelayMs;
+                                int delayMs = fixedDelayMs ?? frames[i].DelayMs;
                                 if (delayMs > 0)
                                 {
                                     int remaining = delayMs;
@@ -349,6 +362,31 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                             maxFrameHeight = frameLines[f].Length;
                     }
 
+                    // Build atomic frame buffers
+                    var frameBuffers = new string[frames.Count];
+                    for (int f = 0; f < frames.Count; f++)
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        sb.Append("\x1b[?2026h");
+                        sb.Append("\x1b[H");
+                        var lines = frameLines[f];
+                        for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
+                        {
+                            sb.Append("\x1b[2K");
+                            if (lineIdx < lines.Length)
+                                sb.Append(lines[lineIdx]);
+                            sb.Append("\x1b[0m");
+                            if (lineIdx < maxFrameHeight - 1)
+                                sb.Append('\n');
+                        }
+                        sb.Append("\x1b[?2026l");
+                        frameBuffers[f] = sb.ToString();
+                    }
+
+                    int? fixedDelayMs = framerate.HasValue && framerate.Value > 0
+                        ? (int)(1000f / framerate.Value)
+                        : null;
+
                     // Enter alternate screen buffer if enabled
                     if (!noAltScreen)
                         Console.Write("\x1b[?1049h");
@@ -362,23 +400,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                             {
                                 if (token.IsCancellationRequested) break;
 
-                                Console.Write("\x1b[?2026h"); // Start sync
-                                Console.Write("\x1b[H"); // Home cursor
-
-                                var lines = frameLines[i];
-                                for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
-                                {
-                                    Console.Write("\x1b[2K");
-                                    if (lineIdx < lines.Length)
-                                        Console.Write(lines[lineIdx]);
-                                    if (lineIdx < maxFrameHeight - 1)
-                                        Console.WriteLine();
-                                }
-                                Console.Write("\x1b[0m");
-                                Console.Write("\x1b[?2026l"); // End sync
+                                Console.Write(frameBuffers[i]);
                                 Console.Out.Flush();
 
-                                int delayMs = frames[i].DelayMs;
+                                int delayMs = fixedDelayMs ?? frames[i].DelayMs;
                                 if (delayMs > 0)
                                 {
                                     int remaining = delayMs;
@@ -437,7 +462,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                 if (frames.Count > 1)
                 {
-                    using var player = new AsciiAnimationPlayer(frames, !noColor, loop, true, !noAltScreen);
+                    using var player = new AsciiAnimationPlayer(frames, !noColor, loop, true, !noAltScreen, framerate);
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
                     Console.CancelKeyPress += (s, e) =>
