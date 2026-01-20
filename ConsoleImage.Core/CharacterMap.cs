@@ -270,26 +270,39 @@ public class CharacterMap
     {
         if (_vectors.Count == 0) return;
 
-        // Find max value across all vectors
-        float maxValue = 0;
+        // Per Alex Harri's article: Find max value for EACH of the 6 components separately
+        // "For each of the 6 components across all ASCII characters, the maximum value is identified.
+        // Each character's vector components are then divided by their respective maximum values"
+        Span<float> maxPerComponent = stackalloc float[6];
+        for (int i = 0; i < 6; i++) maxPerComponent[i] = 0;
+
         foreach (var v in _vectors.Values)
         {
-            maxValue = MathF.Max(maxValue, v.Max());
+            for (int i = 0; i < 6; i++)
+            {
+                maxPerComponent[i] = MathF.Max(maxPerComponent[i], v[i]);
+            }
         }
 
-        if (maxValue <= 0) return;
+        // Check if any component has values
+        bool hasValues = false;
+        for (int i = 0; i < 6; i++)
+        {
+            if (maxPerComponent[i] > 0) hasValues = true;
+        }
+        if (!hasValues) return;
 
-        // Normalize all vectors so max is 1.0
+        // Normalize each component by its own max
         var normalized = new Dictionary<char, ShapeVector>();
         foreach (var (c, v) in _vectors)
         {
             normalized[c] = new ShapeVector(
-                v.TopLeft / maxValue,
-                v.TopRight / maxValue,
-                v.MiddleLeft / maxValue,
-                v.MiddleRight / maxValue,
-                v.BottomLeft / maxValue,
-                v.BottomRight / maxValue
+                maxPerComponent[0] > 0 ? v[0] / maxPerComponent[0] : 0,
+                maxPerComponent[1] > 0 ? v[1] / maxPerComponent[1] : 0,
+                maxPerComponent[2] > 0 ? v[2] / maxPerComponent[2] : 0,
+                maxPerComponent[3] > 0 ? v[3] / maxPerComponent[3] : 0,
+                maxPerComponent[4] > 0 ? v[4] / maxPerComponent[4] : 0,
+                maxPerComponent[5] > 0 ? v[5] / maxPerComponent[5] : 0
             );
         }
 

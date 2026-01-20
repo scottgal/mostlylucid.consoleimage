@@ -53,6 +53,8 @@ public class ResizableAnimationPlayer
     private int _lastConsoleHeight;
     private IReadOnlyList<IAnimationFrame>? _frames;
     private string[]? _frameBuffers;
+    private string[]? _transitionBuffers; // Interpolated frames for smooth looping
+    private int _transitionDelayMs; // Delay for each transition frame
 
     public ResizableAnimationPlayer(
         RenderFramesDelegate renderFrames,
@@ -115,6 +117,7 @@ public class ResizableAnimationPlayer
                     if (CheckAndHandleResize())
                     {
                         i = 0; // Restart from first frame
+                        loopsDone = 0; // Reset loop count on resize
                         if (_frames == null || _frameBuffers == null) break;
                     }
 
@@ -127,6 +130,25 @@ public class ResizableAnimationPlayer
                     if (delayMs > 0)
                     {
                         await ResponsiveDelay(delayMs, cancellationToken);
+                    }
+                }
+
+                // Play transition frames for smooth looping (if available and looping continues)
+                if (_transitionBuffers != null && _transitionBuffers.Length > 0)
+                {
+                    bool shouldContinue = _loopCount == 0 || loopsDone < _loopCount - 1;
+                    if (shouldContinue && !cancellationToken.IsCancellationRequested)
+                    {
+                        foreach (var transitionBuffer in _transitionBuffers)
+                        {
+                            if (cancellationToken.IsCancellationRequested) break;
+                            Console.Write(transitionBuffer);
+                            Console.Out.Flush();
+                            if (_transitionDelayMs > 0)
+                            {
+                                await ResponsiveDelay(_transitionDelayMs, cancellationToken);
+                            }
+                        }
                     }
                 }
 
@@ -285,6 +307,125 @@ public class ResizableAnimationPlayer
 
             sb.Append("\x1b[?2026l"); // Sync end
             _frameBuffers[f] = sb.ToString();
+        }
+
+        // Create smooth loop transition frames
+        CreateSmoothLoopTransition(frameLines, maxFrameHeight, maxLineWidth);
+    }
+
+    /// <summary>
+    /// Create interpolated transition frames for smooth looping.
+    /// Uses progressive line-by-line updates to crossfade from last frame to first.
+    /// </summary>
+    private void CreateSmoothLoopTransition(string[][] frameLines, int maxFrameHeight, int maxLineWidth)
+    {
+        if (_frames == null || _frames.Count < 2)
+        {
+            _transitionBuffers = null;
+            return;
+        }
+
+        var lastLines = frameLines[_frames.Count - 1];
+        var firstLines = frameLines[0];
+
+        // Find which lines differ between last and first frame
+        var changedLineIndices = new List<int>();
+        for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
+        {
+            string lastLine = lineIdx < lastLines.Length ? lastLines[lineIdx] : "";
+            string firstLine = lineIdx < firstLines.Length ? firstLines[lineIdx] : "";
+            if (lastLine != firstLine)
+            {
+                changedLineIndices.Add(lineIdx);
+            }
+        }
+
+        int changedCount = changedLineIndices.Count;
+
+        // If frames are identical, no transition needed
+        if (changedCount == 0)
+        {
+            _transitionBuffers = null;
+            return;
+        }
+
+        // If too different (>70%), GIF wasn't designed to loop smoothly - instant transition
+        if (changedCount > maxFrameHeight * 0.7)
+        {
+            // Create a single full-redraw transition frame
+            _transitionBuffers = new string[1];
+            var sb = new System.Text.StringBuilder();
+            sb.Append("\x1b[?2026h");
+            sb.Append("\x1b[H");
+
+            for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
+            {
+                if (lineIdx < firstLines.Length)
+                {
+                    sb.Append(firstLines[lineIdx]);
+                    int visibleLen = GetVisibleLength(firstLines[lineIdx]);
+                    if (visibleLen < maxLineWidth)
+                        sb.Append(new string(' ', maxLineWidth - visibleLen));
+                }
+                else
+                {
+                    sb.Append(new string(' ', maxLineWidth));
+                }
+                sb.Append("\x1b[0m");
+                if (lineIdx < maxFrameHeight - 1)
+                    sb.Append('\n');
+            }
+            sb.Append("\x1b[?2026l");
+            _transitionBuffers[0] = sb.ToString();
+            _transitionDelayMs = 16; // Quick transition
+            return;
+        }
+
+        // Create 2-4 interpolated transition frames based on difference amount
+        int transitionFrameCount = changedCount switch
+        {
+            <= 3 => 1,   // Few changes: 1 frame
+            <= 8 => 2,   // Moderate changes: 2 frames
+            <= 15 => 3,  // More changes: 3 frames
+            _ => 4       // Many changes: 4 frames
+        };
+
+        _transitionBuffers = new string[transitionFrameCount];
+
+        // Use average frame delay for transitions, or 50ms default
+        int avgDelay = _frames.Count > 0 ? _frames.Sum(f => f.DelayMs) / _frames.Count : 50;
+        _transitionDelayMs = Math.Max(16, avgDelay / 2); // Half speed for smooth transition
+
+        // Distribute changed lines across transition frames
+        int linesPerFrame = (changedCount + transitionFrameCount - 1) / transitionFrameCount;
+
+        for (int t = 0; t < transitionFrameCount; t++)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("\x1b[?2026h"); // Sync start
+
+            // Calculate which lines to update in this transition frame
+            int startIdx = t * linesPerFrame;
+            int endIdx = Math.Min(startIdx + linesPerFrame, changedCount);
+
+            // Also include all lines from previous transition frames (cumulative)
+            for (int i = 0; i <= Math.Min((t + 1) * linesPerFrame - 1, changedCount - 1); i++)
+            {
+                int lineIdx = changedLineIndices[i];
+                string firstLine = lineIdx < firstLines.Length ? firstLines[lineIdx] : "";
+                string lastLine = lineIdx < lastLines.Length ? lastLines[lineIdx] : "";
+
+                sb.Append($"\x1b[{lineIdx + 1};1H");
+                sb.Append(firstLine);
+                int firstVisible = GetVisibleLength(firstLine);
+                int lastVisible = GetVisibleLength(lastLine);
+                if (firstVisible < lastVisible)
+                    sb.Append(new string(' ', lastVisible - firstVisible));
+                sb.Append("\x1b[0m");
+            }
+
+            sb.Append("\x1b[?2026l"); // Sync end
+            _transitionBuffers[t] = sb.ToString();
         }
     }
 

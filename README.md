@@ -22,7 +22,7 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 - **Multiple render modes**:
   - ANSI colored ASCII characters (extended 91-char set by default)
   - High-fidelity color blocks using Unicode half-blocks (▀▄)
-  - Ultra-high resolution braille characters (2×4 dots per cell)
+  - Ultra-high resolution braille characters (2×4 dots per cell, UTF-8 auto-enabled)
 - **Auto background detection**: Automatically detects dark/light backgrounds
 - **Floyd-Steinberg dithering**: Error diffusion for smoother gradient rendering
 - **Adaptive thresholding**: Otsu's method for optimal braille binarization
@@ -408,9 +408,11 @@ For GIFs, frame differencing computes only changed pixels between frames, using 
 
 ## Performance
 
-- **SIMD optimized**: Uses `Vector128`/`Vector256` for distance calculations
-- **Parallel processing**: Multi-threaded rendering for large images
+- **SIMD optimized**: Uses `Vector128`/`Vector256`/`Vector512` for distance calculations
+- **Parallel processing**: Multi-threaded rendering for ASCII, ColorBlock, and Braille modes
+- **Pre-computed trigonometry**: Circle sampling uses lookup tables (eliminates ~216 trig calls per cell)
 - **Caching**: Quantized vector lookups cached with 5-bit precision
+- **Optimized bounds checking**: Branchless `(uint)x < (uint)width` pattern
 
 ### Animation Smoothness
 
@@ -420,8 +422,9 @@ Multiple techniques ensure flicker-free animation:
 - **Diff-based rendering**: Only updates changed lines between frames - no per-line clearing that causes black flashes
 - **Overwrite with padding**: Lines are overwritten in place with space padding, eliminating flicker completely
 - **Dynamic resize**: Animations automatically re-render when you resize the console window
+- **Smooth loop transitions**: Automatic interpolation between last and first frames creates seamless loops
 - **Cursor hiding**: `\x1b[?25l` hides cursor during playback
-- **Pre-buffering**: All frames and diffs converted to strings before playback
+- **Pre-buffering**: All frames, diffs, and transitions converted to strings before playback
 - **Immediate flush**: `Console.Out.Flush()` after each frame
 
 ## Building from Source

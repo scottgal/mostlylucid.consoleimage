@@ -3,6 +3,7 @@
 // Console helper for enabling ANSI escape sequences on Windows
 
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ConsoleImage.Core;
 
@@ -10,6 +11,7 @@ namespace ConsoleImage.Core;
 /// Helper class to enable ANSI escape sequence processing on Windows consoles.
 /// Modern terminals like Windows Terminal have this enabled by default,
 /// but older consoles or certain configurations may need explicit enabling.
+/// Also enables UTF-8 encoding for Unicode characters (Braille, block chars, etc.)
 /// </summary>
 public static class ConsoleHelper
 {
@@ -26,11 +28,16 @@ public static class ConsoleHelper
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetConsoleOutputCP(uint wCodePageID);
+
+    private const uint CP_UTF8 = 65001;
+
     private static bool _initialized;
     private static bool _ansiEnabled;
 
     /// <summary>
-    /// Enable ANSI escape sequence processing on the console.
+    /// Enable ANSI escape sequence processing and UTF-8 encoding on the console.
     /// Safe to call multiple times - will only initialize once.
     /// Returns true if ANSI is enabled (or already was).
     /// </summary>
@@ -41,7 +48,17 @@ public static class ConsoleHelper
 
         _initialized = true;
 
-        // Only relevant on Windows
+        // Set UTF-8 encoding for Unicode character support (Braille, block chars, etc.)
+        try
+        {
+            Console.OutputEncoding = Encoding.UTF8;
+        }
+        catch
+        {
+            // May fail in some environments, but continue anyway
+        }
+
+        // Only relevant on Windows for ANSI/VT processing
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             _ansiEnabled = true;
@@ -50,6 +67,9 @@ public static class ConsoleHelper
 
         try
         {
+            // Set console output code page to UTF-8
+            SetConsoleOutputCP(CP_UTF8);
+
             var handle = GetStdHandle(STD_OUTPUT_HANDLE);
             if (handle == IntPtr.Zero || handle == new IntPtr(-1))
             {

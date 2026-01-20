@@ -32,6 +32,24 @@ public class AsciiRenderer : IDisposable
         (0.83f, 0.70f),  // Bottom-right (raised)
     ];
 
+    // Pre-computed sin/cos lookup tables for circle sampling (major performance optimization)
+    // Eliminates ~36 trig calls per circle × 6 circles per cell = 216 trig calls per cell
+    private static readonly (float Cos, float Sin)[] InnerRingAngles = PrecomputeAngles(6, 0);
+    private static readonly (float Cos, float Sin)[] MiddleRingAngles = PrecomputeAngles(12, MathF.PI / 12);
+    private static readonly (float Cos, float Sin)[] OuterRingAngles = PrecomputeAngles(18, 0);
+    private static readonly (float Cos, float Sin)[] OuterRing12Angles = PrecomputeAngles(12, 0); // For SampleCircleLightness
+
+    private static (float Cos, float Sin)[] PrecomputeAngles(int count, float offset)
+    {
+        var angles = new (float Cos, float Sin)[count];
+        for (int i = 0; i < count; i++)
+        {
+            float angle = i * MathF.PI * 2 / count + offset;
+            angles[i] = (MathF.Cos(angle), MathF.Sin(angle));
+        }
+        return angles;
+    }
+
     // 10 external sampling positions for directional contrast (per article)
     // These reach outside the cell boundaries to detect edges
     // Positions correspond to the 3x2 internal grid:
@@ -676,25 +694,23 @@ public class AsciiRenderer : IDisposable
             samples++;
         }
 
-        // Inner ring
+        // Inner ring (6 points) - using pre-computed angles
         float innerR = radius * 0.5f;
         for (int i = 0; i < 6; i++)
         {
-            float angle = i * MathF.PI * 2 / 6;
-            if (TrySampleLightness(image, centerX + MathF.Cos(angle) * innerR,
-                                   centerY + MathF.Sin(angle) * innerR, out val))
+            var (cos, sin) = InnerRingAngles[i];
+            if (TrySampleLightness(image, centerX + cos * innerR, centerY + sin * innerR, out val))
             {
                 total += val;
                 samples++;
             }
         }
 
-        // Outer ring
+        // Outer ring (12 points) - using pre-computed angles
         for (int i = 0; i < 12; i++)
         {
-            float angle = i * MathF.PI * 2 / 12;
-            if (TrySampleLightness(image, centerX + MathF.Cos(angle) * radius,
-                                   centerY + MathF.Sin(angle) * radius, out val))
+            var (cos, sin) = OuterRing12Angles[i];
+            if (TrySampleLightness(image, centerX + cos * radius, centerY + sin * radius, out val))
             {
                 total += val;
                 samples++;
@@ -728,17 +744,20 @@ public class AsciiRenderer : IDisposable
         float totalCoverage = 0;
         int totalR = 0, totalG = 0, totalB = 0;
         int samples = 0;
+        int imgWidth = image.Width;
+        int imgHeight = image.Height;
 
-        // Concentric ring sampling for accuracy
+        // Inline sampling for performance (avoids delegate overhead)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void AddSample(float x, float y)
         {
             int ix = (int)x;
             int iy = (int)y;
 
-            if (ix >= 0 && ix < image.Width && iy >= 0 && iy < image.Height)
+            if ((uint)ix < (uint)imgWidth && (uint)iy < (uint)imgHeight)
             {
                 var pixel = image[ix, iy];
-                float lightness = (pixel.R * 0.299f + pixel.G * 0.587f + pixel.B * 0.114f) / 255f;
+                float lightness = (pixel.R * 0.299f + pixel.G * 0.587f + pixel.B * 0.114f) * (1f / 255f);
                 totalCoverage += 1f - lightness; // Dark = high coverage
                 totalR += pixel.R;
                 totalG += pixel.G;
@@ -750,27 +769,27 @@ public class AsciiRenderer : IDisposable
         // Center
         AddSample(centerX, centerY);
 
-        // Inner ring (6 points)
+        // Inner ring (6 points) - using pre-computed angles
         float innerR = radius * 0.4f;
         for (int i = 0; i < 6; i++)
         {
-            float angle = i * MathF.PI * 2 / 6;
-            AddSample(centerX + MathF.Cos(angle) * innerR, centerY + MathF.Sin(angle) * innerR);
+            var (cos, sin) = InnerRingAngles[i];
+            AddSample(centerX + cos * innerR, centerY + sin * innerR);
         }
 
-        // Middle ring (12 points)
+        // Middle ring (12 points) - using pre-computed angles
         float midR = radius * 0.7f;
         for (int i = 0; i < 12; i++)
         {
-            float angle = i * MathF.PI * 2 / 12 + MathF.PI / 12;
-            AddSample(centerX + MathF.Cos(angle) * midR, centerY + MathF.Sin(angle) * midR);
+            var (cos, sin) = MiddleRingAngles[i];
+            AddSample(centerX + cos * midR, centerY + sin * midR);
         }
 
-        // Outer ring (18 points)
+        // Outer ring (18 points) - using pre-computed angles
         for (int i = 0; i < 18; i++)
         {
-            float angle = i * MathF.PI * 2 / 18;
-            AddSample(centerX + MathF.Cos(angle) * radius, centerY + MathF.Sin(angle) * radius);
+            var (cos, sin) = OuterRingAngles[i];
+            AddSample(centerX + cos * radius, centerY + sin * radius);
         }
 
         float avgCoverage = samples > 0 ? totalCoverage / samples : 0;

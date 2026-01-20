@@ -64,17 +64,30 @@ public class BrailleRenderer : IDisposable
         // Calculate adaptive threshold using Otsu's method or use fixed threshold
         float threshold = CalculateAdaptiveThreshold(resized);
 
-        // Create brightness buffer for dithering
+        // Create brightness buffer for dithering (parallelized)
         float[,] brightnessBuffer = new float[pixelHeight, pixelWidth];
-        for (int y = 0; y < pixelHeight; y++)
+        if (_options.UseParallelProcessing && pixelHeight > 8)
         {
-            for (int x = 0; x < pixelWidth; x++)
+            Parallel.For(0, pixelHeight, y =>
             {
-                brightnessBuffer[y, x] = GetBrightness(resized[x, y]);
+                for (int x = 0; x < pixelWidth; x++)
+                {
+                    brightnessBuffer[y, x] = GetBrightness(resized[x, y]);
+                }
+            });
+        }
+        else
+        {
+            for (int y = 0; y < pixelHeight; y++)
+            {
+                for (int x = 0; x < pixelWidth; x++)
+                {
+                    brightnessBuffer[y, x] = GetBrightness(resized[x, y]);
+                }
             }
         }
 
-        // Apply Floyd-Steinberg dithering if enabled
+        // Apply Floyd-Steinberg dithering if enabled (sequential - error diffusion dependency)
         if (_options.EnableDithering)
         {
             ApplyFloydSteinbergDithering(brightnessBuffer, pixelWidth, pixelHeight, threshold);
@@ -112,12 +125,11 @@ public class BrailleRenderer : IDisposable
                             var pixel = resized[imgX, imgY];
                             float brightness = brightnessBuffer[imgY, imgX];
 
-                            // For dark terminals (default): dark pixels = dots (ink)
-                            // For light terminals (Invert=false): bright pixels = dots
-                            // This matches intuitive expectations
+                            // For dark terminals (default): bright pixels = dots (they stand out)
+                            // For light terminals (Invert=false): dark pixels = dots (they stand out)
                             bool isDot = _options.Invert
-                                ? brightness < threshold  // Dark terminal: dark pixels show as dots
-                                : brightness > threshold; // Light terminal: bright pixels show as dots
+                                ? brightness > threshold  // Dark terminal: bright pixels show as dots
+                                : brightness < threshold; // Light terminal: dark pixels show as dots
 
                             if (isDot)
                             {

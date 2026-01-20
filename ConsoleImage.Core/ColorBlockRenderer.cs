@@ -137,13 +137,39 @@ public class ColorBlockRenderer : IDisposable
 
     private string RenderPixels(Image<Rgba32> image)
     {
-        var sb = new StringBuilder();
         int charRows = image.Height / 2;
 
         // Get brightness thresholds based on terminal mode
         float? darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
         float? lightThreshold = !_options.Invert ? _options.LightTerminalBrightnessThreshold : null;
 
+        // Parallel row rendering for performance
+        if (_options.UseParallelProcessing && charRows > 4)
+        {
+            var rowStrings = new string[charRows];
+
+            Parallel.For(0, charRows, row =>
+            {
+                var rowSb = new StringBuilder(image.Width * 30); // Pre-size for ANSI codes
+                int y1 = row * 2;       // Upper pixel row
+                int y2 = row * 2 + 1;   // Lower pixel row
+
+                for (int x = 0; x < image.Width; x++)
+                {
+                    var upper = image[x, y1];
+                    var lower = image[x, y2];
+                    AppendColoredBlock(rowSb, upper, lower, darkThreshold, lightThreshold);
+                }
+
+                rowSb.Append("\x1b[0m"); // Reset at end of line
+                rowStrings[row] = rowSb.ToString();
+            });
+
+            return string.Join("\n", rowStrings);
+        }
+
+        // Sequential fallback
+        var sb = new StringBuilder();
         for (int row = 0; row < charRows; row++)
         {
             int y1 = row * 2;       // Upper pixel row

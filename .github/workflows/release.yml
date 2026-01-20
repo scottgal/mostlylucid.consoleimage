@@ -145,6 +145,7 @@ jobs:
             ### Features
             - 🎨 **Three render modes**: ASCII art, Unicode color blocks (▀▄), and Braille patterns
             - 🎬 **Animated GIF support** with smooth, flicker-free playback
+            - 🔄 **Smooth loop transitions**: Automatic interpolation creates seamless loops
             - 🖥️ **Dynamic resize**: Animations automatically re-render when you resize the console window
             - 🎯 **Diff-based rendering**: Only updates changed lines between frames - no flicker
             - 📐 **Auto-fits to console**: Output defaults to your terminal size

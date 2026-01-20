@@ -15,7 +15,8 @@
       "Bash(dir:*)",
       "Bash(cmd /c \"copy /Y \"\"C:\\\\Blog\\\\mostlylucidweb\\\\Umami.Net\\\\icon.png\"\" \"\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\icon.png\"\"\")",
       "Bash(powershell -Command:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(del \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Core\\\\CircleSampler.cs\")"
     ]
   }
 }

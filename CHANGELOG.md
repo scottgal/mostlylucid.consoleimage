@@ -16,6 +16,23 @@ All notable changes to this project will be documented in this file.
 - **Atomic frame rendering**: Entire frames are now pre-built as single strings and written with one `Console.Write()` call
 - **Per-line color reset**: `\x1b[0m` reset added at end of each line to prevent color bleed between lines
 
+#### Smooth Loop Transitions
+- **Automatic loop interpolation**: When last and first frames differ, creates 1-4 interpolated transition frames for seamless looping
+- **Progressive line updates**: Transition frames progressively update changed lines to create a crossfade effect
+- **Smart threshold detection**: Only applies interpolation when frames are close (10-70% different); instant transition for very different frames
+
+### Performance
+- **Pre-computed trigonometry**: Circle sampling now uses lookup tables for sin/cos, eliminating ~216 trig calls per cell
+- **Parallel ColorBlockRenderer**: Row rendering is now parallelized when `UseParallelProcessing` is enabled
+- **Parallel BrailleRenderer**: Brightness buffer calculation is now parallelized
+- **Optimized bounds checking**: Uses `(uint)x < (uint)width` pattern for branchless bounds checks
+- **Pre-sized StringBuilders**: Row buffers pre-allocated to reduce reallocations
+
+### Fixed
+- **Algorithm normalization**: Character vector normalization now correctly normalizes each of the 6 components independently (per Alex Harri's article), rather than using a single global maximum
+- **Braille mode inversion**: Fixed inverted output on dark terminals - bright pixels now correctly show as dots
+- **Braille UTF-8 encoding**: Added `Console.OutputEncoding = UTF8` and `SetConsoleOutputCP(65001)` for proper Unicode support on Windows
+
 #### New CLI Options
 - `--framerate, -r <fps>`: Fixed framerate override - play GIFs at a specific FPS regardless of embedded timing
 - `--json, -j`: JSON output mode for LLM tool calls and programmatic use
