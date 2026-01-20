@@ -108,6 +108,9 @@ var noEdgeDirOption = new Option<bool>("--no-edge-chars") { Description = "Disab
 var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (for LLM tool calls and programmatic use)" };
 jsonOption.Aliases.Add("-j");
 
+var darkCutoffOption = new Option<float?>("--dark-cutoff") { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0, default: 0.1). Use 0 to disable." };
+var lightCutoffOption = new Option<float?>("--light-cutoff") { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0, default: 0.9). Use 1 to disable." };
+
 // Add options to root command
 rootCommand.Arguments.Add(inputArg);
 rootCommand.Options.Add(widthOption);
@@ -137,6 +140,8 @@ rootCommand.Options.Add(noParallelOption);
 rootCommand.Options.Add(noDitherOption);
 rootCommand.Options.Add(noEdgeDirOption);
 rootCommand.Options.Add(jsonOption);
+rootCommand.Options.Add(darkCutoffOption);
+rootCommand.Options.Add(lightCutoffOption);
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
@@ -168,6 +173,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var noDither = parseResult.GetValue(noDitherOption);
     var noEdgeChars = parseResult.GetValue(noEdgeDirOption);
     var jsonOutput = parseResult.GetValue(jsonOption);
+    var darkCutoff = parseResult.GetValue(darkCutoffOption);
+    var lightCutoff = parseResult.GetValue(lightCutoffOption);
 
     // JSON mode helper - manual serialization for AOT compatibility
     void OutputJson(string json) => Console.WriteLine(json);
@@ -217,7 +224,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         AutoBackgroundSuppression = autoBg,
         UseParallelProcessing = !noParallel,
         EnableDithering = !noDither,
-        EnableEdgeDirectionChars = !noEdgeChars
+        EnableEdgeDirectionChars = !noEdgeChars,
+        // Brightness thresholds for terminal optimization
+        // A value of 0 for dark cutoff or 1 for light cutoff effectively disables that threshold
+        DarkTerminalBrightnessThreshold = darkCutoff ?? 0.1f,
+        LightTerminalBrightnessThreshold = lightCutoff ?? 0.9f
     };
 
     try
@@ -476,7 +487,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                 if (frames.Count > 1)
                 {
-                    using var player = new AsciiAnimationPlayer(frames, !noColor, loop, true, !noAltScreen, framerate);
+                    // Determine brightness thresholds based on terminal mode (Invert)
+                    float? effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
+                    float? effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
+
+                    using var player = new AsciiAnimationPlayer(frames, !noColor, loop, true, !noAltScreen, framerate, effectiveDarkThreshold, effectiveLightThreshold);
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
                     Console.CancelKeyPress += (s, e) =>
@@ -490,7 +505,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 else
                 {
                     // Single frame GIF, just render it
-                    OutputFrame(frames[0], !noColor, output);
+                    OutputFrame(frames[0], !noColor, output, options);
                 }
             }
             else if (isGif)
@@ -517,7 +532,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 else
                 {
                     // Output first frame only
-                    OutputFrame(frames[0], !noColor, null);
+                    OutputFrame(frames[0], !noColor, null, options);
                     if (frames.Count > 1)
                     {
                         Console.WriteLine($"\n(GIF has {frames.Count} frames - use --animate to play)");
@@ -528,6 +543,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 // Render single image
                 var frame = renderer.RenderFile(input.FullName);
+                // Determine brightness thresholds based on terminal mode (Invert)
+                float? effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
+                float? effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
+
                 if (jsonOutput)
                 {
                     OutputJson($@"{{
@@ -536,12 +555,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
   ""width"": {frame.Width},
   ""height"": {frame.Height},
   ""content"": ""{JsonEscape(frame.ToString())}"",
-  ""ansiContent"": ""{JsonEscape(frame.ToAnsiString())}""
+  ""ansiContent"": ""{JsonEscape(frame.ToAnsiString(effectiveDarkThreshold, effectiveLightThreshold))}""
 }}");
                 }
                 else
                 {
-                    OutputFrame(frame, !noColor, output);
+                    OutputFrame(frame, !noColor, output, options);
                 }
             }
         }
@@ -561,9 +580,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
 return await rootCommand.Parse(args).InvokeAsync();
 
-static void OutputFrame(AsciiFrame frame, bool useColor, FileInfo? output)
+static void OutputFrame(AsciiFrame frame, bool useColor, FileInfo? output, RenderOptions options)
 {
-    string result = useColor ? frame.ToAnsiString() : frame.ToString();
+    // Determine brightness thresholds based on terminal mode (Invert)
+    float? darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
+    float? lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
+
+    string result = useColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString();
 
     if (output != null)
     {

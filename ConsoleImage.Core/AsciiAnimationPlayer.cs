@@ -17,6 +17,9 @@ public class AsciiAnimationPlayer : IDisposable
     private readonly int _loopCount;
     private readonly bool _useDiffRendering;
     private readonly bool _useAltScreen;
+    private readonly float? _targetFps;
+    private readonly float? _darkThreshold;
+    private readonly float? _lightThreshold;
     private CancellationTokenSource? _cts;
     private Task? _playTask;
     private bool _disposed;
@@ -58,7 +61,7 @@ public class AsciiAnimationPlayer : IDisposable
     /// </summary>
     public bool IsPlaying => _playTask != null && !_playTask.IsCompleted;
 
-    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0, bool useDiffRendering = true, bool useAltScreen = true, float? targetFps = null)
+    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0, bool useDiffRendering = true, bool useAltScreen = true, float? targetFps = null, float? darkThreshold = null, float? lightThreshold = null)
     {
         _frames = frames ?? throw new ArgumentNullException(nameof(frames));
         _useColor = useColor;
@@ -66,9 +69,9 @@ public class AsciiAnimationPlayer : IDisposable
         _useDiffRendering = useDiffRendering;
         _useAltScreen = useAltScreen;
         _targetFps = targetFps;
+        _darkThreshold = darkThreshold;
+        _lightThreshold = lightThreshold;
     }
-
-    private readonly float? _targetFps;
 
     /// <summary>
     /// Play the animation in the console
@@ -95,7 +98,7 @@ public class AsciiAnimationPlayer : IDisposable
         var frameLines = new string[_frames.Count][];
         for (int i = 0; i < _frames.Count; i++)
         {
-            string frameStr = _useColor ? _frames[i].ToAnsiString() : _frames[i].ToString();
+            string frameStr = _useColor ? _frames[i].ToAnsiString(_darkThreshold, _lightThreshold) : _frames[i].ToString();
             frameLines[i] = frameStr.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
             if (frameLines[i].Length > maxHeight)
                 maxHeight = frameLines[i].Length;
@@ -235,7 +238,7 @@ public class AsciiAnimationPlayer : IDisposable
             throw new ArgumentOutOfRangeException(nameof(frameIndex));
 
         var frame = _frames[frameIndex];
-        string output = _useColor ? frame.ToAnsiString() : frame.ToString();
+        string output = _useColor ? frame.ToAnsiString(_darkThreshold, _lightThreshold) : frame.ToString();
         Console.WriteLine(output);
     }
 

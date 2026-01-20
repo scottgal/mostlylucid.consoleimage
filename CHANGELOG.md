@@ -13,6 +13,14 @@ All notable changes to this project will be documented in this file.
 #### New CLI Options
 - `--framerate, -r <fps>`: Fixed framerate override - play GIFs at a specific FPS regardless of embedded timing
 - `--json, -j`: JSON output mode for LLM tool calls and programmatic use
+- `--dark-cutoff <threshold>`: Dark terminal optimization - skip colors below this brightness (0.0-1.0, default: 0.1)
+- `--light-cutoff <threshold>`: Light terminal optimization - skip colors above this brightness (0.0-1.0, default: 0.9)
+
+#### Terminal Background Optimization
+- **Dark terminal mode**: Pixels below brightness threshold are rendered as plain spaces without color codes, blending naturally with dark terminal backgrounds and reducing output size
+- **Light terminal mode**: Pixels above brightness threshold are similarly optimized for light backgrounds
+- Thresholds are configurable via CLI (`--dark-cutoff`, `--light-cutoff`) or programmatically (`DarkTerminalBrightnessThreshold`, `LightTerminalBrightnessThreshold`)
+- Optimization applies to all render modes: ASCII, ColorBlock, and Braille
 
 #### Spectre.Console Integration Package
 New package: `mostlylucid.consoleimage.spectre`

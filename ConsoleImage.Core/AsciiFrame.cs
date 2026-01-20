@@ -65,25 +65,49 @@ public class AsciiFrame
     /// <summary>
     /// Convert to string with ANSI color codes
     /// </summary>
-    public string ToAnsiString()
+    /// <param name="darkThreshold">Optional: skip colors for pixels below this brightness (for dark terminals). 0.0-1.0</param>
+    /// <param name="lightThreshold">Optional: skip colors for pixels above this brightness (for light terminals). 0.0-1.0</param>
+    public string ToAnsiString(float? darkThreshold = null, float? lightThreshold = null)
     {
         if (Colors == null)
             return ToString();
 
         var sb = new System.Text.StringBuilder();
         Rgb24? lastColor = null;
+        bool lastWasSkipped = false;
 
         for (int y = 0; y < Height; y++)
         {
             for (int x = 0; x < Width; x++)
             {
                 var color = Colors[y, x];
-                if (lastColor == null || !lastColor.Value.Equals(color))
+                float brightness = GetBrightness(color);
+
+                // Skip colors that match terminal background
+                bool skipColor = (darkThreshold.HasValue && brightness < darkThreshold.Value) ||
+                                 (lightThreshold.HasValue && brightness > lightThreshold.Value);
+
+                if (skipColor)
                 {
-                    sb.Append($"\x1b[38;2;{color.R};{color.G};{color.B}m");
-                    lastColor = color;
+                    // Output space without color code (blends with terminal background)
+                    if (!lastWasSkipped && lastColor != null)
+                    {
+                        sb.Append("\x1b[0m"); // Reset before outputting plain space
+                    }
+                    sb.Append(' ');
+                    lastWasSkipped = true;
+                    lastColor = null;
                 }
-                sb.Append(Characters[y, x]);
+                else
+                {
+                    if (lastColor == null || !lastColor.Value.Equals(color))
+                    {
+                        sb.Append($"\x1b[38;2;{color.R};{color.G};{color.B}m");
+                        lastColor = color;
+                    }
+                    sb.Append(Characters[y, x]);
+                    lastWasSkipped = false;
+                }
             }
             if (y < Height - 1)
                 sb.AppendLine();
@@ -91,6 +115,14 @@ public class AsciiFrame
 
         sb.Append("\x1b[0m"); // Reset
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Calculate perceived brightness of a color (0.0-1.0)
+    /// </summary>
+    private static float GetBrightness(Rgb24 color)
+    {
+        return (0.299f * color.R + 0.587f * color.G + 0.114f * color.B) / 255f;
     }
 
     /// <summary>
@@ -112,7 +144,10 @@ public class AsciiFrame
     /// <summary>
     /// Get a single row with ANSI colors
     /// </summary>
-    public string GetRowAnsi(int row)
+    /// <param name="row">Row index</param>
+    /// <param name="darkThreshold">Optional: skip colors for pixels below this brightness (for dark terminals). 0.0-1.0</param>
+    /// <param name="lightThreshold">Optional: skip colors for pixels above this brightness (for light terminals). 0.0-1.0</param>
+    public string GetRowAnsi(int row, float? darkThreshold = null, float? lightThreshold = null)
     {
         if (row < 0 || row >= Height)
             throw new ArgumentOutOfRangeException(nameof(row));
@@ -122,16 +157,37 @@ public class AsciiFrame
 
         var sb = new System.Text.StringBuilder();
         Rgb24? lastColor = null;
+        bool lastWasSkipped = false;
 
         for (int x = 0; x < Width; x++)
         {
             var color = Colors[row, x];
-            if (lastColor == null || !lastColor.Value.Equals(color))
+            float brightness = GetBrightness(color);
+
+            // Skip colors that match terminal background
+            bool skipColor = (darkThreshold.HasValue && brightness < darkThreshold.Value) ||
+                             (lightThreshold.HasValue && brightness > lightThreshold.Value);
+
+            if (skipColor)
             {
-                sb.Append($"\x1b[38;2;{color.R};{color.G};{color.B}m");
-                lastColor = color;
+                if (!lastWasSkipped && lastColor != null)
+                {
+                    sb.Append("\x1b[0m");
+                }
+                sb.Append(' ');
+                lastWasSkipped = true;
+                lastColor = null;
             }
-            sb.Append(Characters[row, x]);
+            else
+            {
+                if (lastColor == null || !lastColor.Value.Equals(color))
+                {
+                    sb.Append($"\x1b[38;2;{color.R};{color.G};{color.B}m");
+                    lastColor = color;
+                }
+                sb.Append(Characters[row, x]);
+                lastWasSkipped = false;
+            }
         }
 
         sb.Append("\x1b[0m");

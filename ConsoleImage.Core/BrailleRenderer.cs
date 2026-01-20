@@ -82,6 +82,11 @@ public class BrailleRenderer : IDisposable
 
         var sb = new System.Text.StringBuilder();
         Rgba32? lastColor = null;
+        bool lastWasSkipped = false;
+
+        // Get brightness thresholds based on terminal mode
+        float? darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
+        float? lightThreshold = !_options.Invert ? _options.LightTerminalBrightnessThreshold : null;
 
         for (int cy = 0; cy < charHeight; cy++)
         {
@@ -140,14 +145,38 @@ public class BrailleRenderer : IDisposable
                         255
                     );
 
-                    if (lastColor == null || !ColorsEqual(lastColor.Value, avgColor))
+                    float avgBrightness = GetBrightness(avgColor);
+
+                    // Check if this cell should be skipped (blend with terminal background)
+                    bool skipColor = (darkThreshold.HasValue && avgBrightness < darkThreshold.Value) ||
+                                     (lightThreshold.HasValue && avgBrightness > lightThreshold.Value);
+
+                    if (skipColor)
                     {
-                        sb.Append($"\x1b[38;2;{avgColor.R};{avgColor.G};{avgColor.B}m");
-                        lastColor = avgColor;
+                        // Output empty braille or space without color code
+                        if (!lastWasSkipped && lastColor != null)
+                        {
+                            sb.Append("\x1b[0m");
+                        }
+                        sb.Append(brailleCode == 0 ? ' ' : brailleChar);
+                        lastWasSkipped = true;
+                        lastColor = null;
+                    }
+                    else
+                    {
+                        if (lastColor == null || !ColorsEqual(lastColor.Value, avgColor))
+                        {
+                            sb.Append($"\x1b[38;2;{avgColor.R};{avgColor.G};{avgColor.B}m");
+                            lastColor = avgColor;
+                        }
+                        sb.Append(brailleChar);
+                        lastWasSkipped = false;
                     }
                 }
-
-                sb.Append(brailleChar);
+                else
+                {
+                    sb.Append(brailleChar);
+                }
             }
 
             if (cy < charHeight - 1)
@@ -156,6 +185,7 @@ public class BrailleRenderer : IDisposable
                     sb.Append("\x1b[0m");
                 sb.AppendLine();
                 lastColor = null;
+                lastWasSkipped = false;
             }
         }
 

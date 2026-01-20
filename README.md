@@ -151,6 +151,8 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `--no-dither` | Disable Floyd-Steinberg dithering | Dither ON |
 | `--no-edge-chars` | Disable edge-direction characters | Edge chars ON |
 | `-j, --json` | Output as JSON (for LLM tool calls) | OFF |
+| `--dark-cutoff` | Dark terminal: skip colors below brightness (0.0-1.0) | 0.1 |
+| `--light-cutoff` | Light terminal: skip colors above brightness (0.0-1.0) | 0.9 |
 
 ## Library API
 
