@@ -4,7 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version (e.g., 1.0.0)'
+        description: 'Demo release version (e.g., 1.0.0)'
+        required: true
+      spectre_version:
+        description: 'Spectre NuGet package version to use (e.g., 1.0.0)'
         required: true
 
 env:
@@ -45,10 +48,17 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: |
+          dotnet restore ConsoleImage.SpectreDemo/ConsoleImage.SpectreDemo.csproj \
+            -p:UseNuGetDependencies=true \
+            -p:SpectrePackageVersion=${{ github.event.inputs.spectre_version }}
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: |
+          dotnet build ConsoleImage.SpectreDemo/ConsoleImage.SpectreDemo.csproj \
+            --configuration Release --no-restore \
+            -p:UseNuGetDependencies=true \
+            -p:SpectrePackageVersion=${{ github.event.inputs.spectre_version }}
 
       - name: Publish self-contained
         shell: bash
@@ -59,6 +69,8 @@ jobs:
             --self-contained true \
             -p:PublishSingleFile=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:UseNuGetDependencies=true \
+            -p:SpectrePackageVersion=${{ github.event.inputs.spectre_version }} \
             -o ./publish/${{ matrix.artifact }}
 
       - name: Prepare archive contents

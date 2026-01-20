@@ -4,7 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g., 1.0.0)'
+        description: 'Spectre package version to publish (e.g., 1.0.0)'
+        required: true
+      core_version:
+        description: 'Core package version to depend on (e.g., 1.0.0)'
         required: true
 
 permissions:
@@ -29,15 +32,14 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
-    - name: Build & Pack Core (dependency)
+    - name: Build & Pack Spectre (depends on Core NuGet package)
       run: |
-        dotnet build ConsoleImage.Core/ConsoleImage.Core.csproj -c Release
-        dotnet pack ConsoleImage.Core/ConsoleImage.Core.csproj -c Release -o ./artifacts
-
-    - name: Build & Pack Spectre
-      run: |
-        dotnet build ConsoleImage.Spectre/ConsoleImage.Spectre.csproj -c Release
-        dotnet pack ConsoleImage.Spectre/ConsoleImage.Spectre.csproj -c Release -o ./artifacts
+        dotnet build ConsoleImage.Spectre/ConsoleImage.Spectre.csproj -c Release \
+          -p:UseNuGetDependencies=true \
+          -p:CorePackageVersion=${{ github.event.inputs.core_version }}
+        dotnet pack ConsoleImage.Spectre/ConsoleImage.Spectre.csproj -c Release -o ./artifacts \
+          -p:UseNuGetDependencies=true \
+          -p:CorePackageVersion=${{ github.event.inputs.core_version }}
 
     - name: List artifacts
       run: ls -la ./artifacts

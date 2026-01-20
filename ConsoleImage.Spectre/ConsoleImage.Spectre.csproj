@@ -25,8 +25,13 @@
         <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
     </ItemGroup>
 
-    <ItemGroup>
+    <!-- Use ProjectReference for local dev, PackageReference for NuGet publishing -->
+    <ItemGroup Condition="'$(UseNuGetDependencies)' != 'true'">
         <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseNuGetDependencies)' == 'true'">
+        <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)" />
     </ItemGroup>
 
     <ItemGroup>

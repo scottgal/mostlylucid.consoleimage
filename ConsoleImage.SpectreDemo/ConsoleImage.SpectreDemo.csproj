@@ -11,8 +11,13 @@
     <PackageReference Include="Spectre.Console" Version="0.54.0" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- Use ProjectReference for local dev, PackageReference for NuGet publishing -->
+  <ItemGroup Condition="'$(UseNuGetDependencies)' != 'true'">
     <ProjectReference Include="..\ConsoleImage.Spectre\ConsoleImage.Spectre.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseNuGetDependencies)' == 'true'">
+    <PackageReference Include="mostlylucid.consoleimage.spectre" Version="$(SpectrePackageVersion)" />
   </ItemGroup>
 
 </Project>
