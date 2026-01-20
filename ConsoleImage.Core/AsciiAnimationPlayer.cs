@@ -137,6 +137,9 @@ public class AsciiAnimationPlayer : IDisposable
             Console.Write(AltScreenEnter);
         }
         Console.Write(CursorHide);
+        // Clear entire screen to prevent residual content from flashing
+        Console.Write("\x1b[2J");
+        Console.Out.Flush();
 
         try
         {

@@ -26,16 +26,31 @@ heightOption.Aliases.Add("-h");
 var aspectRatioOption = new Option<float?>("--aspect-ratio") { Description = "Character aspect ratio (default: 0.5, meaning chars are 2x taller than wide)" };
 aspectRatioOption.Aliases.Add("-a");
 
+// Detect console window size for defaults (with fallbacks)
+int defaultMaxWidth = 120;
+int defaultMaxHeight = 40;
+try
+{
+    if (Console.WindowWidth > 0)
+        defaultMaxWidth = Console.WindowWidth - 1; // -1 to avoid line wrapping
+    if (Console.WindowHeight > 0)
+        defaultMaxHeight = Console.WindowHeight - 2; // -2 for prompt space
+}
+catch
+{
+    // Console size detection not available (piped output, no console, etc.)
+}
+
 var maxWidthOption = new Option<int>("--max-width")
 {
-    Description = "Maximum output width",
-    DefaultValueFactory = _ => 120
+    Description = "Maximum output width (default: console width)",
+    DefaultValueFactory = _ => defaultMaxWidth
 };
 
 var maxHeightOption = new Option<int>("--max-height")
 {
-    Description = "Maximum output height",
-    DefaultValueFactory = _ => 60
+    Description = "Maximum output height (default: console height)",
+    DefaultValueFactory = _ => defaultMaxHeight
 };
 
 var noColorOption = new Option<bool>("--no-color") { Description = "Disable colored output (monochrome)" };
@@ -239,111 +254,37 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // Use color blocks mode for high-fidelity output
         if (colorBlocks)
         {
-            using var blockRenderer = new ColorBlockRenderer(options);
-
             if (isGif && !noAnimate)
             {
-                var frames = blockRenderer.RenderGif(input.FullName);
-
-                if (frames.Count > 1)
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Console.CancelKeyPress += (s, e) =>
                 {
-                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    Console.CancelKeyPress += (s, e) =>
+                    e.Cancel = true;
+                    cts.Cancel();
+                };
+
+                var player = new ResizableAnimationPlayer(
+                    renderFrames: (maxW, maxH) =>
                     {
-                        e.Cancel = true;
-                        cts.Cancel();
-                    };
+                        var renderOptions = options.Clone();
+                        renderOptions.MaxWidth = maxW;
+                        renderOptions.MaxHeight = maxH;
+                        using var renderer = new ColorBlockRenderer(renderOptions);
+                        return renderer.RenderGif(input.FullName);
+                    },
+                    explicitWidth: width,
+                    explicitHeight: height,
+                    loopCount: loop,
+                    useAltScreen: !noAltScreen,
+                    targetFps: framerate
+                );
 
-                    var token = cts.Token;
-                    int loopsDone = 0;
-
-                    // Pre-build atomic frame buffers to eliminate flicker
-                    var frameLines = new string[frames.Count][];
-                    int maxFrameHeight = 0;
-                    for (int f = 0; f < frames.Count; f++)
-                    {
-                        frameLines[f] = frames[f].Content.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
-                        if (frameLines[f].Length > maxFrameHeight)
-                            maxFrameHeight = frameLines[f].Length;
-                    }
-
-                    // Build atomic frame buffers
-                    var frameBuffers = new string[frames.Count];
-                    for (int f = 0; f < frames.Count; f++)
-                    {
-                        var sb = new System.Text.StringBuilder();
-                        sb.Append("\x1b[?2026h"); // Start sync
-                        sb.Append("\x1b[H");      // Home cursor
-                        var lines = frameLines[f];
-                        for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
-                        {
-                            sb.Append("\x1b[2K");
-                            if (lineIdx < lines.Length)
-                                sb.Append(lines[lineIdx]);
-                            sb.Append("\x1b[0m");
-                            if (lineIdx < maxFrameHeight - 1)
-                                sb.Append('\n');
-                        }
-                        sb.Append("\x1b[?2026l"); // End sync
-                        frameBuffers[f] = sb.ToString();
-                    }
-
-                    // Calculate fixed frame delay if framerate is set
-                    int? fixedDelayMs = framerate.HasValue && framerate.Value > 0
-                        ? (int)(1000f / framerate.Value)
-                        : null;
-
-                    // Enter alternate screen buffer if enabled (preserves scrollback)
-                    if (!noAltScreen)
-                        Console.Write("\x1b[?1049h");
-                    Console.Write("\x1b[?25l"); // Hide cursor
-
-                    try
-                    {
-                        while (!token.IsCancellationRequested)
-                        {
-                            for (int i = 0; i < frames.Count; i++)
-                            {
-                                if (token.IsCancellationRequested) break;
-
-                                // Write entire frame atomically
-                                Console.Write(frameBuffers[i]);
-                                Console.Out.Flush();
-
-                                int delayMs = fixedDelayMs ?? frames[i].DelayMs;
-                                if (delayMs > 0)
-                                {
-                                    int remaining = delayMs;
-                                    while (remaining > 0 && !token.IsCancellationRequested)
-                                    {
-                                        int delay = Math.Min(remaining, 50);
-                                        try { await Task.Delay(delay, token); }
-                                        catch (OperationCanceledException) { break; }
-                                        remaining -= delay;
-                                    }
-                                }
-                            }
-
-                            loopsDone++;
-                            if (loop > 0 && loopsDone >= loop) break;
-                        }
-                    }
-                    catch (OperationCanceledException) { }
-                    finally
-                    {
-                        Console.Write("\x1b[?25h"); // Show cursor
-                        if (!noAltScreen)
-                            Console.Write("\x1b[?1049l"); // Exit alternate screen
-                    }
-                }
-                else
-                {
-                    Console.WriteLine(frames[0].Content);
-                    Console.Write("\x1b[0m");
-                }
+                await player.PlayAsync(cts.Token);
             }
             else
             {
+                // Static image rendering
+                using var blockRenderer = new ColorBlockRenderer(options);
                 string result = blockRenderer.RenderFile(input.FullName);
                 if (output != null)
                 {
@@ -360,108 +301,36 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         else if (braille)
         {
             // Braille rendering (2x4 dots per cell)
-            using var brailleRenderer = new BrailleRenderer(options);
-
             if (isGif && !noAnimate)
             {
-                var frames = brailleRenderer.RenderGif(input.FullName);
-
-                if (frames.Count > 1)
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Console.CancelKeyPress += (s, e) =>
                 {
-                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    Console.CancelKeyPress += (s, e) =>
+                    e.Cancel = true;
+                    cts.Cancel();
+                };
+
+                var player = new ResizableAnimationPlayer(
+                    renderFrames: (maxW, maxH) =>
                     {
-                        e.Cancel = true;
-                        cts.Cancel();
-                    };
+                        var renderOptions = options.Clone();
+                        renderOptions.MaxWidth = maxW;
+                        renderOptions.MaxHeight = maxH;
+                        using var renderer = new BrailleRenderer(renderOptions);
+                        return renderer.RenderGif(input.FullName);
+                    },
+                    explicitWidth: width,
+                    explicitHeight: height,
+                    loopCount: loop,
+                    useAltScreen: !noAltScreen,
+                    targetFps: framerate
+                );
 
-                    var token = cts.Token;
-                    int loopsDone = 0;
-
-                    var frameLines = new string[frames.Count][];
-                    int maxFrameHeight = 0;
-                    for (int f = 0; f < frames.Count; f++)
-                    {
-                        frameLines[f] = frames[f].Content.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
-                        if (frameLines[f].Length > maxFrameHeight)
-                            maxFrameHeight = frameLines[f].Length;
-                    }
-
-                    // Build atomic frame buffers
-                    var frameBuffers = new string[frames.Count];
-                    for (int f = 0; f < frames.Count; f++)
-                    {
-                        var sb = new System.Text.StringBuilder();
-                        sb.Append("\x1b[?2026h");
-                        sb.Append("\x1b[H");
-                        var lines = frameLines[f];
-                        for (int lineIdx = 0; lineIdx < maxFrameHeight; lineIdx++)
-                        {
-                            sb.Append("\x1b[2K");
-                            if (lineIdx < lines.Length)
-                                sb.Append(lines[lineIdx]);
-                            sb.Append("\x1b[0m");
-                            if (lineIdx < maxFrameHeight - 1)
-                                sb.Append('\n');
-                        }
-                        sb.Append("\x1b[?2026l");
-                        frameBuffers[f] = sb.ToString();
-                    }
-
-                    int? fixedDelayMs = framerate.HasValue && framerate.Value > 0
-                        ? (int)(1000f / framerate.Value)
-                        : null;
-
-                    // Enter alternate screen buffer if enabled
-                    if (!noAltScreen)
-                        Console.Write("\x1b[?1049h");
-                    Console.Write("\x1b[?25l"); // Hide cursor
-
-                    try
-                    {
-                        while (!token.IsCancellationRequested)
-                        {
-                            for (int i = 0; i < frames.Count; i++)
-                            {
-                                if (token.IsCancellationRequested) break;
-
-                                Console.Write(frameBuffers[i]);
-                                Console.Out.Flush();
-
-                                int delayMs = fixedDelayMs ?? frames[i].DelayMs;
-                                if (delayMs > 0)
-                                {
-                                    int remaining = delayMs;
-                                    while (remaining > 0 && !token.IsCancellationRequested)
-                                    {
-                                        int delay = Math.Min(remaining, 50);
-                                        try { await Task.Delay(delay, token); }
-                                        catch (OperationCanceledException) { break; }
-                                        remaining -= delay;
-                                    }
-                                }
-                            }
-
-                            loopsDone++;
-                            if (loop > 0 && loopsDone >= loop) break;
-                        }
-                    }
-                    catch (OperationCanceledException) { }
-                    finally
-                    {
-                        Console.Write("\x1b[?25h"); // Show cursor
-                        if (!noAltScreen)
-                            Console.Write("\x1b[?1049l"); // Exit alt screen
-                    }
-                }
-                else
-                {
-                    Console.WriteLine(frames[0].Content);
-                    Console.Write("\x1b[0m");
-                }
+                await player.PlayAsync(cts.Token);
             }
             else
             {
+                using var brailleRenderer = new BrailleRenderer(options);
                 string result = brailleRenderer.RenderFile(input.FullName);
                 if (output != null)
                 {
@@ -478,39 +347,43 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         else
         {
             // Standard ASCII rendering
-            using var renderer = new AsciiRenderer(options);
-
             if (isGif && !noAnimate)
             {
-                // Play animated GIF
-                var frames = renderer.RenderGif(input.FullName);
-
-                if (frames.Count > 1)
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Console.CancelKeyPress += (s, e) =>
                 {
-                    // Determine brightness thresholds based on terminal mode (Invert)
-                    float? effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
-                    float? effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
+                    e.Cancel = true;
+                    cts.Cancel();
+                };
 
-                    using var player = new AsciiAnimationPlayer(frames, !noColor, loop, true, !noAltScreen, framerate, effectiveDarkThreshold, effectiveLightThreshold);
-                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                // Determine brightness thresholds based on terminal mode (Invert)
+                float? effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
+                float? effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
 
-                    Console.CancelKeyPress += (s, e) =>
+                var player = new ResizableAnimationPlayer(
+                    renderFrames: (maxW, maxH) =>
                     {
-                        e.Cancel = true;
-                        cts.Cancel();
-                    };
+                        var renderOptions = options.Clone();
+                        renderOptions.MaxWidth = maxW;
+                        renderOptions.MaxHeight = maxH;
+                        using var renderer = new AsciiRenderer(renderOptions);
+                        var asciiFrames = renderer.RenderGif(input.FullName);
+                        // Convert AsciiFrames to IAnimationFrame using adapter
+                        return asciiFrames.Select(f => new AsciiFrameAdapter(f, !noColor, effectiveDarkThreshold, effectiveLightThreshold)).ToList<IAnimationFrame>();
+                    },
+                    explicitWidth: width,
+                    explicitHeight: height,
+                    loopCount: loop,
+                    useAltScreen: !noAltScreen,
+                    targetFps: framerate
+                );
 
-                    await player.PlayAsync(cts.Token);
-                }
-                else
-                {
-                    // Single frame GIF, just render it
-                    OutputFrame(frames[0], !noColor, output, options);
-                }
+                await player.PlayAsync(cts.Token);
             }
             else if (isGif)
             {
                 // Render all GIF frames as static output
+                using var renderer = new AsciiRenderer(options);
                 var frames = renderer.RenderGif(input.FullName);
 
                 if (output != null)
@@ -542,6 +415,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             else
             {
                 // Render single image
+                using var renderer = new AsciiRenderer(options);
                 var frame = renderer.RenderFile(input.FullName);
                 // Determine brightness thresholds based on terminal mode (Invert)
                 float? effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;

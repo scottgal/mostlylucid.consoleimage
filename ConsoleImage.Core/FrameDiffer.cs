@@ -146,8 +146,8 @@ public static class FrameDiffer
             if (prevLines[y] != currLines[y])
             {
                 changedLines++;
-                // Move to line start (1-indexed)
-                sb.Append($"\x1b[{y + 1};1H");
+                // Move to line start (1-indexed) and clear line before writing
+                sb.Append($"\x1b[{y + 1};1H\x1b[2K");
                 sb.Append(currLines[y]);
             }
         }

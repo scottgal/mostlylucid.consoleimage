@@ -136,6 +136,72 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
           name: ConsoleImage ${{ steps.version.outputs.tag_name }}
+          body: |
+            ## ConsoleImage - ASCII Art Renderer
+
+            High-quality ASCII art renderer for converting images and GIFs to terminal output.
+            Based on [Alex Harri's shape-matching algorithm](https://alexharri.com/blog/ascii-rendering).
+
+            ### Features
+            - 🎨 **Three render modes**: ASCII art, Unicode color blocks (▀▄), and Braille patterns
+            - 🎬 **Animated GIF support** with smooth playback and dynamic resize
+            - 🖥️ **Auto-fits to console window** - adapts when you resize
+            - 🎯 **Smart diff rendering** - only updates changed pixels for efficiency
+            - 🌙 **Terminal-aware** - optimized for both dark and light backgrounds
+
+            ### Quick Start
+
+            ```bash
+            # Render an image (auto-fits to terminal)
+            consoleimage photo.jpg
+
+            # High-fidelity color blocks mode
+            consoleimage photo.png --blocks
+
+            # Ultra-high resolution braille mode
+            consoleimage photo.png --braille
+
+            # Animated GIF playback
+            consoleimage animation.gif
+
+            # Set specific width
+            consoleimage image.jpg -w 80
+
+            # Speed up animation
+            consoleimage animation.gif --speed 2.0
+
+            # Light terminal mode (non-inverted)
+            consoleimage image.png --no-invert
+            ```
+
+            ### Command-Line Options
+
+            ```
+            Arguments:
+              input              Path to the image or GIF file to convert
+
+            Options:
+              -w, --width        Output width in characters
+              -h, --height       Output height in characters
+              -b, --blocks       Use colored Unicode blocks (high fidelity)
+              -B, --braille      Use braille characters (ultra resolution)
+              -s, --speed        Animation speed multiplier [default: 1.0]
+              -l, --loop         Loop count (0 = infinite) [default: 0]
+              -r, --framerate    Fixed framerate in FPS
+              -f, --frame-sample Frame sampling rate [default: 1]
+              --no-color         Disable colored output
+              --no-invert        For light terminal backgrounds
+              --no-animate       Show first frame only
+              --no-alt-screen    Keep animation in scrollback
+              -j, --json         Output as JSON
+              --dark-cutoff      Dark terminal brightness cutoff [default: 0.1]
+              --light-cutoff     Light terminal brightness cutoff [default: 0.9]
+            ```
+
+            ### Requirements
+            - Terminal with ANSI color support (most modern terminals)
+            - For `--blocks` mode: 24-bit (true color) support recommended
+
           files: |
             artifacts/**/*.zip
             artifacts/**/*.tar.gz

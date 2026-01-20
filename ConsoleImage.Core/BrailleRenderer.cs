@@ -329,7 +329,7 @@ public class BrailleRenderer : IDisposable
 /// <summary>
 /// A single frame of braille-rendered content
 /// </summary>
-public class BrailleFrame
+public class BrailleFrame : IAnimationFrame
 {
     public string Content { get; }
     public int DelayMs { get; }

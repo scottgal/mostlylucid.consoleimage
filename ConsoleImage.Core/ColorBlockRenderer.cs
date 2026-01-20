@@ -270,7 +270,7 @@ public class ColorBlockRenderer : IDisposable
 /// <summary>
 /// A single frame of colored block output
 /// </summary>
-public class ColorBlockFrame
+public class ColorBlockFrame : IAnimationFrame
 {
     public string Content { get; }
     public int DelayMs { get; }
