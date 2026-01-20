@@ -6,8 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+#### Dynamic Console Resize Support
+- **ResizableAnimationPlayer**: New animation player that automatically re-renders frames when the console window is resized during playback
+- **Auto-detect console size**: `--max-width` and `--max-height` now default to the current console window dimensions instead of fixed 120x60
+
 #### Flicker-Free Animation
-- **Atomic frame rendering**: Entire frames are now pre-built as single strings and written with one `Console.Write()` call, eliminating flicker caused by line-by-line rendering
+- **Diff-based rendering**: Subsequent frames now use line-by-line diffing - only changed lines are updated, eliminating flicker completely
+- **Overwrite without clear**: Removed per-line `\x1b[2K` clear commands that caused visible black flashes; lines are now overwritten in place with space padding
+- **Atomic frame rendering**: Entire frames are now pre-built as single strings and written with one `Console.Write()` call
 - **Per-line color reset**: `\x1b[0m` reset added at end of each line to prevent color bleed between lines
 
 #### New CLI Options

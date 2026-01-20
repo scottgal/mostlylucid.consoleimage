@@ -17,7 +17,8 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 - **3×2 staggered sampling grid**: 6 sampling circles arranged per Alex Harri's article for accurate shape matching
 - **K-D tree optimization**: Fast nearest-neighbor search in 6D vector space
 - **Contrast enhancement**: Global power function + directional contrast with 10 external sampling circles
-- **Animated GIF support**: Smooth flicker-free playback with DECSET 2026 synchronized output
+- **Animated GIF support**: Smooth flicker-free playback with DECSET 2026 synchronized output and diff-based rendering
+- **Dynamic resize**: Animations automatically re-render when you resize the console window
 - **Multiple render modes**:
   - ANSI colored ASCII characters (extended 91-char set by default)
   - High-fidelity color blocks using Unicode half-blocks (▀▄)
@@ -126,8 +127,8 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 |--------|-------------|---------|
 | `-w, --width` | Output width in characters | Auto |
 | `-h, --height` | Output height in characters | Auto |
-| `--max-width` | Maximum output width | 120 |
-| `--max-height` | Maximum output height | 60 |
+| `--max-width` | Maximum output width | Console width |
+| `--max-height` | Maximum output height | Console height |
 | `--no-color` | Disable colored output | Color ON |
 | `--no-invert` | Don't invert (for light backgrounds) | Invert ON |
 | `--contrast` | Contrast power (1.0 = none) | 2.5 |
@@ -416,10 +417,11 @@ For GIFs, frame differencing computes only changed pixels between frames, using 
 Multiple techniques ensure flicker-free animation:
 
 - **DECSET 2026 Synchronized Output**: Batches frame output for atomic rendering (supported by Windows Terminal, WezTerm, Ghostty, Alacritty, iTerm2)
-- **Diff rendering**: Only updates changed pixels between frames using ANSI cursor positioning
+- **Diff-based rendering**: Only updates changed lines between frames - no per-line clearing that causes black flashes
+- **Overwrite with padding**: Lines are overwritten in place with space padding, eliminating flicker completely
+- **Dynamic resize**: Animations automatically re-render when you resize the console window
 - **Cursor hiding**: `\x1b[?25l` hides cursor during playback
-- **Cursor save/restore**: `\x1b[s` / `\x1b[u` for consistent frame positioning
-- **Pre-buffering**: All frames converted to strings before playback
+- **Pre-buffering**: All frames and diffs converted to strings before playback
 - **Immediate flush**: `Console.Out.Flush()` after each frame
 
 ## Building from Source
