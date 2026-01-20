@@ -181,22 +181,25 @@ public class ColorBlockRenderer : IDisposable
 
         if (upperSkip && lowerSkip)
         {
-            // Both should blend with background - just space
-            sb.Append(' ');
+            // Both should blend with background - reset colors and output space
+            // Reset needed to clear any previous background color
+            sb.Append("\x1b[0m ");
             return;
         }
 
         if (upperSkip)
         {
-            // Only lower visible - use lower half block with foreground color
-            sb.Append($"\x1b[38;2;{lower.R};{lower.G};{lower.B}m{LowerHalfBlock}");
+            // Only lower visible - use lower half block with foreground color only (no background)
+            // Reset first to clear any previous background color
+            sb.Append($"\x1b[0m\x1b[38;2;{lower.R};{lower.G};{lower.B}m{LowerHalfBlock}");
             return;
         }
 
         if (lowerSkip)
         {
-            // Only upper visible - use upper half block with foreground color
-            sb.Append($"\x1b[38;2;{upper.R};{upper.G};{upper.B}m{UpperHalfBlock}");
+            // Only upper visible - use upper half block with foreground color only (no background)
+            // Reset first to clear any previous background color
+            sb.Append($"\x1b[0m\x1b[38;2;{upper.R};{upper.G};{upper.B}m{UpperHalfBlock}");
             return;
         }
 
