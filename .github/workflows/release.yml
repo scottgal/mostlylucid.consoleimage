@@ -144,10 +144,11 @@ jobs:
 
             ### Features
             - 🎨 **Three render modes**: ASCII art, Unicode color blocks (▀▄), and Braille patterns
-            - 🎬 **Animated GIF support** with smooth playback and dynamic resize
-            - 🖥️ **Auto-fits to console window** - adapts when you resize
-            - 🎯 **Smart diff rendering** - only updates changed pixels for efficiency
-            - 🌙 **Terminal-aware** - optimized for both dark and light backgrounds
+            - 🎬 **Animated GIF support** with smooth, flicker-free playback
+            - 🖥️ **Dynamic resize**: Animations automatically re-render when you resize the console window
+            - 🎯 **Diff-based rendering**: Only updates changed lines between frames - no flicker
+            - 📐 **Auto-fits to console**: Output defaults to your terminal size
+            - 🌙 **Terminal-aware**: Optimized for both dark and light backgrounds
 
             ### Quick Start
 
