@@ -16,12 +16,16 @@ public class VideoAnimationPlayer : IDisposable
     private readonly FFmpegService _ffmpeg;
     private readonly VideoRenderOptions _options;
     private readonly string _videoPath;
+    private readonly StatusLine? _statusLine;
 
     private VideoInfo? _videoInfo;
     private int _renderWidth;
     private int _renderHeight;
     private int _lastConsoleWidth;
     private int _lastConsoleHeight;
+    private int _currentFrame;
+    private int _currentLoop;
+    private int _totalFramesEstimate;
 
     public VideoAnimationPlayer(string videoPath, VideoRenderOptions? options = null)
     {
@@ -29,6 +33,13 @@ public class VideoAnimationPlayer : IDisposable
         _options = options ?? VideoRenderOptions.Default;
         _ffmpeg = new FFmpegService(
             useHardwareAcceleration: _options.UseHardwareAcceleration);
+
+        if (_options.ShowStatus)
+        {
+            int statusWidth = 120;
+            try { statusWidth = Console.WindowWidth - 1; } catch { }
+            _statusLine = new StatusLine(statusWidth, _options.RenderOptions.UseColor);
+        }
     }
 
     /// <summary>
@@ -52,6 +63,10 @@ public class VideoAnimationPlayer : IDisposable
         var baseFrameDelayMs = (int)(1000.0 / effectiveFps);
         var frameDelayMs = (int)(baseFrameDelayMs / _options.SpeedMultiplier);
 
+        // Estimate total frames for progress
+        var effectiveDuration = _options.GetEffectiveDuration(_videoInfo.Duration);
+        _totalFramesEstimate = (int)(effectiveDuration * effectiveFps);
+
         // Enter alternate screen
         if (_options.UseAltScreen)
             Console.Write("\x1b[?1049h");
@@ -60,6 +75,7 @@ public class VideoAnimationPlayer : IDisposable
         Console.Out.Flush();
 
         int loopsDone = 0;
+        _currentLoop = 1;
 
         try
         {
@@ -72,9 +88,11 @@ public class VideoAnimationPlayer : IDisposable
                     Console.Out.Flush();
                 }
 
-                await PlayStreamAsync(frameDelayMs, cancellationToken);
+                _currentFrame = 0;
+                await PlayStreamAsync(frameDelayMs, effectiveFps, cancellationToken);
 
                 loopsDone++;
+                _currentLoop++;
                 if (_options.LoopCount > 0 && loopsDone >= _options.LoopCount)
                     break;
             }
@@ -92,7 +110,7 @@ public class VideoAnimationPlayer : IDisposable
     /// <summary>
     /// Stream and render frames with lookahead buffer.
     /// </summary>
-    private async Task PlayStreamAsync(int frameDelayMs, CancellationToken ct)
+    private async Task PlayStreamAsync(int frameDelayMs, double effectiveFps, CancellationToken ct)
     {
         // Create renderer based on mode
         using var renderer = CreateRenderer();
@@ -159,10 +177,36 @@ public class VideoAnimationPlayer : IDisposable
 
             if (frameBuffer.TryDequeue(out var frameContent))
             {
-                // Build optimized frame buffer
-                var buffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 0);
-                previousFrame = frameContent;
                 frameIndex++;
+                _currentFrame = frameIndex;
+
+                // Build status line if enabled
+                string? statusContent = null;
+                if (_statusLine != null && _videoInfo != null)
+                {
+                    var statusInfo = new StatusLine.StatusInfo
+                    {
+                        FileName = _options.SourceFileName ?? _videoPath,
+                        SourceWidth = _videoInfo.Width,
+                        SourceHeight = _videoInfo.Height,
+                        OutputWidth = _renderWidth,
+                        OutputHeight = _renderHeight,
+                        RenderMode = _options.RenderMode.ToString(),
+                        CurrentFrame = frameIndex,
+                        TotalFrames = _totalFramesEstimate > 0 ? _totalFramesEstimate : null,
+                        CurrentTime = TimeSpan.FromSeconds(frameIndex / effectiveFps),
+                        TotalDuration = TimeSpan.FromSeconds(_options.GetEffectiveDuration(_videoInfo.Duration)),
+                        Fps = effectiveFps,
+                        Codec = _videoInfo.VideoCodec,
+                        LoopNumber = _currentLoop,
+                        TotalLoops = _options.LoopCount
+                    };
+                    statusContent = _statusLine.Render(statusInfo);
+                }
+
+                // Build optimized frame buffer with status line included
+                var buffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent);
+                previousFrame = frameContent;
 
                 // Write frame
                 Console.Write(buffer);
@@ -266,10 +310,13 @@ public class VideoAnimationPlayer : IDisposable
     /// <summary>
     /// Build optimized frame buffer with diff-based rendering.
     /// </summary>
-    private static string BuildFrameBuffer(string content, string? previousContent, bool isFirstFrame)
+    private static string BuildFrameBuffer(string content, string? previousContent, bool isFirstFrame, string? statusLine = null)
     {
         var sb = new StringBuilder();
         sb.Append("\x1b[?2026h"); // Begin synchronized output
+
+        // Count frame lines for status positioning
+        var frameLines = content.Split('\n').Length;
 
         if (isFirstFrame || previousContent == null)
         {
@@ -323,6 +370,14 @@ public class VideoAnimationPlayer : IDisposable
                     }
                 }
             }
+        }
+
+        // Render status line at fixed position below frame
+        if (!string.IsNullOrEmpty(statusLine))
+        {
+            sb.Append($"\x1b[{frameLines + 1};1H"); // Move to status line row
+            sb.Append("\x1b[2K"); // Clear the line
+            sb.Append(statusLine);
         }
 
         sb.Append("\x1b[?2026l"); // End synchronized output

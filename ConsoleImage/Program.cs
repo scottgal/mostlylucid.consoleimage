@@ -142,6 +142,10 @@ var lightCutoffOption = new Option<float?>("--light-cutoff") { Description = "Li
 var calibrateOption = new Option<bool>("--calibrate") { Description = "Display aspect ratio calibration pattern (should show a circle)" };
 var saveCalibrationOption = new Option<bool>("--save") { Description = "Save current aspect ratio to calibration.json (use with --calibrate)" };
 
+// Status line option - shows file info, resolution, progress below the image
+var statusOption = new Option<bool>("--status") { Description = "Show status line below output with file info, resolution, progress" };
+statusOption.Aliases.Add("-S");
+
 // Mode selection option (supports: ascii, blocks, braille, sixel, iterm2, kitty, auto, list)
 var modeOption = new Option<string?>("--mode") { Description = "Rendering mode: ascii, blocks, braille, sixel, iterm2, kitty, auto, list (shows available modes)" };
 modeOption.Aliases.Add("-m");
@@ -193,6 +197,7 @@ rootCommand.Options.Add(darkCutoffOption);
 rootCommand.Options.Add(lightCutoffOption);
 rootCommand.Options.Add(calibrateOption);
 rootCommand.Options.Add(saveCalibrationOption);
+rootCommand.Options.Add(statusOption);
 rootCommand.Options.Add(modeOption);
 rootCommand.Options.Add(outputGifOption);
 rootCommand.Options.Add(gifLengthOption);
@@ -240,6 +245,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var lightCutoff = parseResult.GetValue(lightCutoffOption);
     var calibrate = parseResult.GetValue(calibrateOption);
     var saveCalibration = parseResult.GetValue(saveCalibrationOption);
+    var showStatus = parseResult.GetValue(statusOption);
     var gifLength = parseResult.GetValue(gifLengthOption);
     var gifFrames = parseResult.GetValue(gifFramesOption);
     var gifFontSize = parseResult.GetValue(gifFontSizeOption);
@@ -753,7 +759,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     explicitHeight: height,
                     loopCount: loop,
                     useAltScreen: !noAltScreen,
-                    targetFps: framerate
+                    targetFps: framerate,
+                    showStatus: showStatus,
+                    fileName: input,
+                    renderMode: "Blocks"
                 );
 
                 await player.PlayAsync(cts.Token);
@@ -781,6 +790,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 {
                     Console.WriteLine(frame.Content);
                     Console.Write("\x1b[0m"); // Reset colors
+                    if (showStatus)
+                    {
+                        var lines = frame.Content.Split('\n');
+                        var frameHeight = lines.Length;
+                        var frameWidth = lines.Length > 0 ? GetVisibleLength(lines[0]) : 0;
+                        DisplayStatusLine(input, null, null, frameWidth, frameHeight, "Blocks", !noColor);
+                    }
                 }
 
                 // Save as JSON document if requested
@@ -823,7 +839,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     explicitHeight: height,
                     loopCount: loop,
                     useAltScreen: !noAltScreen,
-                    targetFps: framerate
+                    targetFps: framerate,
+                    showStatus: showStatus,
+                    fileName: input,
+                    renderMode: "Braille"
                 );
 
                 await player.PlayAsync(cts.Token);
@@ -851,6 +870,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 {
                     Console.WriteLine(frame.Content);
                     Console.Write("\x1b[0m");
+                    if (showStatus)
+                    {
+                        var lines = frame.Content.Split('\n');
+                        var frameHeight = lines.Length;
+                        var frameWidth = lines.Length > 0 ? GetVisibleLength(lines[0]) : 0;
+                        DisplayStatusLine(input, null, null, frameWidth, frameHeight, "Braille", !noColor);
+                    }
                 }
 
                 // Save as JSON document if requested
@@ -902,7 +928,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     explicitHeight: height,
                     loopCount: loop,
                     useAltScreen: !noAltScreen,
-                    targetFps: framerate
+                    targetFps: framerate,
+                    showStatus: showStatus,
+                    fileName: input,
+                    renderMode: "ASCII"
                 );
 
                 await player.PlayAsync(cts.Token);
@@ -980,6 +1009,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 else
                 {
                     OutputFrame(frame, !noColor, outputFile, options);
+                    if (showStatus && outputFile == null)
+                    {
+                        DisplayStatusLine(input, null, null, frame.Width, frame.Height, "ASCII", !noColor);
+                    }
                 }
 
                 // Save as JSON document if requested
@@ -1075,4 +1108,62 @@ static async Task<int> HandleJsonDocument(string path, float speed, int loop, Ca
         Console.Error.WriteLine($"Error loading document: {ex.Message}");
         return 1;
     }
+}
+
+/// <summary>
+/// Display status line below the rendered output with file info, resolution, etc.
+/// </summary>
+static void DisplayStatusLine(
+    string? fileName,
+    int? sourceWidth, int? sourceHeight,
+    int outputWidth, int outputHeight,
+    string renderMode,
+    bool useColor,
+    int? currentFrame = null,
+    int? totalFrames = null)
+{
+    int statusWidth = 120;
+    try { statusWidth = Console.WindowWidth - 1; } catch { }
+
+    var statusLine = new StatusLine(statusWidth, useColor);
+    var info = new StatusLine.StatusInfo
+    {
+        FileName = fileName,
+        SourceWidth = sourceWidth,
+        SourceHeight = sourceHeight,
+        OutputWidth = outputWidth,
+        OutputHeight = outputHeight,
+        RenderMode = renderMode,
+        CurrentFrame = currentFrame,
+        TotalFrames = totalFrames
+    };
+
+    Console.WriteLine(statusLine.Render(info));
+}
+
+/// <summary>
+/// Get visible character count, excluding ANSI escape sequences.
+/// </summary>
+static int GetVisibleLength(string line)
+{
+    int len = 0;
+    bool inEscape = false;
+
+    foreach (char c in line)
+    {
+        if (c == '\x1b')
+        {
+            inEscape = true;
+        }
+        else if (inEscape)
+        {
+            if (c == 'm') inEscape = false;
+        }
+        else
+        {
+            len++;
+        }
+    }
+
+    return len;
 }

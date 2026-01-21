@@ -81,6 +81,16 @@ public class VideoRenderOptions
     public double SceneThreshold { get; set; } = 0.4;
 
     /// <summary>
+    /// Show status line below the rendered output with progress, timing, etc.
+    /// </summary>
+    public bool ShowStatus { get; set; }
+
+    /// <summary>
+    /// Source filename for status display.
+    /// </summary>
+    public string? SourceFileName { get; set; }
+
+    /// <summary>
     /// Create default options suitable for most videos.
     /// </summary>
     public static VideoRenderOptions Default => new()
@@ -175,7 +185,9 @@ public class VideoRenderOptions
         UseAltScreen = UseAltScreen,
         UseHardwareAcceleration = UseHardwareAcceleration,
         RenderMode = RenderMode,
-        SceneThreshold = SceneThreshold
+        SceneThreshold = SceneThreshold,
+        ShowStatus = ShowStatus,
+        SourceFileName = SourceFileName
     };
 }
 

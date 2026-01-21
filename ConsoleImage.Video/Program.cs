@@ -15,7 +15,8 @@ var savedCalibration = CalibrationHelper.Load();
 var rootCommand = new RootCommand("Play video files as ASCII art using FFmpeg");
 
 // Input file argument (optional for --calibrate mode)
-var inputArg = new Argument<FileInfo?>("input")
+// Use string instead of FileInfo for better AOT compatibility
+var inputArg = new Argument<string?>("input")
 {
     Description = "Path to the video file to play",
     Arity = ArgumentArity.ZeroOrOne
@@ -119,16 +120,19 @@ var calibrateOption = new Option<bool>("--calibrate") { Description = "Display a
 // Save calibration option
 var saveCalibrationOption = new Option<bool>("--save") { Description = "Save current --char-aspect to calibration.json (use with --calibrate)" };
 
-// GIF output options
-var outputGifOption = new Option<FileInfo?>("--output-gif") { Description = "Save rendered output as animated GIF instead of playing" };
-outputGifOption.Aliases.Add("-g");
+// Status line option - shows progress, timing, file info below the video
+var statusOption = new Option<bool>("--status") { Description = "Show status line below output with progress, timing, file info" };
+statusOption.Aliases.Add("-S");
+
+// Unified output option - auto-detects format from extension
+// .gif -> animated GIF, .json/.ndjson -> JSON document, other -> text
+var outputOption = new Option<string?>("--output") { Description = "Output file path. Format auto-detected: .gif for animated GIF, .json for JSON document" };
+outputOption.Aliases.Add("-o");
+
+// GIF-specific options (apply when output is .gif)
 var gifFontSizeOption = new Option<int>("--gif-font-size") { Description = "Font size for GIF output (smaller = smaller file)", DefaultValueFactory = _ => 10 };
 var gifScaleOption = new Option<float>("--gif-scale") { Description = "Scale factor for GIF output (0.5 = half size)", DefaultValueFactory = _ => 1.0f };
 var gifColorsOption = new Option<int>("--gif-colors") { Description = "Max colors in GIF palette (16-256, lower = smaller file)", DefaultValueFactory = _ => 64 };
-
-// JSON document output option
-var outputOption = new Option<string?>("--output") { Description = "Output: 'json' or 'json:path.json' for JSON document output" };
-outputOption.Aliases.Add("-o");
 
 // Add all options
 rootCommand.Arguments.Add(inputArg);
@@ -159,15 +163,16 @@ rootCommand.Options.Add(ffmpegPathOption);
 rootCommand.Options.Add(infoOption);
 rootCommand.Options.Add(calibrateOption);
 rootCommand.Options.Add(saveCalibrationOption);
-rootCommand.Options.Add(outputGifOption);
+rootCommand.Options.Add(statusOption);
+rootCommand.Options.Add(outputOption);
 rootCommand.Options.Add(gifFontSizeOption);
 rootCommand.Options.Add(gifScaleOption);
 rootCommand.Options.Add(gifColorsOption);
-rootCommand.Options.Add(outputOption);
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
-    var input = parseResult.GetValue(inputArg);
+    var inputPath = parseResult.GetValue(inputArg);
+    FileInfo? input = !string.IsNullOrEmpty(inputPath) ? new FileInfo(inputPath) : null;
     var width = parseResult.GetValue(widthOption);
     var height = parseResult.GetValue(heightOption);
     var maxWidth = parseResult.GetValue(maxWidthOption);
@@ -195,18 +200,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var showInfo = parseResult.GetValue(infoOption);
     var calibrate = parseResult.GetValue(calibrateOption);
     var saveCalibration = parseResult.GetValue(saveCalibrationOption);
-    var outputGif = parseResult.GetValue(outputGifOption);
+    var showStatus = parseResult.GetValue(statusOption);
     var gifFontSize = parseResult.GetValue(gifFontSizeOption);
     var gifScale = parseResult.GetValue(gifScaleOption);
     var gifColors = parseResult.GetValue(gifColorsOption);
     var output = parseResult.GetValue(outputOption);
 
-    // Parse output option for JSON document output
+    // Parse unified output option - auto-detect format from extension
     bool outputAsJson = false;
+    bool outputAsGif = false;
     string? jsonOutputPath = null;
+    string? gifOutputPath = null;
 
     if (!string.IsNullOrEmpty(output))
     {
+        // Check for explicit format prefixes first
         if (output.Equals("json", StringComparison.OrdinalIgnoreCase))
         {
             outputAsJson = true;
@@ -217,12 +225,40 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             outputAsJson = true;
             jsonOutputPath = output[5..]; // Everything after "json:"
         }
-        else if (output.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        else if (output.Equals("gif", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsGif = true;
+            // Use input filename with .gif extension - will set later when we have input
+        }
+        else if (output.StartsWith("gif:", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsGif = true;
+            gifOutputPath = output[4..]; // Everything after "gif:"
+        }
+        // Auto-detect from extension
+        else if (output.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsGif = true;
+            gifOutputPath = output;
+        }
+        else if (output.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
+                 output.EndsWith(".ndjson", StringComparison.OrdinalIgnoreCase))
         {
             outputAsJson = true;
             jsonOutputPath = output;
         }
+        else
+        {
+            // Unknown extension - default to GIF for video
+            Console.Error.WriteLine($"Warning: Unknown output format for '{output}'. Use .gif for animated GIF or .json for JSON document.");
+            Console.Error.WriteLine("Assuming GIF output. Use 'json:path' prefix for JSON.");
+            outputAsGif = true;
+            gifOutputPath = output.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ? output : output + ".gif";
+        }
     }
+
+    // Create FileInfo for GIF output if path is set
+    FileInfo? outputGif = !string.IsNullOrEmpty(gifOutputPath) ? new FileInfo(gifOutputPath) : null;
 
     // Calibration mode - show test pattern to verify aspect ratio
     if (calibrate)
@@ -296,11 +332,51 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         return 1;
     }
 
-    if (!input.Exists)
+    // For AOT builds, mapped network drives (like X:) may not be accessible.
+    // Try the original path first, then fall back to FileInfo resolution.
+    string inputFullPath = inputPath!;
+
+    // First try the path exactly as given
+    if (!File.Exists(inputFullPath))
     {
-        Console.Error.WriteLine($"Error: File not found: {input.FullName}");
+        // Try FileInfo resolution (handles relative paths)
+        inputFullPath = input.FullName;
+    }
+
+    if (!File.Exists(inputFullPath))
+    {
+        Console.Error.WriteLine($"Error: File not found: {inputPath}");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Troubleshooting:");
+        Console.Error.WriteLine($"  Original path: {inputPath}");
+        Console.Error.WriteLine($"  Resolved path: {input.FullName}");
+
+        // Check if it's a mapped drive issue
+        if (inputPath!.Length >= 2 && inputPath[1] == ':')
+        {
+            char driveLetter = char.ToUpper(inputPath[0]);
+            if (driveLetter >= 'D') // Likely a mapped/network drive
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine($"  Drive {driveLetter}: may be a mapped network drive.");
+                Console.Error.WriteLine("  Mapped drives are user-specific and may not be accessible in some contexts.");
+                Console.Error.WriteLine("  Try using the full UNC path instead (e.g., \\\\server\\share\\path\\file.mkv)");
+            }
+        }
+
+        var dir = Path.GetDirectoryName(inputFullPath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            bool dirExists = false;
+            try { dirExists = Directory.Exists(dir); } catch { }
+            Console.Error.WriteLine($"  Directory exists: {dirExists}");
+        }
+
         return 1;
     }
+
+    // Update input to use the working path
+    input = new FileInfo(inputFullPath);
 
     // Determine JSON output path if needed
     if (outputAsJson && string.IsNullOrEmpty(jsonOutputPath))
@@ -331,6 +407,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             parseResult.GetValue(gifFontSizeOption), parseResult.GetValue(gifScaleOption),
             parseResult.GetValue(gifColorsOption),
             outputAsJson, jsonOutputPath,
+            showStatus,
             cancellationToken);
     }
 
@@ -430,16 +507,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         double gifTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 15.0);
         int frameDelayMs = (int)(1000.0 / gifTargetFps / speed);
 
-        Console.WriteLine($"Rendering video to GIF: {outputGif.FullName}");
-        Console.WriteLine($"Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
-        Console.WriteLine($"Target: {gifTargetFps:F1} fps, frame step {frameStep}");
+        Console.WriteLine($"Rendering video to animated GIF...");
+        Console.WriteLine($"  Output: {outputGif.FullName}");
+        Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+        Console.WriteLine($"  Target: {gifTargetFps:F1} fps, frame step {frameStep}");
+
+        // GIF loop: 0 = infinite, which is the default for GIFs
+        // Only use explicit loop count if user specified it (loop != 1 which is the CLI default)
+        int gifLoopCount = loop != 1 ? loop : 0;
 
         var gifOptions = new GifWriterOptions
         {
             FontSize = gifFontSize,
             Scale = gifScale,
             MaxColors = Math.Clamp(gifColors, 16, 256),
-            LoopCount = loop,
+            LoopCount = gifLoopCount,
             MaxLengthSeconds = duration ?? end - start
         };
         using var gifWriter = new GifWriter(gifOptions);
@@ -470,7 +552,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         int charWidth = pixelWidth / pixelsPerCharWidth;
         int charHeight = pixelHeight / pixelsPerCharHeight;
 
-        Console.WriteLine($"Character output: {charWidth}x{charHeight}, Pixel dimensions: {pixelWidth}x{pixelHeight}");
+        Console.WriteLine($"  Output: {charWidth}x{charHeight} chars ({pixelWidth}x{pixelHeight} pixels)");
+        Console.WriteLine();
 
         // Create final render options with calculated dimensions
         // Width/Height set to exact values so renderer doesn't resize
@@ -487,6 +570,24 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             UseParallelProcessing = true
         };
 
+        // Estimate total frames for status display
+        double effectiveStart = gifStartTime;
+        double effectiveEnd = end ?? videoInfo.Duration;
+        double effectiveDuration = effectiveEnd - effectiveStart;
+        int estimatedTotalFrames = (int)(effectiveDuration * gifTargetFps / frameStep);
+
+        // Create status line renderer if enabled
+        StatusLine? statusRenderer = showStatus ? new StatusLine(charWidth, !noColor) : null;
+        string renderModeName = gifUseBraille ? "Braille" : (gifUseBlocks ? "Blocks" : "ASCII");
+
+        // Note: Status line in GIF output only supported for ASCII mode
+        // Braille and ColorBlocks use pixel-based rendering that can't easily mix with text
+        if (showStatus && (gifUseBraille || gifUseBlocks))
+        {
+            Console.WriteLine("Note: Status line in GIF output is only supported for ASCII mode.");
+            statusRenderer = null;
+        }
+
         await foreach (var frameImage in ffmpeg.StreamFramesAsync(
             input.FullName,
             pixelWidth,
@@ -497,7 +598,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             gifTargetFps,
             cancellationToken))
         {
-            // Render frame based on mode
+            // Render frame based on mode using appropriate specialized renderer
             if (gifUseBraille)
             {
                 using var renderer = new BrailleRenderer(gifRenderOptions);
@@ -515,17 +616,39 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             else
             {
                 using var renderer = new AsciiRenderer(gifRenderOptions);
-                var frame = renderer.RenderImage(frameImage);
-                gifWriter.AddFrame(frame, frameDelayMs);
+                var asciiFrame = renderer.RenderImage(frameImage);
+                string content = asciiFrame.ToAnsiString();
+
+                // Append status line if enabled (ASCII mode only)
+                if (statusRenderer != null)
+                {
+                    var statusInfo = new StatusLine.StatusInfo
+                    {
+                        FileName = input.Name,
+                        SourceWidth = videoInfo.Width,
+                        SourceHeight = videoInfo.Height,
+                        OutputWidth = charWidth,
+                        OutputHeight = charHeight,
+                        RenderMode = renderModeName,
+                        CurrentFrame = renderedCount + 1,
+                        TotalFrames = estimatedTotalFrames,
+                        CurrentTime = TimeSpan.FromSeconds(effectiveStart + (renderedCount * frameStep / gifTargetFps)),
+                        TotalDuration = TimeSpan.FromSeconds(effectiveDuration),
+                        Fps = gifTargetFps
+                    };
+                    content += "\n" + statusRenderer.Render(statusInfo);
+                }
+
+                gifWriter.AddFrame(content, frameDelayMs);
             }
 
             frameImage.Dispose();
             renderedCount++;
-            Console.Write($"\rProcessing frame {renderedCount}...");
+            Console.Write($"\rRendering frames to GIF: {renderedCount}/{estimatedTotalFrames} processed");
         }
 
-        Console.WriteLine($" Done! ({renderedCount} frames)");
-        Console.Write("Saving GIF...");
+        Console.WriteLine($"\rRendering frames to GIF: {renderedCount} frames completed");
+        Console.Write("Encoding and saving GIF file...");
         await gifWriter.SaveAsync(outputGif.FullName, cancellationToken);
         Console.WriteLine($" Saved to {outputGif.FullName}");
         return 0;
@@ -567,10 +690,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         double jsonTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 30.0);
         int frameDelayMs = (int)(1000.0 / jsonTargetFps / speed);
 
-        Console.WriteLine($"Streaming video to JSON: {jsonOutputPath}");
-        Console.WriteLine($"Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
-        Console.WriteLine($"Target: {jsonTargetFps:F1} fps, frame step {frameStep}");
-        Console.WriteLine("Press Ctrl+C to stop (document will auto-finalize)");
+        Console.WriteLine($"Streaming video to JSON document...");
+        Console.WriteLine($"  Output: {jsonOutputPath}");
+        Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+        Console.WriteLine($"  Target: {jsonTargetFps:F1} fps, frame step {frameStep}");
+        Console.WriteLine("  Press Ctrl+C to stop (document will auto-finalize)");
 
         // Use RenderOptions to calculate dimensions
         var tempOptions = new RenderOptions
@@ -591,7 +715,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         int charWidth = pixelWidth / pixelsPerCharWidth;
         int charHeight = pixelHeight / pixelsPerCharHeight;
 
-        Console.WriteLine($"Character output: {charWidth}x{charHeight}");
+        Console.WriteLine($"  Output: {charWidth}x{charHeight} chars");
+        Console.WriteLine();
 
         // Create render options
         var jsonRenderOptions = new RenderOptions
@@ -655,16 +780,17 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                 frameImage.Dispose();
                 renderedCount++;
-                Console.Write($"\rProcessing frame {renderedCount}...");
+                Console.Write($"\rRendering frames to JSON: {renderedCount} written");
             }
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine($" Stopped at frame {renderedCount}.");
+            Console.WriteLine($"\rRendering frames to JSON: stopped at frame {renderedCount}");
         }
 
+        Console.Write("\rFinalizing JSON document...                    ");
         await docWriter.FinalizeAsync(isComplete: !cancellationToken.IsCancellationRequested, cancellationToken);
-        Console.WriteLine($"\nSaved {renderedCount} frames to {jsonOutputPath}");
+        Console.WriteLine($"\rSaved {renderedCount} frames to {jsonOutputPath}              ");
         return 0;
     }
 
@@ -735,7 +861,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         LoopCount = loop,
         UseAltScreen = !noAltScreen,
         UseHardwareAcceleration = !noHwAccel,
-        RenderMode = renderMode
+        RenderMode = renderMode,
+        ShowStatus = showStatus,
+        SourceFileName = input.FullName
     };
 
     try
@@ -827,6 +955,7 @@ static async Task<int> HandleImageFile(
     FileInfo? outputGif,
     int gifFontSize, float gifScale, int gifColors,
     bool outputAsJson, string? jsonOutputPath,
+    bool showStatus,
     CancellationToken cancellationToken)
 {
     ConsoleHelper.EnableAnsiSupport();
@@ -863,46 +992,98 @@ static async Task<int> HandleImageFile(
     if (outputGif != null)
     {
         // GIF output mode
+        // GIF loop: 0 = infinite, which is the default for GIFs
+        int gifLoopCount = loop != 1 ? loop : 0;
+
         var gifOptions = new GifWriterOptions
         {
             FontSize = gifFontSize,
             Scale = gifScale,
             MaxColors = Math.Clamp(gifColors, 16, 256),
-            LoopCount = loop
+            LoopCount = gifLoopCount
         };
         using var gifWriter = new GifWriter(gifOptions);
 
         if (isAnimatedGif)
         {
             // Render animated GIF frames
-            Console.WriteLine($"Rendering animated GIF to: {outputGif.FullName}");
+            Console.WriteLine($"Rendering animated GIF...");
+            Console.WriteLine($"  Output: {outputGif.FullName}");
+
+            // Status line in GIF output only supported for ASCII mode
+            string renderModeName = useBraille ? "Braille" : (useBlocks ? "Blocks" : "ASCII");
+            StatusLine? statusRenderer = null;
+            if (showStatus)
+            {
+                if (useBraille || useBlocks)
+                {
+                    Console.WriteLine("Note: Status line in GIF output is only supported for ASCII mode.");
+                }
+                else
+                {
+                    statusRenderer = new StatusLine(maxWidth, !noColor);
+                }
+            }
 
             if (useBraille)
             {
                 using var renderer = new BrailleRenderer(options);
                 var frames = renderer.RenderGif(input.FullName);
-                foreach (var frame in frames)
+                var frameList = frames.ToList();
+                int totalFrames = frameList.Count;
+                int frameIndex = 0;
+
+                foreach (var frame in frameList)
                 {
                     gifWriter.AddBrailleFrame(frame, frame.DelayMs);
+                    frameIndex++;
+                    Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
                 }
+                Console.WriteLine();
             }
             else if (useBlocks)
             {
                 using var renderer = new ColorBlockRenderer(options);
                 var frames = renderer.RenderGif(input.FullName);
-                foreach (var frame in frames)
+                var frameList = frames.ToList();
+                int totalFrames = frameList.Count;
+                int frameIndex = 0;
+
+                foreach (var frame in frameList)
                 {
                     gifWriter.AddColorBlockFrame(frame, frame.DelayMs);
+                    frameIndex++;
+                    Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
                 }
+                Console.WriteLine();
             }
             else
             {
                 using var renderer = new AsciiRenderer(options);
                 var frames = renderer.RenderGif(input.FullName);
-                foreach (var frame in frames)
+                var frameList = frames.ToList();
+                int totalFrames = frameList.Count;
+                int frameIndex = 0;
+
+                foreach (var frame in frameList)
                 {
-                    gifWriter.AddFrame(frame, frame.DelayMs);
+                    string content = frame.ToAnsiString();
+                    if (statusRenderer != null)
+                    {
+                        var statusInfo = new StatusLine.StatusInfo
+                        {
+                            FileName = input.Name,
+                            RenderMode = renderModeName,
+                            CurrentFrame = frameIndex + 1,
+                            TotalFrames = totalFrames
+                        };
+                        content += "\n" + statusRenderer.Render(statusInfo);
+                    }
+                    gifWriter.AddFrame(content, frame.DelayMs);
+                    frameIndex++;
+                    Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
                 }
+                Console.WriteLine();
             }
         }
         else

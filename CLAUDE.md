@@ -23,7 +23,8 @@ ConsoleImage/
 │   ├── Dithering.cs             # Floyd-Steinberg dithering
 │   ├── EdgeDirection.cs         # Edge detection and directional chars
 │   ├── CalibrationHelper.cs     # Aspect ratio calibration with circle test pattern
-│   └── ConsoleHelper.cs         # Windows ANSI support enabler
+│   ├── ConsoleHelper.cs         # Windows ANSI support enabler
+│   └── StatusLine.cs            # Status display below rendered output
 ├── ConsoleImage/                # CLI tool for images/GIFs
 │   ├── Program.cs               # Command-line interface
 │   └── calibration.json         # Saved aspect ratio calibration
@@ -85,6 +86,14 @@ Plays back saved JSON documents with animation support.
 - Respects saved settings (speed, loop count)
 - Can override settings at playback time
 
+### StatusLine
+Displays information below rendered output during playback.
+- Shows filename, resolution (source → output), render mode
+- Progress bar with frame count or time position
+- Loop counter for animations
+- Use `--status` or `-S` CLI flag to enable
+- Status in GIF output only supported for ASCII mode (pixel-based modes can't mix text)
+
 ### CalibrationHelper
 Manages terminal font aspect ratio calibration. Each render mode (ASCII, Blocks, Braille)
 maps pixels to characters differently and may need separate calibration.
@@ -131,6 +140,13 @@ cursor is ON line N-1, not below it.
 **Fixed by:** Move up `maxHeight - 1` lines, not `maxHeight` lines.
 Use `\x1b[{n}A` to move up n lines in one command.
 
+### Braille Mode Solarization
+Braille rendering can appear "solarized" (weird color mixing) if colors are averaged
+from all pixels in a cell instead of just the visible dots.
+**Fixed by:** Only sample colors from pixels where dots are actually displayed.
+The dot pattern is determined by brightness threshold; colors should come from the
+same pixels that contribute to the visible pattern.
+
 ## CLI Usage
 
 ```bash
@@ -146,18 +162,43 @@ consoleimage photo.png --blocks
 # Braille mode (ultra-high resolution)
 consoleimage photo.png --braille
 
+# Show status line with progress, timing, file info
+consoleimage animation.gif --status
+consolevideo movie.mp4 -S -w 120
+
 # Frame sampling for large GIFs
 consoleimage big.gif --frame-sample 2  # Every 2nd frame
 
-# Save to JSON document
-consoleimage animation.gif -o json:output.json
+# Output to GIF (auto-detected from .gif extension)
+consolevideo movie.mp4 -o output.gif -w 100
+consoleimage animation.gif -o converted.gif
+
+# Output to JSON (auto-detected from .json extension)
+consoleimage animation.gif -o output.json
+
+# Explicit format prefixes also work
+consolevideo movie.mp4 -o gif:output.gif
+consolevideo movie.mp4 -o json:movie.ndjson
 
 # Play saved JSON document
 consoleimage output.json
-
-# Stream long video to NDJSON (writes frames incrementally)
-consolevideo movie.mp4 -o json:movie.ndjson
+consolevideo output.json
 ```
+
+### Output Options
+
+The `-o` / `--output` option auto-detects format from file extension:
+- `.gif` → Animated GIF output (loops infinitely by default)
+- `.json` / `.ndjson` → JSON document output
+
+You can also use explicit prefixes: `gif:path` or `json:path`
+
+GIF output settings:
+- `--gif-font-size` - Font size for text rendering (default: 10)
+- `--gif-scale` - Scale factor (default: 1.0)
+- `--gif-colors` - Max palette colors 16-256 (default: 64)
+
+Note: GIFs loop infinitely by default. Use `-l 1` for single play.
 
 ### Calibration
 
@@ -198,11 +239,12 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `-h, --height` - Output height in characters
 - `-a, --aspect-ratio` - Character aspect ratio (width/height)
 - `-s, --speed` - Animation speed multiplier
+- `-S, --status` - Show status line below output (progress, timing, file info)
 - `-l, --loop` - Loop count (0 = infinite)
 - `-f, --frame-sample` - Frame sampling rate (skip frames)
 - `-b, --blocks` - Use colored Unicode blocks
 - `-B, --braille` - Use braille characters (2x4 dots per cell)
-- `-o, --output` - Output: file, `gif:file.gif`, `json:file.json`
+- `-o, --output` - Output file (auto-detects .gif or .json from extension)
 - `--calibrate` - Show aspect ratio calibration pattern
 - `--save` - Save calibration to calibration.json
 - `--no-color` - Disable color output
@@ -214,6 +256,29 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 dotnet build
 dotnet run --project ConsoleImage -- image.jpg
 ```
+
+### AOT Publishing
+
+Native AOT publishing requires Visual Studio C++ build tools and vswhere.exe in PATH.
+Use the provided PowerShell scripts which set up the environment automatically:
+
+```powershell
+# Publish consolevideo with AOT
+.\ConsoleImage.Video\build-aot.ps1
+
+# Publish consoleimage with AOT
+.\ConsoleImage\build-aot.ps1
+```
+
+The scripts:
+1. Add vswhere.exe to PATH (`C:\Program Files (x86)\Microsoft Visual Studio\Installer`)
+2. Launch VS Developer PowerShell to set up MSVC toolchain
+3. Run `dotnet publish` with AOT
+
+Output location: `bin\Release\net10.0\win-x64\publish\`
+
+**Important**: Use `string?` for CLI arguments (not `FileInfo?`) for AOT compatibility.
+System.CommandLine's `FileInfo` argument type can have issues resolving paths in AOT builds.
 
 ## Dependencies
 

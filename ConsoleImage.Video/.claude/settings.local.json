@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet publish:*)",
+      "Bash(cmd /c \"\"\"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\Common7\\\\Tools\\\\VsDevCmd.bat\"\" && dotnet publish E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\ConsoleImage.Video.csproj -c Release -r win-x64\")",
+      "Bash(dir:*)",
+      "Bash(cmd /c:*)",
+      "Bash(powershell:*)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consolevideo.exe\" \"X:\\\\Movies\\\\Superman.2025.1080p.WEB.h264-ETHEL.mkv\" --info)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe\" --help)",
+      "Bash(dotnet run:*)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe\" \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\icon.png\" --status -w 40)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consolevideo.exe\" \"X:\\\\Movies\\\\Superman.2025.1080p.WEB.h264-ETHEL.mkv\" --info --status)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consolevideo.exe\" \"X:\\\\Movies\\\\Superman.2025.1080p.WEB.h264-ETHEL.mkv\" -w 60 -t 2 --status)"
+    ]
+  }
+}

@@ -11,6 +11,22 @@
         <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
         <OptimizationPreference>Size</OptimizationPreference>
+
+        <!-- Additional size optimizations -->
+        <StripSymbols>true</StripSymbols>
+        <DebugType>none</DebugType>
+        <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+        <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+        <UseSystemResourceKeys>true</UseSystemResourceKeys>
+        <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+        <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+        <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+        <EventSourceSupport>false</EventSourceSupport>
+        <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+        <StackTraceSupport>false</StackTraceSupport>
+        <TrimMode>full</TrimMode>
+        <IlcGenerateMstatFile>false</IlcGenerateMstatFile>
+        <IlcGenerateDgmlFile>false</IlcGenerateDgmlFile>
     </PropertyGroup>
 
     <ItemGroup>

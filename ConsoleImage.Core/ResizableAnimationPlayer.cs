@@ -48,6 +48,10 @@ public class ResizableAnimationPlayer
     private readonly int _loopCount;
     private readonly bool _useAltScreen;
     private readonly float? _targetFps;
+    private readonly bool _showStatus;
+    private readonly string? _fileName;
+    private readonly string? _renderMode;
+    private readonly StatusLine? _statusLine;
 
     private int _lastConsoleWidth;
     private int _lastConsoleHeight;
@@ -55,6 +59,7 @@ public class ResizableAnimationPlayer
     private string[]? _frameBuffers;
     private string[]? _transitionBuffers; // Interpolated frames for smooth looping
     private int _transitionDelayMs; // Delay for each transition frame
+    private int _maxFrameHeight;
 
     public ResizableAnimationPlayer(
         RenderFramesDelegate renderFrames,
@@ -62,7 +67,10 @@ public class ResizableAnimationPlayer
         int? explicitHeight = null,
         int loopCount = 0,
         bool useAltScreen = true,
-        float? targetFps = null)
+        float? targetFps = null,
+        bool showStatus = false,
+        string? fileName = null,
+        string? renderMode = null)
     {
         _renderFrames = renderFrames;
         _explicitWidth = explicitWidth;
@@ -70,6 +78,16 @@ public class ResizableAnimationPlayer
         _loopCount = loopCount;
         _useAltScreen = useAltScreen;
         _targetFps = targetFps;
+        _showStatus = showStatus;
+        _fileName = fileName;
+        _renderMode = renderMode;
+
+        if (_showStatus)
+        {
+            int statusWidth = 120;
+            try { statusWidth = Console.WindowWidth - 1; } catch { }
+            _statusLine = new StatusLine(statusWidth, useColor: true);
+        }
     }
 
     /// <summary>
@@ -121,8 +139,25 @@ public class ResizableAnimationPlayer
                         if (_frames == null || _frameBuffers == null) break;
                     }
 
-                    // Write frame
+                    // Write frame with status line
                     Console.Write(_frameBuffers![i]);
+
+                    // Write status line if enabled
+                    if (_statusLine != null && _frames != null)
+                    {
+                        var statusInfo = new StatusLine.StatusInfo
+                        {
+                            FileName = _fileName,
+                            RenderMode = _renderMode,
+                            CurrentFrame = i + 1,
+                            TotalFrames = _frames.Count,
+                            LoopNumber = loopsDone + 1,
+                            TotalLoops = _loopCount
+                        };
+                        // Position cursor below frame and render status
+                        Console.Write($"\x1b[{_maxFrameHeight + 1};1H\x1b[2K{_statusLine.Render(statusInfo)}");
+                    }
+
                     Console.Out.Flush();
 
                     // Delay
@@ -198,14 +233,14 @@ public class ResizableAnimationPlayer
 
         // Build frame buffers using diff-based rendering to eliminate flicker
         var frameLines = new string[_frames.Count][];
-        int maxFrameHeight = 0;
+        _maxFrameHeight = 0;
         int maxLineWidth = 0;
 
         for (int f = 0; f < _frames.Count; f++)
         {
             frameLines[f] = _frames[f].Content.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
-            if (frameLines[f].Length > maxFrameHeight)
-                maxFrameHeight = frameLines[f].Length;
+            if (frameLines[f].Length > _maxFrameHeight)
+                _maxFrameHeight = frameLines[f].Length;
             foreach (var line in frameLines[f])
             {
                 // Count visible characters (skip ANSI sequences)
@@ -214,6 +249,7 @@ public class ResizableAnimationPlayer
                     maxLineWidth = visibleLen;
             }
         }
+        int maxFrameHeight = _maxFrameHeight;
 
         _frameBuffers = new string[_frames.Count];
 

@@ -117,13 +117,15 @@ public class BrailleRenderer : IDisposable
                                 : brightness[idx] < threshold;
 
                             if (isDot)
+                            {
                                 brailleCode |= DotBits[dy * 2 + dx];
-
-                            var c = colors[idx];
-                            totalR += c.R;
-                            totalG += c.G;
-                            totalB += c.B;
-                            colorCount++;
+                                // Only average colors from visible dots to avoid solarization
+                                var c = colors[idx];
+                                totalR += c.R;
+                                totalG += c.G;
+                                totalB += c.B;
+                                colorCount++;
+                            }
                         }
                     }
 
@@ -210,13 +212,15 @@ public class BrailleRenderer : IDisposable
                                 : brightness[idx] < threshold;
 
                             if (isDot)
+                            {
                                 brailleCode |= DotBits[dy * 2 + dx];
-
-                            var c = colors[idx];
-                            totalR += c.R;
-                            totalG += c.G;
-                            totalB += c.B;
-                            colorCount++;
+                                // Only average colors from visible dots to avoid solarization
+                                var c = colors[idx];
+                                totalR += c.R;
+                                totalG += c.G;
+                                totalB += c.B;
+                                colorCount++;
+                            }
                         }
                     }
 
