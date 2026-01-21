@@ -137,6 +137,39 @@ outputOption.Aliases.Add("-o");
 var gifFontSizeOption = new Option<int>("--gif-font-size") { Description = "Font size for GIF output (smaller = smaller file)", DefaultValueFactory = _ => 10 };
 var gifScaleOption = new Option<float>("--gif-scale") { Description = "Scale factor for GIF output (0.5 = half size)", DefaultValueFactory = _ => 1.0f };
 var gifColorsOption = new Option<int>("--gif-colors") { Description = "Max colors in GIF palette (16-256, lower = smaller file)", DefaultValueFactory = _ => 64 };
+var gifFpsOption = new Option<int>("--gif-fps") { Description = "Target FPS for GIF output (lower = smaller file)", DefaultValueFactory = _ => 15 };
+var gifLengthOption = new Option<double?>("--gif-length") { Description = "Max length of GIF output in seconds" };
+var gifFramesOption = new Option<int?>("--gif-frames") { Description = "Max number of frames for GIF output" };
+var gifWidthOption = new Option<int?>("--gif-width") { Description = "GIF output width in characters (overrides -w for GIF)" };
+var gifHeightOption = new Option<int?>("--gif-height") { Description = "GIF output height in characters (overrides -h for GIF)" };
+
+// Options matching consoleimage for consistency
+var noInvertOption = new Option<bool>("--no-invert") { Description = "Don't invert output (for light terminal backgrounds)" };
+
+var edgeOption = new Option<bool>("--edge") { Description = "Enable edge detection to enhance foreground visibility" };
+edgeOption.Aliases.Add("-e");
+
+var bgThresholdOption = new Option<float?>("--bg-threshold") { Description = "Background suppression threshold (0.0-1.0). Pixels above this brightness are suppressed." };
+
+var darkBgThresholdOption = new Option<float?>("--dark-bg-threshold") { Description = "Dark background suppression threshold (0.0-1.0). Pixels below this brightness are suppressed." };
+
+var autoBgOption = new Option<bool>("--auto-bg") { Description = "Automatically detect and suppress background" };
+
+var noParallelOption = new Option<bool>("--no-parallel") { Description = "Disable parallel processing" };
+
+var noDitherOption = new Option<bool>("--no-dither") { Description = "Disable Floyd-Steinberg dithering" };
+
+var noEdgeCharsOption = new Option<bool>("--no-edge-chars") { Description = "Disable directional edge characters (/ \\ | -)" };
+
+var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (for LLM tool calls and programmatic use)" };
+jsonOption.Aliases.Add("-j");
+
+var darkCutoffOption = new Option<float?>("--dark-cutoff") { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0). Disabled by default." };
+
+var lightCutoffOption = new Option<float?>("--light-cutoff") { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0). Disabled by default." };
+
+var modeOption = new Option<string?>("--mode") { Description = "Rendering mode: ascii, blocks, braille, sixel, iterm2, kitty, auto, list" };
+modeOption.Aliases.Add("-m");
 
 // Add all options
 rootCommand.Arguments.Add(inputArg);
@@ -173,6 +206,23 @@ rootCommand.Options.Add(outputOption);
 rootCommand.Options.Add(gifFontSizeOption);
 rootCommand.Options.Add(gifScaleOption);
 rootCommand.Options.Add(gifColorsOption);
+rootCommand.Options.Add(gifFpsOption);
+rootCommand.Options.Add(gifLengthOption);
+rootCommand.Options.Add(gifFramesOption);
+rootCommand.Options.Add(gifWidthOption);
+rootCommand.Options.Add(gifHeightOption);
+rootCommand.Options.Add(noInvertOption);
+rootCommand.Options.Add(edgeOption);
+rootCommand.Options.Add(bgThresholdOption);
+rootCommand.Options.Add(darkBgThresholdOption);
+rootCommand.Options.Add(autoBgOption);
+rootCommand.Options.Add(noParallelOption);
+rootCommand.Options.Add(noDitherOption);
+rootCommand.Options.Add(noEdgeCharsOption);
+rootCommand.Options.Add(jsonOption);
+rootCommand.Options.Add(darkCutoffOption);
+rootCommand.Options.Add(lightCutoffOption);
+rootCommand.Options.Add(modeOption);
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
@@ -210,7 +260,24 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var gifFontSize = parseResult.GetValue(gifFontSizeOption);
     var gifScale = parseResult.GetValue(gifScaleOption);
     var gifColors = parseResult.GetValue(gifColorsOption);
+    var gifFps = parseResult.GetValue(gifFpsOption);
+    var gifLength = parseResult.GetValue(gifLengthOption);
+    var gifFrames = parseResult.GetValue(gifFramesOption);
+    var gifWidth = parseResult.GetValue(gifWidthOption);
+    var gifHeight = parseResult.GetValue(gifHeightOption);
     var output = parseResult.GetValue(outputOption);
+    var noInvert = parseResult.GetValue(noInvertOption);
+    var enableEdge = parseResult.GetValue(edgeOption);
+    var bgThreshold = parseResult.GetValue(bgThresholdOption);
+    var darkBgThreshold = parseResult.GetValue(darkBgThresholdOption);
+    var autoBg = parseResult.GetValue(autoBgOption);
+    var noParallel = parseResult.GetValue(noParallelOption);
+    var noDither = parseResult.GetValue(noDitherOption);
+    var noEdgeChars = parseResult.GetValue(noEdgeCharsOption);
+    var jsonOutput = parseResult.GetValue(jsonOption);
+    var darkCutoff = parseResult.GetValue(darkCutoffOption);
+    var lightCutoff = parseResult.GetValue(lightCutoffOption);
+    var mode = parseResult.GetValue(modeOption);
 
     // Parse unified output option - auto-detect format from extension
     bool outputAsJson = false;
@@ -583,8 +650,16 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             ContrastPower = contrast,
             Gamma = gamma,
             UseColor = !noColor,
-            Invert = true,
-            UseParallelProcessing = true
+            Invert = !noInvert,
+            UseParallelProcessing = !noParallel,
+            EnableEdgeDetection = enableEdge,
+            BackgroundThreshold = bgThreshold,
+            DarkBackgroundThreshold = darkBgThreshold,
+            AutoBackgroundSuppression = autoBg,
+            EnableDithering = !noDither,
+            EnableEdgeDirectionChars = !noEdgeChars,
+            DarkTerminalBrightnessThreshold = darkCutoff,
+            LightTerminalBrightnessThreshold = lightCutoff
         };
 
         // Estimate total frames for status display
@@ -736,8 +811,16 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             ContrastPower = contrast,
             Gamma = gamma,
             UseColor = !noColor,
-            Invert = true,
-            UseParallelProcessing = true
+            Invert = !noInvert,
+            UseParallelProcessing = !noParallel,
+            EnableEdgeDetection = enableEdge,
+            BackgroundThreshold = bgThreshold,
+            DarkBackgroundThreshold = darkBgThreshold,
+            AutoBackgroundSuppression = autoBg,
+            EnableDithering = !noDither,
+            EnableEdgeDirectionChars = !noEdgeChars,
+            DarkTerminalBrightnessThreshold = darkCutoff,
+            LightTerminalBrightnessThreshold = lightCutoff
         };
 
         string renderModeName = jsonUseBraille ? "Braille" : (jsonUseBlocks ? "ColorBlocks" : "ASCII");
@@ -854,10 +937,16 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             ContrastPower = contrast,
             Gamma = gamma,
             UseColor = !noColor,
-            Invert = true,
-            UseParallelProcessing = true,
-            DarkTerminalBrightnessThreshold = 0.1f,
-            LightTerminalBrightnessThreshold = 0.9f
+            Invert = !noInvert,
+            UseParallelProcessing = !noParallel,
+            EnableEdgeDetection = enableEdge,
+            BackgroundThreshold = bgThreshold,
+            DarkBackgroundThreshold = darkBgThreshold,
+            AutoBackgroundSuppression = autoBg,
+            EnableDithering = !noDither,
+            EnableEdgeDirectionChars = !noEdgeChars,
+            DarkTerminalBrightnessThreshold = darkCutoff,
+            LightTerminalBrightnessThreshold = lightCutoff
         },
         StartTime = start,
         EndTime = end,

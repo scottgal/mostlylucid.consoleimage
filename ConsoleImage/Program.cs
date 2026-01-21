@@ -136,8 +136,8 @@ var noEdgeDirOption = new Option<bool>("--no-edge-chars") { Description = "Disab
 var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (for LLM tool calls and programmatic use)" };
 jsonOption.Aliases.Add("-j");
 
-var darkCutoffOption = new Option<float?>("--dark-cutoff") { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0, default: 0.1). Use 0 to disable." };
-var lightCutoffOption = new Option<float?>("--light-cutoff") { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0, default: 0.9). Use 1 to disable." };
+var darkCutoffOption = new Option<float?>("--dark-cutoff") { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0). Disabled by default." };
+var lightCutoffOption = new Option<float?>("--light-cutoff") { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0). Disabled by default." };
 
 // Calibration options
 var calibrateOption = new Option<bool>("--calibrate") { Description = "Display aspect ratio calibration pattern (should show a circle)" };
@@ -520,8 +520,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         EnableEdgeDirectionChars = !noEdgeChars,
         // Brightness thresholds for terminal optimization
         // A value of 0 for dark cutoff or 1 for light cutoff effectively disables that threshold
-        DarkTerminalBrightnessThreshold = darkCutoff ?? 0.1f,
-        LightTerminalBrightnessThreshold = lightCutoff ?? 0.9f
+        DarkTerminalBrightnessThreshold = darkCutoff,
+        LightTerminalBrightnessThreshold = lightCutoff
     };
 
     try
