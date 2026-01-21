@@ -138,6 +138,9 @@ public sealed class FFmpegService : IDisposable
     {
         if (_hwAccelType == "cuda" && _useHardwareAcceleration)
         {
+            // hwdownload transfers from GPU to CPU memory
+            // format=nv12 is required because that's the native format for CUDA decoded frames
+            // The final -pix_fmt rgba will handle RGB conversion with proper color space
             return "hwdownload,format=nv12,";
         }
         return "";

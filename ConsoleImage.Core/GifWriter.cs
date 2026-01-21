@@ -24,6 +24,11 @@ public class GifWriter : IDisposable
     }
 
     /// <summary>
+    /// Number of frames currently added.
+    /// </summary>
+    public int FrameCount => _useImageMode ? _imageFrames.Count : _frames.Count;
+
+    /// <summary>
     /// Add a frame to the GIF.
     /// </summary>
     /// <param name="asciiContent">The ASCII art content (with or without ANSI codes)</param>
@@ -153,6 +158,10 @@ public class GifWriter : IDisposable
         return image;
     }
 
+    // Pre-compiled regex for ColorBlock/Braille parsing
+    private static readonly System.Text.RegularExpressions.Regex AnsiOrCharRegex =
+        new(@"\x1b\[([0-9;]*)m|([^\x1b])", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     /// <summary>
     /// Parse a line of ColorBlock output to extract top/bottom colors for each cell.
     /// </summary>
@@ -162,8 +171,7 @@ public class GifWriter : IDisposable
         Color currentFg = _options.ForegroundColor;
         Color currentBg = _options.BackgroundColor;
 
-        var regex = new System.Text.RegularExpressions.Regex(@"\x1b\[([0-9;]*)m|([^\x1b])");
-        foreach (System.Text.RegularExpressions.Match match in regex.Matches(line))
+        foreach (System.Text.RegularExpressions.Match match in AnsiOrCharRegex.Matches(line))
         {
             if (match.Groups[1].Success)
             {
@@ -198,8 +206,7 @@ public class GifWriter : IDisposable
         var result = new List<(char, Color)>();
         Color currentFg = _options.ForegroundColor;
 
-        var regex = new System.Text.RegularExpressions.Regex(@"\x1b\[([0-9;]*)m|([^\x1b])");
-        foreach (System.Text.RegularExpressions.Match match in regex.Matches(line))
+        foreach (System.Text.RegularExpressions.Match match in AnsiOrCharRegex.Matches(line))
         {
             if (match.Groups[1].Success)
             {
@@ -434,6 +441,10 @@ public class GifWriter : IDisposable
         }
     }
 
+    // Pre-compiled regex for better performance
+    private static readonly System.Text.RegularExpressions.Regex AnsiColorRegex =
+        new(@"\x1b\[([0-9;]*)m", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     /// <summary>
     /// Parse ANSI color codes and return text segments with their colors.
     /// </summary>
@@ -441,10 +452,9 @@ public class GifWriter : IDisposable
     {
         var result = new List<(string Text, Color Color)>();
         var currentColor = _options.ForegroundColor;
-        var regex = new System.Text.RegularExpressions.Regex(@"\x1b\[([0-9;]*)m");
         int lastIndex = 0;
 
-        foreach (System.Text.RegularExpressions.Match match in regex.Matches(text))
+        foreach (System.Text.RegularExpressions.Match match in AnsiColorRegex.Matches(text))
         {
             // Add text before this escape sequence
             if (match.Index > lastIndex)
@@ -653,6 +663,187 @@ public class GifWriter : IDisposable
         await Task.Run(() => Save(outputPath), cancellationToken);
     }
 
+    /// <summary>
+    /// Save all frames as an animated GIF with progress reporting.
+    /// </summary>
+    /// <param name="outputPath">Output file path</param>
+    /// <param name="progress">Progress callback (0.0 to 1.0)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task SaveAsync(string outputPath, IProgress<double>? progress, CancellationToken cancellationToken = default)
+    {
+        await Task.Run(() => SaveWithProgress(outputPath, progress), cancellationToken);
+    }
+
+    private void SaveWithProgress(string outputPath, IProgress<double>? progress)
+    {
+        if (_useImageMode)
+        {
+            SaveImageFramesWithProgress(outputPath, progress);
+            return;
+        }
+
+        if (_frames.Count == 0)
+            throw new InvalidOperationException("No frames to save");
+
+        // Apply frame limits
+        var framesToProcess = _frames.AsEnumerable();
+        if (_options.MaxFrames.HasValue && _options.MaxFrames.Value > 0)
+            framesToProcess = framesToProcess.Take(_options.MaxFrames.Value);
+        if (_options.MaxLengthSeconds.HasValue && _options.MaxLengthSeconds.Value > 0)
+        {
+            double totalMs = 0;
+            var limitedFrames = new List<(string Content, int DelayMs)>();
+            foreach (var frame in framesToProcess)
+            {
+                if (totalMs / 1000.0 >= _options.MaxLengthSeconds.Value) break;
+                limitedFrames.Add(frame);
+                totalMs += frame.DelayMs;
+            }
+            framesToProcess = limitedFrames;
+        }
+        var finalFrames = framesToProcess.ToList();
+
+        if (finalFrames.Count == 0)
+            throw new InvalidOperationException("No frames to save after applying limits");
+
+        var firstLines = finalFrames[0].Content.Split('\n');
+        var maxWidth = firstLines.Max(l => StripAnsi(l).Length);
+        var lineCount = firstLines.Length;
+
+        int charWidth = (int)(_options.FontSize * 6 / 10 * _options.Scale);
+        int charHeight = (int)((_options.FontSize + 2) * _options.Scale);
+        int scaledPadding = (int)(_options.Padding * _options.Scale);
+        int imageWidth = maxWidth * charWidth + scaledPadding * 2;
+        int imageHeight = lineCount * charHeight + scaledPadding * 2;
+
+        using var gif = new Image<Rgba32>(imageWidth, imageHeight);
+        var scaledFontSize = (int)(_options.FontSize * _options.Scale);
+        var font = GetMonospaceFont(Math.Max(6, scaledFontSize));
+
+        int totalSteps = finalFrames.Count + 2; // frames + quantize + save
+
+        for (int i = 0; i < finalFrames.Count; i++)
+        {
+            var (content, delayMs) = finalFrames[i];
+            var lines = content.Split('\n');
+
+            using var frameImage = new Image<Rgba32>(imageWidth, imageHeight);
+            frameImage.Mutate(ctx => ctx.Fill(_options.BackgroundColor));
+
+            var y = scaledPadding;
+            foreach (var line in lines)
+            {
+                DrawColoredLine(frameImage, line, scaledPadding, y, charWidth, font);
+                y += charHeight;
+            }
+
+            if (i == 0)
+            {
+                frameImage.ProcessPixelRows(gif, (sourceAccessor, targetAccessor) =>
+                {
+                    for (int row = 0; row < sourceAccessor.Height; row++)
+                    {
+                        sourceAccessor.GetRowSpan(row).CopyTo(targetAccessor.GetRowSpan(row));
+                    }
+                });
+                gif.Frames.RootFrame.Metadata.GetGifMetadata().FrameDelay = delayMs / 10;
+            }
+            else
+            {
+                var frame = gif.Frames.AddFrame(frameImage.Frames.RootFrame);
+                frame.Metadata.GetGifMetadata().FrameDelay = delayMs / 10;
+            }
+
+            progress?.Report((double)(i + 1) / totalSteps);
+        }
+
+        var gifMetadata = gif.Metadata.GetGifMetadata();
+        gifMetadata.RepeatCount = (ushort)_options.LoopCount;
+
+        if (_options.MaxColors < 256)
+        {
+            gif.Mutate(ctx => ctx.Quantize(new SixLabors.ImageSharp.Processing.Processors.Quantization.OctreeQuantizer(
+                new SixLabors.ImageSharp.Processing.Processors.Quantization.QuantizerOptions
+                {
+                    MaxColors = Math.Clamp(_options.MaxColors, 2, 256)
+                })));
+        }
+        progress?.Report((double)(finalFrames.Count + 1) / totalSteps);
+
+        var encoder = new GifEncoder { ColorTableMode = GifColorTableMode.Local };
+        gif.SaveAsGif(outputPath, encoder);
+        progress?.Report(1.0);
+    }
+
+    private void SaveImageFramesWithProgress(string outputPath, IProgress<double>? progress)
+    {
+        if (_imageFrames.Count == 0)
+            throw new InvalidOperationException("No image frames to save");
+
+        var framesToProcess = _imageFrames.AsEnumerable();
+        if (_options.MaxFrames.HasValue && _options.MaxFrames.Value > 0)
+            framesToProcess = framesToProcess.Take(_options.MaxFrames.Value);
+
+        var finalFrames = framesToProcess.ToList();
+        if (finalFrames.Count == 0)
+            throw new InvalidOperationException("No frames after limits");
+
+        var (firstImg, _) = finalFrames[0];
+        int width = firstImg.Width;
+        int height = firstImg.Height;
+
+        using var gif = new Image<Rgba32>(width, height);
+        int totalSteps = finalFrames.Count + 2;
+
+        for (int i = 0; i < finalFrames.Count; i++)
+        {
+            var (frameImg, delayMs) = finalFrames[i];
+
+            if (i == 0)
+            {
+                frameImg.ProcessPixelRows(gif, (src, tgt) =>
+                {
+                    for (int y = 0; y < src.Height; y++)
+                        src.GetRowSpan(y).CopyTo(tgt.GetRowSpan(y));
+                });
+                gif.Frames.RootFrame.Metadata.GetGifMetadata().FrameDelay = delayMs / 10;
+            }
+            else
+            {
+                var resized = frameImg;
+                if (frameImg.Width != width || frameImg.Height != height)
+                {
+                    resized = frameImg.Clone();
+                    resized.Mutate(x => x.Resize(width, height));
+                }
+
+                var frame = gif.Frames.AddFrame(resized.Frames.RootFrame);
+                frame.Metadata.GetGifMetadata().FrameDelay = delayMs / 10;
+
+                if (resized != frameImg) resized.Dispose();
+            }
+
+            progress?.Report((double)(i + 1) / totalSteps);
+        }
+
+        var gifMetadata = gif.Metadata.GetGifMetadata();
+        gifMetadata.RepeatCount = (ushort)_options.LoopCount;
+
+        if (_options.MaxColors < 256)
+        {
+            gif.Mutate(ctx => ctx.Quantize(new SixLabors.ImageSharp.Processing.Processors.Quantization.OctreeQuantizer(
+                new SixLabors.ImageSharp.Processing.Processors.Quantization.QuantizerOptions
+                {
+                    MaxColors = Math.Clamp(_options.MaxColors, 2, 256)
+                })));
+        }
+        progress?.Report((double)(finalFrames.Count + 1) / totalSteps);
+
+        var encoder = new GifEncoder { ColorTableMode = GifColorTableMode.Local };
+        gif.SaveAsGif(outputPath, encoder);
+        progress?.Report(1.0);
+    }
+
     private static Font GetMonospaceFont(int size)
     {
         // Try to get a monospace font, fall back to system default
@@ -682,10 +873,14 @@ public class GifWriter : IDisposable
         throw new InvalidOperationException("No fonts available for GIF rendering. Install a monospace font like Consolas or Courier New.");
     }
 
+    // Pre-compiled regex for stripping ANSI
+    private static readonly System.Text.RegularExpressions.Regex StripAnsiRegex =
+        new(@"\x1b\[[0-9;]*m", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static string StripAnsi(string text)
     {
         // Remove ANSI escape codes
-        return System.Text.RegularExpressions.Regex.Replace(text, @"\x1b\[[0-9;]*m", "");
+        return StripAnsiRegex.Replace(text, "");
     }
 
     public void Dispose()
