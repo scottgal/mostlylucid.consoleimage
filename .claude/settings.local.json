@@ -29,7 +29,26 @@
       "Bash(dotnet add:*)",
       "Bash(while read line)",
       "Bash(ls:*)",
-      "Bash(ffmpeg:*)"
+      "Bash(ffmpeg:*)",
+      "Bash(copy:*)",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_test.gif\" \"F:\\\\Gifs\\\\wiggum_braille_test.gif\")",
+      "Bash(cmd /c dir \"F:\\\\Gifs\\\\*.jpg\" \"F:\\\\Gifs\\\\*.png\")",
+      "Bash(identify:*)",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_v2.gif\" \"F:\\\\Gifs\\\\wiggum_braille_v2.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_lowcontrast.gif\" \"F:\\\\Gifs\\\\wiggum_braille_lowcontrast.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_ascii_edge.gif\" \"F:\\\\Gifs\"\" && cmd /c copy \"E:sourcevectorasciiConsoleImagedemo_portrait_braille_lowcontrast.gif\" \"F:Gifs\"\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_v3.gif\" \"F:\\\\Gifs\\\\wiggum_braille_v3.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\demo_portrait_braille_v3.gif\" \"F:\\\\Gifs\\\\demo_portrait_braille_v3.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\earth_braille.gif\" \"F:\\\\Gifs\\\\earth_braille.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_v4.gif\" \"F:\\\\Gifs\\\\wiggum_braille_v4.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\demo_mountain_braille_v4.gif\" \"F:\\\\Gifs\\\\demo_mountain_braille_v4.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_noinvert.gif\" \"F:\\\\Gifs\\\\wiggum_braille_noinvert.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_v5.gif\" \"F:\\\\Gifs\\\\wiggum_braille_v5.gif\")",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\demo_mountain_braille_v5.gif\" \"F:\\\\Gifs\"\" && cmd /c copy \"E:sourcevectorasciiConsoleImagedemo_portrait_braille_v5.gif\" \"F:Gifs\"\")",
+      "Bash(sort:*)",
+      "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_v6.gif\" \"F:\\\\Gifs\\\\wiggum_braille_v6.gif\")",
+      "WebFetch(domain:github.com)",
+      "Bash(cmd /c copy:*)"
     ]
   }
 }

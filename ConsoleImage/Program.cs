@@ -530,12 +530,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             using var gifWriter = new GifWriter(gifOptions);
 
             // Create separate RenderOptions for GIF output if dimensions specified
+            // Use higher MaxHeight for GIF output to preserve aspect ratio (not constrained by console)
             var gifRenderOptions = new RenderOptions
             {
                 Width = gifWidth ?? options.Width,
                 Height = gifHeight ?? options.Height,
                 MaxWidth = gifWidth ?? options.MaxWidth,
-                MaxHeight = gifHeight ?? options.MaxHeight,
+                MaxHeight = gifHeight ?? Math.Max(200, options.MaxHeight),
                 CharacterAspectRatio = options.CharacterAspectRatio,
                 UseColor = options.UseColor,
                 Invert = options.Invert,

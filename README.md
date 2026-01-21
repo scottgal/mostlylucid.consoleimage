@@ -18,6 +18,14 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 **Video playback with [ConsoleImage.Video](ConsoleImage.Video/README.md)** (FFmpeg-powered, hardware accelerated)
 
+### Still Images
+
+| Landscape | Portrait |
+|-----------|----------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/demo_mountain_blocks.gif" width="350" alt="Mountain Landscape"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/demo_portrait_blocks.gif" width="250" alt="Portrait"> |
+
+**High-fidelity ColorBlocks mode** - 2x vertical resolution with 24-bit color
+
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
 
