@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+
+        <!-- AOT Compatibility -->
+        <IsAotCompatible>true</IsAotCompatible>
+        <IsTrimmable>true</IsTrimmable>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+        <!-- NuGet Package Properties -->
+        <PackageId>mostlylucid.consoleimage.video</PackageId>
+        <Authors>Scott Galloway</Authors>
+        <MinVerTagPrefix>consoleimage-video-v</MinVerTagPrefix>
+        <Description>Video-to-ASCII renderer using FFmpeg. Streams video files as ASCII art with intelligent frame sampling, scene detection, and hardware acceleration. AOT compatible.</Description>
+        <PackageTags>ascii;art;video;console;ffmpeg;animation;rendering;aot</PackageTags>
+        <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <RepositoryUrl>https://github.com/scottgal/ConsoleImage</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <!-- Local development: use ProjectReference -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
+        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+    </ItemGroup>
+
+    <!-- NuGet packaging: use PackageReference to the published Core package -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
+        <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="..\README.md" Pack="true" PackagePath="\" Condition="Exists('..\README.md')" />
+        <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')" />
+    </ItemGroup>
+
+</Project>

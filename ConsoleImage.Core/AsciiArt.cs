@@ -95,6 +95,91 @@ public static class AsciiArt
 
     #endregion
 
+    #region URL-based API
+
+    /// <summary>
+    /// Convert an image from a URL to ASCII art string.
+    /// Downloads the image and renders it.
+    /// </summary>
+    /// <param name="url">URL of the image (http:// or https://)</param>
+    /// <param name="options">Rendering options</param>
+    /// <param name="progress">Optional download progress callback (bytesDownloaded, totalBytes)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>ASCII art string</returns>
+    /// <example>
+    /// var ascii = await AsciiArt.FromUrlAsync("https://example.com/image.jpg");
+    /// Console.WriteLine(ascii);
+    /// </example>
+    public static async Task<string> FromUrlAsync(
+        string url,
+        RenderOptions? options = null,
+        Action<long, long>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var stream = await UrlHelper.DownloadAsync(url, progress, cancellationToken);
+        return FromStream(stream, options);
+    }
+
+    /// <summary>
+    /// Convert an image from a URL to ASCII art string (synchronous version).
+    /// </summary>
+    public static string FromUrl(string url, RenderOptions? options = null)
+    {
+        using var stream = UrlHelper.Download(url);
+        return FromStream(stream, options);
+    }
+
+    /// <summary>
+    /// Render an image from a local file path or URL.
+    /// Automatically detects if input is a URL and handles appropriately.
+    /// </summary>
+    /// <param name="pathOrUrl">Local file path or URL</param>
+    /// <param name="options">Rendering options</param>
+    /// <returns>ASCII art string</returns>
+    public static string RenderAny(string pathOrUrl, RenderOptions? options = null)
+    {
+        if (UrlHelper.IsUrl(pathOrUrl))
+        {
+            return FromUrl(pathOrUrl, options);
+        }
+        return FromFile(pathOrUrl, options);
+    }
+
+    /// <summary>
+    /// Render an image from a local file path or URL (async version).
+    /// </summary>
+    public static async Task<string> RenderAnyAsync(
+        string pathOrUrl,
+        RenderOptions? options = null,
+        Action<long, long>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (UrlHelper.IsUrl(pathOrUrl))
+        {
+            return await FromUrlAsync(pathOrUrl, options, progress, cancellationToken);
+        }
+        return FromFile(pathOrUrl, options);
+    }
+
+    /// <summary>
+    /// Play an animated GIF from a URL.
+    /// </summary>
+    public static async Task PlayGifFromUrlAsync(
+        string url,
+        RenderOptions? options = null,
+        Action<long, long>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        options ??= RenderOptions.ForAnimation();
+        using var stream = await UrlHelper.DownloadAsync(url, progress, cancellationToken);
+        var frames = GifFromStream(stream, options);
+
+        using var player = new AsciiAnimationPlayer(frames, options.UseColor, options.LoopCount);
+        await player.PlayAsync(cancellationToken);
+    }
+
+    #endregion
+
     #region Full Options API
 
     /// <summary>

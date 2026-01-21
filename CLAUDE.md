@@ -10,16 +10,27 @@ ConsoleImage/
 ├── ConsoleImage.Core/           # Core library (NuGet package)
 │   ├── AsciiRenderer.cs         # Main ASCII rendering engine
 │   ├── ColorBlockRenderer.cs    # Unicode block-based rendering (2x resolution)
+│   ├── BrailleRenderer.cs       # Braille character rendering (2x4 dots per cell)
 │   ├── AsciiAnimationPlayer.cs  # GIF playback with DECSET 2026
+│   ├── ResizableAnimationPlayer.cs # Dynamic console resize support
 │   ├── AsciiFrame.cs            # Single frame data structure
 │   ├── CharacterMap.cs          # Character shape analysis and matching
 │   ├── RenderOptions.cs         # All configuration options
 │   ├── ShapeVector.cs           # 6-element vector for shape matching
 │   ├── Dithering.cs             # Floyd-Steinberg dithering
 │   ├── EdgeDirection.cs         # Edge detection and directional chars
+│   ├── CalibrationHelper.cs     # Aspect ratio calibration with circle test pattern
 │   └── ConsoleHelper.cs         # Windows ANSI support enabler
-└── ConsoleImage/                # CLI tool
-    └── Program.cs               # Command-line interface
+├── ConsoleImage/                # CLI tool for images/GIFs
+│   ├── Program.cs               # Command-line interface
+│   └── calibration.json         # Saved aspect ratio calibration
+├── ConsoleImage.Video.Core/     # Video playback library (FFmpeg-based)
+│   ├── FFmpegService.cs         # FFmpeg process management
+│   ├── VideoAnimationPlayer.cs  # Video streaming player
+│   └── VideoRenderOptions.cs    # Video-specific options
+└── ConsoleImage.Video/          # CLI tool for video files
+    ├── Program.cs               # Video CLI
+    └── calibration.json         # Saved aspect ratio calibration
 ```
 
 ## Key Classes
@@ -48,6 +59,24 @@ All configuration in one class. Key properties:
 - `UseColor` - Enable ANSI color codes
 - `FrameSampleRate` - Skip frames for efficiency (1 = all, 2 = every 2nd, etc.)
 - `EnableDithering/EnableEdgeDirectionChars` - Experimental features
+
+### CalibrationHelper
+Manages terminal font aspect ratio calibration. Each render mode (ASCII, Blocks, Braille)
+maps pixels to characters differently and may need separate calibration.
+
+- `CalibrationSettings` - Stores per-mode aspect ratios in `calibration.json`
+- `GenerateCalibrationImage()` - Creates a circle test pattern using ImageSharp
+- `RenderCalibrationPattern()` - Renders calibration through actual render pipeline
+- `Load()/Save()` - JSON persistence with AOT-compatible source generation
+
+**Calibration Format (calibration.json):**
+```json
+{
+  "AsciiCharacterAspectRatio": 0.5,
+  "BlocksCharacterAspectRatio": 0.5,
+  "BrailleCharacterAspectRatio": 0.5
+}
+```
 
 ## Common Issues
 
@@ -81,25 +110,66 @@ Use `\x1b[{n}A` to move up n lines in one command.
 
 ```bash
 # Basic rendering
-ascii-image image.jpg
+consoleimage image.jpg
 
 # With options
-ascii-image animation.gif -w 80 --speed 1.5 --loop 3
+consoleimage animation.gif -w 80 --speed 1.5 --loop 3
 
 # Color blocks mode (higher fidelity)
-ascii-image photo.png --blocks
+consoleimage photo.png --blocks
+
+# Braille mode (ultra-high resolution)
+consoleimage photo.png --braille
 
 # Frame sampling for large GIFs
-ascii-image big.gif --frame-sample 2  # Every 2nd frame
+consoleimage big.gif --frame-sample 2  # Every 2nd frame
 ```
+
+### Calibration
+
+The aspect ratio calibration ensures circles appear round, not stretched.
+Each render mode (ASCII, Blocks, Braille) can be calibrated separately.
+
+```bash
+# Show calibration pattern (should be a circle)
+consoleimage --calibrate
+
+# Calibrate blocks mode
+consoleimage --calibrate --blocks
+
+# Adjust aspect ratio until circle looks correct
+consoleimage --calibrate --aspect-ratio 0.45
+
+# Save calibration once circle looks right
+consoleimage --calibrate --aspect-ratio 0.48 --save
+
+# Each mode has its own saved value
+consoleimage --calibrate --braille --aspect-ratio 0.52 --save
+```
+
+**Suggested aspect ratios by platform:**
+| Platform         | Typical Value |
+|------------------|---------------|
+| Windows Terminal | 0.5           |
+| Windows Console  | 0.5           |
+| macOS Terminal   | 0.5           |
+| iTerm2           | 0.5           |
+| Linux (gnome)    | 0.45-0.5      |
+| VS Code Terminal | 0.5           |
+
+Values may vary by font. Run `--calibrate` to find your ideal value.
 
 ### Key CLI Options
 - `-w, --width` - Output width in characters
 - `-h, --height` - Output height in characters
+- `-a, --aspect-ratio` - Character aspect ratio (width/height)
 - `-s, --speed` - Animation speed multiplier
 - `-l, --loop` - Loop count (0 = infinite)
 - `-f, --frame-sample` - Frame sampling rate (skip frames)
 - `-b, --blocks` - Use colored Unicode blocks
+- `-B, --braille` - Use braille characters (2x4 dots per cell)
+- `--calibrate` - Show aspect ratio calibration pattern
+- `--save` - Save calibration to calibration.json
 - `--no-color` - Disable color output
 - `--no-animate` - Show first frame only
 

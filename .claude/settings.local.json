@@ -16,7 +16,20 @@
       "Bash(cmd /c \"copy /Y \"\"C:\\\\Blog\\\\mostlylucidweb\\\\Umami.Net\\\\icon.png\"\" \"\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\icon.png\"\"\")",
       "Bash(powershell -Command:*)",
       "Bash(curl:*)",
-      "Bash(del \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Core\\\\CircleSampler.cs\")"
+      "Bash(del \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Core\\\\CircleSampler.cs\")",
+      "Bash(taskkill:*)",
+      "Bash(while read l)",
+      "Bash(do echo \"$l\")",
+      "Bash(done)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Debug\\\\net10.0\\\\consoleimage.exe\" --calibrate)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Debug\\\\net10.0\\\\consoleimage.exe\" --calibrate --blocks)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\bin\\\\Debug\\\\net10.0\\\\consolevideo.exe\" --calibrate)",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet sln:*)",
+      "Bash(dotnet add:*)",
+      "Bash(while read line)",
+      "Bash(ls:*)",
+      "Bash(ffmpeg:*)"
     ]
   }
 }

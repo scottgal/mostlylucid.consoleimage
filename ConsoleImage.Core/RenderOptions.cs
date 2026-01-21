@@ -260,56 +260,95 @@ public class RenderOptions
     };
 
     /// <summary>
-    /// Calculate output dimensions maintaining aspect ratio
+    /// Calculate output dimensions maintaining aspect ratio (for ASCII mode - 1 char = 1 pixel)
     /// </summary>
     public (int width, int height) CalculateDimensions(int imageWidth, int imageHeight)
     {
-        float imageAspect = (float)imageWidth / imageHeight;
-        float adjustedAspect = imageAspect / CharacterAspectRatio;
+        return CalculateVisualDimensions(imageWidth, imageHeight, 1, 1);
+    }
 
-        int outputWidth, outputHeight;
+    /// <summary>
+    /// Calculate output pixel dimensions accounting for CharacterAspectRatio.
+    /// This is the core calculation used by all render modes.
+    /// </summary>
+    /// <param name="imageWidth">Source image width</param>
+    /// <param name="imageHeight">Source image height</param>
+    /// <param name="pixelsPerCharWidth">Horizontal pixels per character (1 for ASCII/blocks, 2 for braille)</param>
+    /// <param name="pixelsPerCharHeight">Vertical pixels per character (1 for ASCII, 2 for blocks, 4 for braille)</param>
+    /// <returns>Output dimensions in pixels</returns>
+    public (int width, int height) CalculateVisualDimensions(
+        int imageWidth, int imageHeight,
+        int pixelsPerCharWidth, int pixelsPerCharHeight)
+    {
+        float imageAspect = (float)imageWidth / imageHeight;
+
+        int outputCharWidth, outputCharHeight;
 
         if (Width.HasValue && Height.HasValue)
         {
-            outputWidth = Width.Value;
-            outputHeight = Height.Value;
+            // Both dimensions explicitly set - use exact dimensions (may distort image)
+            outputCharWidth = Width.Value;
+            outputCharHeight = Height.Value;
         }
         else if (Width.HasValue)
         {
-            outputWidth = Width.Value;
-            outputHeight = (int)(outputWidth / adjustedAspect);
+            // Only width specified - use exact width, calculate height from aspect ratio
+            outputCharWidth = Width.Value;
+            // Visual width = outputCharWidth * CharacterAspectRatio
+            // Visual height = Visual width / imageAspect
+            // Output char height = Visual height
+            float visualWidth = outputCharWidth * CharacterAspectRatio;
+            float visualHeight = visualWidth / imageAspect;
+            outputCharHeight = Math.Max(1, (int)visualHeight);
+            // Clamp to MaxHeight if set
+            if (outputCharHeight > MaxHeight)
+                outputCharHeight = MaxHeight;
         }
         else if (Height.HasValue)
         {
-            outputHeight = Height.Value;
-            outputWidth = (int)(outputHeight * adjustedAspect);
+            // Only height specified - use exact height, calculate width from aspect ratio
+            outputCharHeight = Height.Value;
+            // Visual height = outputCharHeight
+            // Visual width = Visual height * imageAspect
+            // Output char width = Visual width / CharacterAspectRatio
+            float visualHeight = outputCharHeight;
+            float visualWidth = visualHeight * imageAspect;
+            outputCharWidth = Math.Max(1, (int)(visualWidth / CharacterAspectRatio));
+            // Clamp to MaxWidth if set
+            if (outputCharWidth > MaxWidth)
+                outputCharWidth = MaxWidth;
         }
         else
         {
-            if (adjustedAspect > (float)MaxWidth / MaxHeight)
+            // Neither dimension specified - fit into MaxWidth x MaxHeight while maintaining aspect ratio
+            float visualContainerWidth = MaxWidth * CharacterAspectRatio;
+            float visualContainerHeight = MaxHeight;
+            float containerVisualAspect = visualContainerWidth / visualContainerHeight;
+
+            // Fit image into visual container
+            float outputVisualWidth, outputVisualHeight;
+            if (imageAspect > containerVisualAspect)
             {
-                outputWidth = MaxWidth;
-                outputHeight = (int)(MaxWidth / adjustedAspect);
+                // Width-constrained
+                outputVisualWidth = visualContainerWidth;
+                outputVisualHeight = visualContainerWidth / imageAspect;
             }
             else
             {
-                outputHeight = MaxHeight;
-                outputWidth = (int)(MaxHeight * adjustedAspect);
+                // Height-constrained
+                outputVisualHeight = visualContainerHeight;
+                outputVisualWidth = visualContainerHeight * imageAspect;
             }
+
+            outputCharWidth = Math.Max(1, (int)(outputVisualWidth / CharacterAspectRatio));
+            outputCharHeight = Math.Max(1, (int)outputVisualHeight);
         }
 
-        if (outputWidth > MaxWidth)
-        {
-            outputWidth = MaxWidth;
-            outputHeight = (int)(outputWidth / adjustedAspect);
-        }
-        if (outputHeight > MaxHeight)
-        {
-            outputHeight = MaxHeight;
-            outputWidth = (int)(outputHeight * adjustedAspect);
-        }
+        // Convert character dimensions to pixel dimensions
+        int outputWidth = Math.Max(1, outputCharWidth * pixelsPerCharWidth);
+        int outputHeight = Math.Max(1, outputCharHeight * pixelsPerCharHeight);
 
-        return (Math.Max(1, outputWidth), Math.Max(1, outputHeight));
+        return (outputWidth, outputHeight);
     }
 
     /// <summary>

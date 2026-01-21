@@ -4,7 +4,19 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 **Based on [Alex Harri's excellent article](https://alexharri.com/blog/ascii-rendering)** on ASCII rendering techniques.
 
-<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_loop.gif" width="50%" alt="ConsoleImage Demo">
+| ASCII Mode | ColorBlocks Mode | Braille Mode |
+|------------|------------------|--------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_braille.gif" width="250" alt="Braille Mode"> |
+
+**Original GIF → Three rendering modes** (shape-matched ASCII, Unicode half-blocks, braille dots)
+
+### Video to ASCII
+
+| ASCII | ColorBlocks | Braille |
+|-------|-------------|---------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_ascii.gif" width="250" alt="Video ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_blocks.gif" width="250" alt="Video Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_braille.gif" width="250" alt="Video Braille"> |
+
+**Video playback with [ConsoleImage.Video](ConsoleImage.Video/README.md)** (FFmpeg-powered, hardware accelerated)
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -19,10 +31,12 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 - **Contrast enhancement**: Global power function + directional contrast with 10 external sampling circles
 - **Animated GIF support**: Smooth flicker-free playback with DECSET 2026 synchronized output and diff-based rendering
 - **Dynamic resize**: Animations automatically re-render when you resize the console window
+- **URL support**: Load images directly from HTTP/HTTPS URLs with download progress
 - **Multiple render modes**:
   - ANSI colored ASCII characters (extended 91-char set by default)
   - High-fidelity color blocks using Unicode half-blocks (▀▄)
   - Ultra-high resolution braille characters (2×4 dots per cell, UTF-8 auto-enabled)
+  - Native terminal protocols: iTerm2, Kitty, Sixel (auto-detected)
 - **Auto background detection**: Automatically detects dark/light backgrounds
 - **Floyd-Steinberg dithering**: Error diffusion for smoother gradient rendering
 - **Adaptive thresholding**: Otsu's method for optimal braille binarization
@@ -49,21 +63,89 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
 | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` |
 | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` |
 
+## Requirements
+
+- **.NET 10** runtime (or use standalone binaries)
+- **Terminal with ANSI support** (Windows Terminal, iTerm2, any modern terminal)
+- **24-bit color** recommended for `--mode blocks` and `--mode braille`
+- **Unicode font** for braille mode (most terminals include this)
+
 ## Quick Start
+
+### CLI
+
+```bash
+# Render an image
+consoleimage photo.jpg
+
+# Play animated GIF
+consoleimage animation.gif
+
+# Load from URL
+consoleimage https://example.com/photo.jpg
+
+# High-fidelity color blocks (2x vertical resolution)
+consoleimage photo.jpg --mode blocks
+
+# Ultra-high resolution braille (2x4 dots per cell)
+consoleimage photo.jpg --mode braille
+
+# Calibrate for your terminal (run once)
+consoleimage --calibrate --aspect-ratio 0.5 --save
+
+# Save as animated GIF
+consoleimage animation.gif -o gif:output.gif
+```
+
+### Library
 
 ```csharp
 using ConsoleImage.Core;
 
 // One line - just works with sensible defaults!
-// (color ON, invert ON for dark terminals, auto background detection)
 Console.WriteLine(AsciiArt.Render("photo.jpg"));
 ```
+
+### Example Output
+
+```
+::::::::::::::::::::::::::::::::::::::vhhhh_:::::::
+:::::::::::::::::::::::::::::::::::::Q&&&MQ:::::::
+:::::::::::::::::::::::::::::::::::::Q@@@MQ:::::::
+::::::vhhhhh:::_hhhhhh::::::_hhhhhh::Q@@@MQ:::::::
+::::::K&&&MQKhnM&Q@@&&O\:KhnO&Q@@&&\\Q@@@MQ:::::::
+:::::KM@@@@hMQMzy@@@@@@\KMQgyy@@@@@@QQ@@@MQ:::::::
+:::::K@@@@@MKh*:|\@@@@@@MKh*:|\@@@@@QQ@@@MQ:::::::
+::::vM@@@@MK:::::QM@@@@KK:::::QM@@@@QQ@@@MQ:::::::
+::::QM@@@MQ::::::K@@@@MK::::::K@@@@M7Q@@@MQ:::::::
+:::^K@@@@K^::::: G@@@@K^:::::KM@@@@K:Q@@@MQ:::::::
+:::QM@@@MQ::::::QM@@@MQ::::::K@@@@MK:Q@@@MQ:::::::
+:::K@@@@M7:::::^K@@@@K^:::::*G@@@@K^:Q@@@MQ:::::::
+::KM@@@@K::::::QM@@@@Q::::::QM@@@MQ::Q@@@@\hhh\:::
+::QMQ%%MQ::::::K%Q%%M7:::::^K%Q%%K^::.\yQ@@@QQE\::
+```
+
+## Render Modes
+
+| Mode | CLI Option | Description | Best For |
+|------|------------|-------------|----------|
+| **ASCII** | `--mode ascii` (default) | Shape-matched ASCII characters with ANSI colors | General use, widest compatibility |
+| **ColorBlocks** | `--mode blocks` or `-b` | Unicode half-blocks (▀▄) with 24-bit color | High fidelity, photos |
+| **Braille** | `--mode braille` or `-B` | Braille patterns (2×4 dots per cell) | Maximum resolution |
+| **iTerm2** | `--mode iterm2` | Native inline image protocol | iTerm2, WezTerm |
+| **Kitty** | `--mode kitty` | Native graphics protocol | Kitty terminal |
+| **Sixel** | `--mode sixel` | DEC Sixel graphics | xterm, mlterm, foot |
+
+**Note:** Protocol modes (iTerm2, Kitty, Sixel) display true images in supported terminals. Use `--mode list` to see all available modes.
 
 ## CLI Usage
 
 ```bash
 # Basic - color and animation ON by default
 consoleimage photo.jpg
+
+# Load image from URL
+consoleimage https://example.com/photo.jpg
 
 # Specify width
 consoleimage photo.jpg -w 80
@@ -102,8 +184,14 @@ consoleimage photo.jpg --edge
 consoleimage photo.jpg --bg-threshold 0.85      # Suppress light backgrounds
 consoleimage photo.jpg --dark-bg-threshold 0.15 # Suppress dark backgrounds
 
-# Save to file
+# Save to text file
 consoleimage photo.jpg -o output.txt
+
+# Save as animated GIF
+consoleimage animation.gif -o gif:output.gif
+
+# GIF with compression options
+consoleimage animation.gif -o gif:output.gif --gif-scale 0.5 --gif-colors 32
 
 # Disable dithering (ON by default for smoother gradients)
 consoleimage photo.jpg --no-dither
@@ -154,6 +242,14 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `-j, --json` | Output as JSON (for LLM tool calls) | OFF |
 | `--dark-cutoff` | Dark terminal: skip colors below brightness (0.0-1.0) | 0.1 |
 | `--light-cutoff` | Light terminal: skip colors above brightness (0.0-1.0) | 0.9 |
+| `-m, --mode` | Render mode: ascii, blocks, braille, iterm2, kitty, sixel | ascii |
+| `--mode list` | List all available render modes | - |
+| `--gif-scale` | GIF output scale factor (0.25-2.0) | 1.0 |
+| `--gif-colors` | GIF palette size (16-256) | 64 |
+| `--gif-fps` | GIF framerate | 10 |
+| `--gif-font-size` | GIF font size in pixels | 10 |
+| `--gif-length` | Max GIF length in seconds | - |
+| `--gif-frames` | Max GIF frames | - |
 
 ## Library API
 
@@ -363,6 +459,24 @@ Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 | `simple` | ` .:-=+*#%@` | Quick renders |
 | `block` | ` ░▒▓█` | High density blocks |
 | `classic` | 71 ASCII chars | Original algorithm set |
+
+## Architecture
+
+```
+ConsoleImage.Core              # Core library (NuGet: mostlylucid.consoleimage)
+├── AsciiRenderer              # Shape-matching ASCII renderer
+├── ColorBlockRenderer         # Unicode half-block renderer
+├── BrailleRenderer            # 2×4 dot braille renderer
+├── Protocol renderers         # iTerm2, Kitty, Sixel support
+├── AsciiAnimationPlayer       # Flicker-free GIF playback
+├── GifWriter                  # Animated GIF output
+└── ConsoleHelper              # Windows ANSI support
+
+ConsoleImage                   # CLI tool (consoleimage)
+ConsoleImage.Spectre           # Spectre.Console integration
+ConsoleImage.Video.Core        # FFmpeg video decoding
+ConsoleImage.Video             # Video CLI (consolevideo)
+```
 
 ## How It Works
 

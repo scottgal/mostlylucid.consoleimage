@@ -1,0 +1,119 @@
+name: Publish Video NuGet
+
+on:
+  # Automatically trigger after Core package is published
+  workflow_run:
+    workflows: ["Publish NuGet"]
+    types:
+      - completed
+
+  # Direct tag trigger for Video-only releases (if needed)
+  push:
+    tags:
+      - 'consoleimage-video-v*.*.*'
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Only run if the triggering workflow succeeded
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Determine Core version from latest tag
+      id: core_version
+      run: |
+        # Get the latest consoleimage-v tag (the Core package version)
+        CORE_TAG=$(git tag -l 'consoleimage-v*' --sort=-v:refname | head -1)
+        CORE_VERSION=${CORE_TAG#consoleimage-v}
+        echo "version=${CORE_VERSION}" >> $GITHUB_OUTPUT
+        echo "Detected Core version: ${CORE_VERSION}"
+
+    - name: Check if Video tag exists, create if not
+      id: video_version
+      run: |
+        # Check if there's a video tag for this commit
+        VIDEO_TAG=$(git tag -l 'consoleimage-video-v*' --points-at HEAD | head -1)
+        if [ -z "$VIDEO_TAG" ]; then
+          # No video tag, use Core version for Video
+          VIDEO_VERSION="${{ steps.core_version.outputs.version }}"
+          echo "No video tag found, using Core version: ${VIDEO_VERSION}"
+          git tag "consoleimage-video-v${VIDEO_VERSION}"
+        else
+          VIDEO_VERSION=${VIDEO_TAG#consoleimage-video-v}
+          echo "Found video tag: ${VIDEO_VERSION}"
+        fi
+        echo "version=${VIDEO_VERSION}" >> $GITHUB_OUTPUT
+
+    - name: Wait for Core package availability on NuGet
+      run: |
+        CORE_VERSION="${{ steps.core_version.outputs.version }}"
+        echo "Waiting for mostlylucid.consoleimage version ${CORE_VERSION} to be available on NuGet..."
+
+        MAX_ATTEMPTS=60
+        ATTEMPT=0
+
+        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          ATTEMPT=$((ATTEMPT + 1))
+          echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: Checking NuGet API..."
+
+          # Check if package version exists on NuGet
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.nuget.org/v3-flatcontainer/mostlylucid.consoleimage/${CORE_VERSION}/mostlylucid.consoleimage.${CORE_VERSION}.nupkg")
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Package mostlylucid.consoleimage ${CORE_VERSION} is available!"
+            break
+          fi
+
+          if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            echo "Timeout waiting for package. Proceeding anyway (package may be in index)..."
+            break
+          fi
+
+          echo "Package not yet available (HTTP ${HTTP_STATUS}), waiting 30 seconds..."
+          sleep 30
+        done
+
+    - name: Build & Pack with NuGet dependency
+      run: |
+        dotnet restore ConsoleImage.Video.Core/ConsoleImage.Video.Core.csproj \
+          -p:UseNuGetDependency=true \
+          -p:CorePackageVersion=${{ steps.core_version.outputs.version }}
+        dotnet pack ConsoleImage.Video.Core/ConsoleImage.Video.Core.csproj \
+          -c Release \
+          -o ./artifacts \
+          -p:UseNuGetDependency=true \
+          -p:CorePackageVersion=${{ steps.core_version.outputs.version }}
+
+    - name: NuGet Login (OIDC)
+      id: nuget
+      uses: NuGet/login@v1
+      with:
+        user: 'mostlylucid'
+
+    - name: Publish to NuGet.org
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+    - name: Publish to GitHub Packages
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
+
+    - name: Summary
+      run: |
+        echo "## Published Video Package" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Package | Version | Depends On |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|---------|------------|" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage.video | ${{ steps.video_version.outputs.version }} | mostlylucid.consoleimage ${{ steps.core_version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY

@@ -76,63 +76,17 @@ public class ColorBlockRenderer : IDisposable
 
     /// <summary>
     /// Calculate output dimensions in PIXELS for half-block rendering.
-    /// Half-blocks give 2x vertical resolution, so we need to account for this differently
-    /// than regular ASCII rendering.
+    /// Uses the shared CalculateVisualDimensions method from RenderOptions.
     /// </summary>
     private (int width, int height) CalculatePixelDimensions(int imageWidth, int imageHeight)
     {
-        float imageAspect = (float)imageWidth / imageHeight;
+        // Half-blocks: 1 pixel per char width, 2 pixels per char height
+        var (width, height) = _options.CalculateVisualDimensions(imageWidth, imageHeight, 1, 2);
 
-        // For half-blocks: each character cell displays 2 vertical pixels
-        // So if we want N character rows, we need N*2 pixel rows
-        // Character cells are typically 2:1 (height:width), but half-blocks make them effectively 1:1
-        // So we use aspect ratio of 1.0 for half-block rendering
+        // Ensure even height for half-block pairing
+        if (height % 2 != 0) height++;
 
-        int maxPixelWidth = _options.Width ?? _options.MaxWidth;
-        int maxPixelHeight = (_options.Height ?? _options.MaxHeight) * 2; // *2 for half-blocks
-
-        int outputWidth, outputHeight;
-
-        if (_options.Width.HasValue)
-        {
-            // User specified width - calculate height to maintain aspect ratio
-            outputWidth = _options.Width.Value;
-            outputHeight = (int)(outputWidth / imageAspect);
-        }
-        else if (_options.Height.HasValue)
-        {
-            // User specified height in character rows - convert to pixels
-            outputHeight = _options.Height.Value * 2;
-            outputWidth = (int)(outputHeight * imageAspect);
-        }
-        else
-        {
-            // Auto-calculate from max dimensions
-            if (imageAspect > (float)maxPixelWidth / maxPixelHeight)
-            {
-                outputWidth = maxPixelWidth;
-                outputHeight = (int)(outputWidth / imageAspect);
-            }
-            else
-            {
-                outputHeight = maxPixelHeight;
-                outputWidth = (int)(outputHeight * imageAspect);
-            }
-        }
-
-        // Clamp to max dimensions
-        if (outputWidth > maxPixelWidth)
-        {
-            outputWidth = maxPixelWidth;
-            outputHeight = (int)(outputWidth / imageAspect);
-        }
-        if (outputHeight > maxPixelHeight)
-        {
-            outputHeight = maxPixelHeight;
-            outputWidth = (int)(outputHeight * imageAspect);
-        }
-
-        return (Math.Max(1, outputWidth), Math.Max(2, outputHeight));
+        return (width, Math.Max(2, height));
     }
 
     private string RenderPixels(Image<Rgba32> image)
@@ -240,12 +194,28 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
+    /// Render a file to a ColorBlockFrame.
+    /// </summary>
+    public ColorBlockFrame RenderFileToFrame(string path)
+    {
+        return new ColorBlockFrame(RenderFile(path), 0);
+    }
+
+    /// <summary>
+    /// Render a stream to a ColorBlockFrame.
+    /// </summary>
+    public ColorBlockFrame RenderStreamToFrame(Stream stream)
+    {
+        return new ColorBlockFrame(RenderStream(stream), 0);
+    }
+
+    /// <summary>
     /// Render animated GIF to list of colored block frames
     /// </summary>
     public IReadOnlyList<ColorBlockFrame> RenderGif(string path)
     {
         using var image = Image.Load<Rgba32>(path);
-        return RenderGifFrames(image);
+        return RenderGifFramesInternal(image);
     }
 
     /// <summary>
@@ -254,10 +224,28 @@ public class ColorBlockRenderer : IDisposable
     public IReadOnlyList<ColorBlockFrame> RenderGifStream(Stream stream)
     {
         using var image = Image.Load<Rgba32>(stream);
-        return RenderGifFrames(image);
+        return RenderGifFramesInternal(image);
     }
 
-    private List<ColorBlockFrame> RenderGifFrames(Image<Rgba32> image)
+    /// <summary>
+    /// Render animated GIF to list of colored block frames (for GIF output).
+    /// </summary>
+    public List<ColorBlockFrame> RenderGifFrames(string path)
+    {
+        using var image = Image.Load<Rgba32>(path);
+        return RenderGifFramesInternal(image);
+    }
+
+    /// <summary>
+    /// Render animated GIF stream to list of colored block frames (for GIF output).
+    /// </summary>
+    public List<ColorBlockFrame> RenderGifFrames(Stream stream)
+    {
+        using var image = Image.Load<Rgba32>(stream);
+        return RenderGifFramesInternal(image);
+    }
+
+    private List<ColorBlockFrame> RenderGifFramesInternal(Image<Rgba32> image)
     {
         var frames = new List<ColorBlockFrame>();
 

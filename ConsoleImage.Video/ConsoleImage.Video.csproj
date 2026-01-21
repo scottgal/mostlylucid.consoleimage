@@ -1,11 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <AssemblyName>consoleimage</AssemblyName>
+        <AssemblyName>consolevideo</AssemblyName>
 
         <!-- AOT Compilation Support -->
         <PublishAot>true</PublishAot>
@@ -14,7 +14,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+        <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -22,9 +22,12 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Update="calibration.json">
+        <Content Include="calibration.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </None>
+        </Content>
+        <Content Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
 </Project>

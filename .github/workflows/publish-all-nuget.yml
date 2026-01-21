@@ -1,0 +1,140 @@
+name: Publish All NuGet Packages
+
+# This workflow publishes both ConsoleImage.Core and ConsoleImage.Video.Core
+# in sequence, ensuring Core is available before publishing Video.Core
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_version:
+        description: 'ConsoleImage.Core version (e.g., 1.0.0)'
+        required: true
+      video_version:
+        description: 'ConsoleImage.Video.Core version (e.g., 1.0.0)'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+jobs:
+  publish-core:
+    runs-on: ubuntu-latest
+    outputs:
+      core_version: ${{ steps.version.outputs.version }}
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Create version tag for MinVer
+      run: git tag "consoleimage-v${{ github.event.inputs.core_version }}"
+
+    - name: Output version
+      id: version
+      run: echo "version=${{ github.event.inputs.core_version }}" >> $GITHUB_OUTPUT
+
+    - name: Build & Pack Core
+      run: |
+        dotnet restore ConsoleImage.Core/ConsoleImage.Core.csproj
+        dotnet pack ConsoleImage.Core/ConsoleImage.Core.csproj -c Release -o ./artifacts
+
+    - name: NuGet Login (OIDC)
+      id: nuget
+      uses: NuGet/login@v1
+      with:
+        user: 'mostlylucid'
+
+    - name: Publish Core to NuGet.org
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+    - name: Publish Core to GitHub Packages
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
+
+  wait-for-core:
+    runs-on: ubuntu-latest
+    needs: publish-core
+    steps:
+    - name: Wait for Core package availability on NuGet
+      run: |
+        CORE_VERSION="${{ needs.publish-core.outputs.core_version }}"
+        echo "Waiting for mostlylucid.consoleimage version ${CORE_VERSION} to be available on NuGet..."
+
+        MAX_ATTEMPTS=60
+        ATTEMPT=0
+
+        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          ATTEMPT=$((ATTEMPT + 1))
+          echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: Checking NuGet API..."
+
+          # Check if package version exists on NuGet
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.nuget.org/v3-flatcontainer/mostlylucid.consoleimage/${CORE_VERSION}/mostlylucid.consoleimage.${CORE_VERSION}.nupkg")
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Package mostlylucid.consoleimage ${CORE_VERSION} is available!"
+            exit 0
+          fi
+
+          echo "Package not yet available (HTTP ${HTTP_STATUS}), waiting 30 seconds..."
+          sleep 30
+        done
+
+        echo "Warning: Timeout waiting for package. It may still be indexing."
+        exit 0
+
+  publish-video:
+    runs-on: ubuntu-latest
+    needs: [publish-core, wait-for-core]
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Create version tag for MinVer
+      run: git tag "consoleimage-video-v${{ github.event.inputs.video_version }}"
+
+    - name: Build & Pack Video.Core with NuGet dependency
+      run: |
+        dotnet restore ConsoleImage.Video.Core/ConsoleImage.Video.Core.csproj \
+          -p:UseNuGetDependency=true \
+          -p:CorePackageVersion=${{ needs.publish-core.outputs.core_version }}
+        dotnet pack ConsoleImage.Video.Core/ConsoleImage.Video.Core.csproj \
+          -c Release \
+          -o ./artifacts \
+          -p:UseNuGetDependency=true \
+          -p:CorePackageVersion=${{ needs.publish-core.outputs.core_version }}
+
+    - name: NuGet Login (OIDC)
+      id: nuget
+      uses: NuGet/login@v1
+      with:
+        user: 'mostlylucid'
+
+    - name: Publish Video.Core to NuGet.org
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+    - name: Publish Video.Core to GitHub Packages
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [publish-core, publish-video]
+    steps:
+    - name: Summary
+      run: |
+        echo "## Published Packages" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Package | Version | NuGet | GitHub |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|---------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage | ${{ github.event.inputs.core_version }} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage/${{ github.event.inputs.core_version }}) | [GitHub](https://github.com/${{ github.repository_owner }}/ConsoleImage/packages) |" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage.video | ${{ github.event.inputs.video_version }} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.video/${{ github.event.inputs.video_version }}) | [GitHub](https://github.com/${{ github.repository_owner }}/ConsoleImage/packages) |" >> $GITHUB_STEP_SUMMARY

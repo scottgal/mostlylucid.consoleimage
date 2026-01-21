@@ -3,17 +3,23 @@
 
 using System.CommandLine;
 using ConsoleImage.Core;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 // Enable ANSI escape sequence processing on Windows consoles
 ConsoleHelper.EnableAnsiSupport();
 
+// Load saved calibration if exists
+var savedCalibration = CalibrationHelper.Load();
+
 // Create root command
 var rootCommand = new RootCommand("Convert images to ASCII art using shape-matching algorithm");
 
-// Input file argument
-var inputArg = new Argument<FileInfo>("input")
+// Input file/URL argument (optional for --calibrate mode and --mode list)
+var inputArg = new Argument<string?>("input")
 {
-    Description = "Path to the image or GIF file to convert"
+    Description = "Path to image file or URL (http:// or https://)",
+    Arity = ArgumentArity.ZeroOrOne
 };
 
 // Options - System.CommandLine 2.0.2 API
@@ -68,7 +74,7 @@ var charsetOption = new Option<string?>("--charset") { Description = "Custom cha
 var presetOption = new Option<string?>("--preset") { Description = "Character set preset: extended (default), simple, block, classic" };
 presetOption.Aliases.Add("-p");
 
-var outputOption = new Option<FileInfo?>("--output") { Description = "Write output to file instead of console" };
+var outputOption = new Option<string?>("--output") { Description = "Output: file path, 'gif:path.gif' for animated GIF, or just 'gif' (uses input name)" };
 outputOption.Aliases.Add("-o");
 
 var noAnimateOption = new Option<bool>("--no-animate") { Description = "Don't animate GIFs - just show first frame" };
@@ -126,6 +132,27 @@ jsonOption.Aliases.Add("-j");
 var darkCutoffOption = new Option<float?>("--dark-cutoff") { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0, default: 0.1). Use 0 to disable." };
 var lightCutoffOption = new Option<float?>("--light-cutoff") { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0, default: 0.9). Use 1 to disable." };
 
+// Calibration options
+var calibrateOption = new Option<bool>("--calibrate") { Description = "Display aspect ratio calibration pattern (should show a circle)" };
+var saveCalibrationOption = new Option<bool>("--save") { Description = "Save current aspect ratio to calibration.json (use with --calibrate)" };
+
+// Mode selection option (supports: ascii, blocks, braille, sixel, iterm2, kitty, auto, list)
+var modeOption = new Option<string?>("--mode") { Description = "Rendering mode: ascii, blocks, braille, sixel, iterm2, kitty, auto, list (shows available modes)" };
+modeOption.Aliases.Add("-m");
+
+// GIF output options - save rendered output as animated GIF
+var outputGifOption = new Option<FileInfo?>("--output-gif") { Description = "Save rendered output as animated GIF (emulated console)" };
+outputGifOption.Aliases.Add("-g");
+
+var gifLengthOption = new Option<double?>("--gif-length") { Description = "Length of GIF output in seconds (for videos/long animations)" };
+var gifFramesOption = new Option<int?>("--gif-frames") { Description = "Number of frames for GIF output" };
+var gifFontSizeOption = new Option<int>("--gif-font-size") { Description = "Font size for GIF output (smaller = smaller file)", DefaultValueFactory = _ => 10 };
+var gifScaleOption = new Option<float>("--gif-scale") { Description = "Scale factor for GIF output (0.5 = half size)", DefaultValueFactory = _ => 1.0f };
+var gifFpsOption = new Option<int>("--gif-fps") { Description = "Target FPS for GIF output (lower = smaller file)", DefaultValueFactory = _ => 10 };
+var gifColorsOption = new Option<int>("--gif-colors") { Description = "Max colors in GIF palette (16-256, lower = smaller file)", DefaultValueFactory = _ => 64 };
+var gifWidthOption = new Option<int?>("--gif-width") { Description = "GIF output width in characters (preserves aspect ratio if height not set)" };
+var gifHeightOption = new Option<int?>("--gif-height") { Description = "GIF output height in characters (preserves aspect ratio if width not set)" };
+
 // Add options to root command
 rootCommand.Arguments.Add(inputArg);
 rootCommand.Options.Add(widthOption);
@@ -157,10 +184,23 @@ rootCommand.Options.Add(noEdgeDirOption);
 rootCommand.Options.Add(jsonOption);
 rootCommand.Options.Add(darkCutoffOption);
 rootCommand.Options.Add(lightCutoffOption);
+rootCommand.Options.Add(calibrateOption);
+rootCommand.Options.Add(saveCalibrationOption);
+rootCommand.Options.Add(modeOption);
+rootCommand.Options.Add(outputGifOption);
+rootCommand.Options.Add(gifLengthOption);
+rootCommand.Options.Add(gifFramesOption);
+rootCommand.Options.Add(gifFontSizeOption);
+rootCommand.Options.Add(gifScaleOption);
+rootCommand.Options.Add(gifFpsOption);
+rootCommand.Options.Add(gifColorsOption);
+rootCommand.Options.Add(gifWidthOption);
+rootCommand.Options.Add(gifHeightOption);
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
-    var input = parseResult.GetValue(inputArg)!;
+    var input = parseResult.GetValue(inputArg);
+    var mode = parseResult.GetValue(modeOption);
     var width = parseResult.GetValue(widthOption);
     var height = parseResult.GetValue(heightOption);
     var aspectRatio = parseResult.GetValue(aspectRatioOption);
@@ -190,20 +230,200 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var jsonOutput = parseResult.GetValue(jsonOption);
     var darkCutoff = parseResult.GetValue(darkCutoffOption);
     var lightCutoff = parseResult.GetValue(lightCutoffOption);
+    var calibrate = parseResult.GetValue(calibrateOption);
+    var saveCalibration = parseResult.GetValue(saveCalibrationOption);
+    var gifLength = parseResult.GetValue(gifLengthOption);
+    var gifFrames = parseResult.GetValue(gifFramesOption);
+    var gifFontSize = parseResult.GetValue(gifFontSizeOption);
+    var gifScale = parseResult.GetValue(gifScaleOption);
+    var gifFps = parseResult.GetValue(gifFpsOption);
+    var gifColors = parseResult.GetValue(gifColorsOption);
+    var gifWidth = parseResult.GetValue(gifWidthOption);
+    var gifHeight = parseResult.GetValue(gifHeightOption);
+
+    // Parse output option: can be "path.txt", "gif", "gif:path.gif"
+    string? outputFile = null;
+    bool outputAsGif = false;
+    string? gifOutputPath = null;
+
+    if (!string.IsNullOrEmpty(output))
+    {
+        if (output.Equals("gif", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsGif = true;
+            // Use input filename with .gif extension - will set later when we have input
+        }
+        else if (output.StartsWith("gif:", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsGif = true;
+            gifOutputPath = output[4..]; // Everything after "gif:"
+        }
+        else if (output.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsGif = true;
+            gifOutputPath = output;
+        }
+        else
+        {
+            outputFile = output;
+        }
+    }
+
+    // Helper to create GIF output options
+    GifWriterOptions CreateGifOptions() => new GifWriterOptions
+    {
+        FontSize = gifFontSize,
+        Scale = gifScale,
+        MaxColors = Math.Clamp(gifColors, 16, 256),
+        TargetFps = gifFps,
+        MaxLengthSeconds = gifLength,
+        MaxFrames = gifFrames,
+        LoopCount = loop
+    };
 
     // JSON mode helper - manual serialization for AOT compatibility
     void OutputJson(string json) => Console.WriteLine(json);
     string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t").Replace("\x1b", "\\u001b");
 
-    if (!input.Exists)
+    // Mode list - show all available rendering modes
+    if (mode?.Equals("list", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        Console.WriteLine(UnifiedRenderer.GetProtocolList());
+        Console.WriteLine("Usage: consoleimage image.jpg --mode blocks");
+        Console.WriteLine("       consoleimage image.jpg --mode auto   (auto-detect best)");
+        Console.WriteLine("       consoleimage image.jpg --mode kitty  (use Kitty protocol)");
+        return 0;
+    }
+
+    // Calibration mode - show test pattern to verify aspect ratio
+    if (calibrate)
+    {
+        // Determine render mode for calibration
+        var calibrationMode = braille ? RenderMode.Braille
+            : colorBlocks ? RenderMode.ColorBlocks
+            : RenderMode.Ascii;
+
+        // Get effective aspect ratio: explicit > saved for mode > default
+        float calibrationAspect = aspectRatio
+            ?? savedCalibration?.GetAspectRatio(calibrationMode)
+            ?? 0.5f;
+
+        string modeName = calibrationMode switch
+        {
+            RenderMode.Braille => "Braille",
+            RenderMode.ColorBlocks => "Blocks",
+            _ => "ASCII"
+        };
+
+        Console.WriteLine($"Aspect Ratio Calibration - {modeName} Mode (--aspect-ratio {calibrationAspect})");
+        Console.WriteLine("The shape below should appear as a perfect CIRCLE.");
+        Console.WriteLine("If stretched horizontally, decrease --aspect-ratio (try 0.45)");
+        Console.WriteLine("If stretched vertically, increase --aspect-ratio (try 0.55)");
+        Console.WriteLine();
+        Console.WriteLine("Suggested values by platform:");
+        Console.WriteLine("  Windows Terminal:  0.5");
+        Console.WriteLine("  Windows Console:   0.5");
+        Console.WriteLine("  macOS Terminal:    0.5");
+        Console.WriteLine("  iTerm2:            0.5");
+        Console.WriteLine("  Linux (gnome):     0.45-0.5");
+        Console.WriteLine("  VS Code Terminal:  0.5");
+        Console.WriteLine();
+
+        // Render calibration pattern using the core helper
+        var calOutput = CalibrationHelper.RenderCalibrationPattern(
+            calibrationMode,
+            calibrationAspect,
+            useColor: !noColor,
+            width: 40,
+            height: 20);
+
+        Console.WriteLine(calOutput);
+        Console.WriteLine();
+        Console.WriteLine($"Current --aspect-ratio: {calibrationAspect} ({modeName} mode)");
+
+        // Save calibration if requested
+        if (saveCalibration)
+        {
+            // Start with existing settings or defaults
+            var baseSettings = savedCalibration ?? new CalibrationSettings();
+            // Update only the current mode's aspect ratio
+            var settings = baseSettings.WithAspectRatio(calibrationMode, calibrationAspect);
+            CalibrationHelper.Save(settings);
+            Console.WriteLine($"Saved {modeName} calibration to: {CalibrationHelper.GetDefaultPath()}");
+        }
+        else
+        {
+            Console.WriteLine();
+            Console.WriteLine("Once the circle looks correct, run with --save to remember this setting:");
+            string modeFlag = calibrationMode switch
+            {
+                RenderMode.Braille => " --braille",
+                RenderMode.ColorBlocks => " --blocks",
+                _ => ""
+            };
+            Console.WriteLine($"  consoleimage --calibrate{modeFlag} --aspect-ratio {calibrationAspect} --save");
+        }
+
+        return 0;
+    }
+
+    if (string.IsNullOrWhiteSpace(input))
+    {
+        Console.Error.WriteLine("Error: No input file or URL specified. Use --calibrate for aspect ratio testing without a file.");
+        Console.Error.WriteLine("       Use --mode list to see available rendering modes.");
+        return 1;
+    }
+
+    // Check if input is a URL
+    bool isUrl = UrlHelper.IsUrl(input);
+
+    // Validate file exists (for local files)
+    if (!isUrl && !File.Exists(input))
     {
         if (jsonOutput)
         {
-            OutputJson($"{{\"success\":false,\"error\":\"File not found: {JsonEscape(input.FullName)}\"}}");
+            OutputJson($"{{\"success\":false,\"error\":\"File not found: {JsonEscape(input)}\"}}");
             return 1;
         }
-        Console.Error.WriteLine($"Error: File not found: {input.FullName}");
+        Console.Error.WriteLine($"Error: File not found: {input}");
         return 1;
+    }
+
+    // Determine GIF output path if needed
+    if (outputAsGif && string.IsNullOrEmpty(gifOutputPath))
+    {
+        // Generate output path from input filename
+        string baseName = isUrl
+            ? Path.GetFileNameWithoutExtension(new Uri(input).AbsolutePath)
+            : Path.GetFileNameWithoutExtension(input);
+        if (string.IsNullOrEmpty(baseName)) baseName = "output";
+        gifOutputPath = baseName + "_ascii.gif";
+    }
+
+    // Show download progress for URLs
+    string inputPath = input;
+    MemoryStream? downloadedStream = null;
+    if (isUrl)
+    {
+        Console.Error.Write("Downloading... ");
+        long lastPercent = -1;
+        downloadedStream = await UrlHelper.DownloadAsync(input, (downloaded, total) =>
+        {
+            if (total > 0)
+            {
+                long percent = (downloaded * 100) / total;
+                if (percent != lastPercent)
+                {
+                    Console.Error.Write($"\rDownloading... {percent}%");
+                    lastPercent = percent;
+                }
+            }
+            else
+            {
+                Console.Error.Write($"\rDownloading... {downloaded / 1024}KB");
+            }
+        }, cancellationToken);
+        Console.Error.WriteLine(" Done!");
     }
 
     // Determine character set
@@ -219,11 +439,19 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         };
     }
 
+    // Determine render mode and get effective aspect ratio from saved calibration
+    var renderMode = braille ? RenderMode.Braille
+        : colorBlocks ? RenderMode.ColorBlocks
+        : RenderMode.Ascii;
+    float effectiveAspect = aspectRatio
+        ?? savedCalibration?.GetAspectRatio(renderMode)
+        ?? 0.5f;
+
     var options = new RenderOptions
     {
         Width = width,
         Height = height,
-        CharacterAspectRatio = aspectRatio ?? 0.5f,
+        CharacterAspectRatio = effectiveAspect,
         MaxWidth = maxWidth,
         MaxHeight = maxHeight,
         UseColor = !noColor || colorBlocks,
@@ -248,11 +476,209 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     try
     {
+        // Determine file extension (for format detection)
+        string extension = isUrl
+            ? "." + (UrlHelper.GetExtension(input) ?? "jpg")
+            : Path.GetExtension(input);
+
         // Check if it's a GIF
-        bool isGif = input.Extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
+        bool isGif = extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
+
+        // Parse mode option - override --blocks and --braille flags
+        bool useBlocks = colorBlocks;
+        bool useBraille = braille;
+        TerminalProtocol? explicitProtocol = null;
+
+        if (!string.IsNullOrEmpty(mode))
+        {
+            switch (mode.ToLowerInvariant())
+            {
+                case "ascii":
+                    useBlocks = false;
+                    useBraille = false;
+                    break;
+                case "blocks":
+                case "colorblocks":
+                    useBlocks = true;
+                    useBraille = false;
+                    break;
+                case "braille":
+                    useBlocks = false;
+                    useBraille = true;
+                    break;
+                case "sixel":
+                    explicitProtocol = TerminalProtocol.Sixel;
+                    break;
+                case "iterm2":
+                case "iterm":
+                    explicitProtocol = TerminalProtocol.ITerm2;
+                    break;
+                case "kitty":
+                    explicitProtocol = TerminalProtocol.Kitty;
+                    break;
+                case "auto":
+                    explicitProtocol = TerminalCapabilities.DetectBestProtocol();
+                    break;
+            }
+        }
+
+        // GIF output mode - render and save as animated GIF
+        if (outputAsGif && !string.IsNullOrEmpty(gifOutputPath))
+        {
+            Console.WriteLine($"Rendering to GIF: {gifOutputPath}");
+            var gifOptions = CreateGifOptions();
+            using var gifWriter = new GifWriter(gifOptions);
+
+            // Create separate RenderOptions for GIF output if dimensions specified
+            var gifRenderOptions = new RenderOptions
+            {
+                Width = gifWidth ?? options.Width,
+                Height = gifHeight ?? options.Height,
+                MaxWidth = gifWidth ?? options.MaxWidth,
+                MaxHeight = gifHeight ?? options.MaxHeight,
+                CharacterAspectRatio = options.CharacterAspectRatio,
+                UseColor = options.UseColor,
+                Invert = options.Invert,
+                ContrastPower = options.ContrastPower,
+                CharacterSet = options.CharacterSet,
+                AnimationSpeedMultiplier = options.AnimationSpeedMultiplier,
+                LoopCount = options.LoopCount,
+                FrameSampleRate = options.FrameSampleRate,
+                EnableDithering = options.EnableDithering,
+                EnableEdgeDirectionChars = options.EnableEdgeDirectionChars,
+                UseParallelProcessing = options.UseParallelProcessing,
+                AutoBackgroundSuppression = options.AutoBackgroundSuppression
+            };
+
+            if (isGif)
+            {
+                // Render animated GIF frames using mode-specific methods
+                if (useBraille)
+                {
+                    using var renderer = new BrailleRenderer(gifRenderOptions);
+                    var brailleFrames = renderer.RenderGifFrames(input);
+                    var sampledFrames = frameSample > 1
+                        ? brailleFrames.Where((f, i) => i % frameSample == 0).ToList()
+                        : brailleFrames.ToList();
+
+                    int frameIndex = 0;
+                    int totalFrames = sampledFrames.Count;
+                    foreach (var frame in sampledFrames)
+                    {
+                        gifWriter.AddBrailleFrame(frame, frame.DelayMs * frameSample);
+                        frameIndex++;
+                        Console.Write($"\rProcessing frame {frameIndex}/{totalFrames}...");
+                    }
+                }
+                else if (useBlocks)
+                {
+                    using var renderer = new ColorBlockRenderer(gifRenderOptions);
+                    var blockFrames = downloadedStream != null
+                        ? renderer.RenderGifFrames(downloadedStream)
+                        : renderer.RenderGifFrames(input);
+                    var sampledFrames = frameSample > 1
+                        ? blockFrames.Where((f, i) => i % frameSample == 0).ToList()
+                        : blockFrames.ToList();
+
+                    int frameIndex = 0;
+                    int totalFrames = sampledFrames.Count;
+                    foreach (var frame in sampledFrames)
+                    {
+                        gifWriter.AddColorBlockFrame(frame, frame.DelayMs * frameSample);
+                        frameIndex++;
+                        Console.Write($"\rProcessing frame {frameIndex}/{totalFrames}...");
+                    }
+                }
+                else
+                {
+                    using var renderer = new AsciiRenderer(gifRenderOptions);
+                    var asciiFrames = downloadedStream != null
+                        ? renderer.RenderGifStream(downloadedStream)
+                        : renderer.RenderGif(input);
+                    var sampledFrames = frameSample > 1
+                        ? asciiFrames.Where((f, i) => i % frameSample == 0).ToList()
+                        : asciiFrames.ToList();
+
+                    int frameIndex = 0;
+                    int totalFrames = sampledFrames.Count;
+                    foreach (var frame in sampledFrames)
+                    {
+                        gifWriter.AddFrame(frame, frame.DelayMs * frameSample);
+                        frameIndex++;
+                        Console.Write($"\rProcessing frame {frameIndex}/{totalFrames}...");
+                    }
+                }
+                Console.WriteLine(" Done!");
+            }
+            else
+            {
+                // Static image - single frame
+                if (useBraille)
+                {
+                    using var renderer = new BrailleRenderer(gifRenderOptions);
+                    var frame = downloadedStream != null
+                        ? renderer.RenderImageToFrame(Image.Load<Rgba32>(downloadedStream))
+                        : renderer.RenderFileToFrame(input);
+                    gifWriter.AddBrailleFrame(frame, 1000);
+                }
+                else if (useBlocks)
+                {
+                    using var renderer = new ColorBlockRenderer(gifRenderOptions);
+                    var frame = downloadedStream != null
+                        ? renderer.RenderStreamToFrame(downloadedStream)
+                        : renderer.RenderFileToFrame(input);
+                    gifWriter.AddColorBlockFrame(frame, 1000);
+                }
+                else
+                {
+                    using var renderer = new AsciiRenderer(gifRenderOptions);
+                    var frame = downloadedStream != null
+                        ? renderer.RenderStream(downloadedStream)
+                        : renderer.RenderFile(input);
+                    gifWriter.AddFrame(frame, 1000);
+                }
+            }
+
+            Console.Write("Saving GIF...");
+            await gifWriter.SaveAsync(gifOutputPath, cancellationToken);
+            Console.WriteLine($" Saved to {gifOutputPath}");
+            downloadedStream?.Dispose();
+            return 0;
+        }
+
+        // If using a native image protocol (sixel, iterm2, kitty), render with UnifiedRenderer
+        if (explicitProtocol.HasValue &&
+            explicitProtocol.Value is TerminalProtocol.Sixel or TerminalProtocol.ITerm2 or TerminalProtocol.Kitty)
+        {
+            using var renderer = new UnifiedRenderer(explicitProtocol.Value, options);
+            string result;
+            if (downloadedStream != null)
+            {
+                downloadedStream.Position = 0;
+                result = renderer.RenderStream(downloadedStream);
+            }
+            else
+            {
+                result = renderer.RenderFile(input);
+            }
+
+            if (outputFile != null)
+            {
+                // Native protocols don't write well to files, warn user
+                Console.Error.WriteLine("Warning: Native image protocols (sixel, iterm2, kitty) are designed for terminal display.");
+                File.WriteAllText(outputFile, result);
+                Console.WriteLine($"Written to {outputFile}");
+            }
+            else
+            {
+                Console.Write(result);
+            }
+            downloadedStream?.Dispose();
+            return 0;
+        }
 
         // Use color blocks mode for high-fidelity output
-        if (colorBlocks)
+        if (useBlocks)
         {
             if (isGif && !noAnimate)
             {
@@ -270,7 +696,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         renderOptions.MaxWidth = maxW;
                         renderOptions.MaxHeight = maxH;
                         using var renderer = new ColorBlockRenderer(renderOptions);
-                        return renderer.RenderGif(input.FullName);
+                        if (downloadedStream != null)
+                        {
+                            var ms = new MemoryStream(downloadedStream.ToArray());
+                            return renderer.RenderGifStream(ms);
+                        }
+                        return renderer.RenderGif(input);
                     },
                     explicitWidth: width,
                     explicitHeight: height,
@@ -285,11 +716,20 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 // Static image rendering
                 using var blockRenderer = new ColorBlockRenderer(options);
-                string result = blockRenderer.RenderFile(input.FullName);
-                if (output != null)
+                string result;
+                if (downloadedStream != null)
                 {
-                    File.WriteAllText(output.FullName, result);
-                    Console.WriteLine($"Written to {output.FullName}");
+                    downloadedStream.Position = 0;
+                    result = blockRenderer.RenderStream(downloadedStream);
+                }
+                else
+                {
+                    result = blockRenderer.RenderFile(input);
+                }
+                if (outputFile != null)
+                {
+                    File.WriteAllText(outputFile, result);
+                    Console.WriteLine($"Written to {outputFile}");
                 }
                 else
                 {
@@ -298,7 +738,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 }
             }
         }
-        else if (braille)
+        else if (useBraille)
         {
             // Braille rendering (2x4 dots per cell)
             if (isGif && !noAnimate)
@@ -317,7 +757,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         renderOptions.MaxWidth = maxW;
                         renderOptions.MaxHeight = maxH;
                         using var renderer = new BrailleRenderer(renderOptions);
-                        return renderer.RenderGif(input.FullName);
+                        if (downloadedStream != null)
+                        {
+                            var ms = new MemoryStream(downloadedStream.ToArray());
+                            using var img = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(ms);
+                            return renderer.RenderGif(input); // BrailleRenderer doesn't have RenderGifStream yet
+                        }
+                        return renderer.RenderGif(input);
                     },
                     explicitWidth: width,
                     explicitHeight: height,
@@ -331,11 +777,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             else
             {
                 using var brailleRenderer = new BrailleRenderer(options);
-                string result = brailleRenderer.RenderFile(input.FullName);
-                if (output != null)
+                string result;
+                if (downloadedStream != null)
                 {
-                    File.WriteAllText(output.FullName, result);
-                    Console.WriteLine($"Written to {output.FullName}");
+                    downloadedStream.Position = 0;
+                    using var img = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(downloadedStream);
+                    result = brailleRenderer.RenderImage(img);
+                }
+                else
+                {
+                    result = brailleRenderer.RenderFile(input);
+                }
+                if (outputFile != null)
+                {
+                    File.WriteAllText(outputFile, result);
+                    Console.WriteLine($"Written to {outputFile}");
                 }
                 else
                 {
@@ -367,7 +823,16 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         renderOptions.MaxWidth = maxW;
                         renderOptions.MaxHeight = maxH;
                         using var renderer = new AsciiRenderer(renderOptions);
-                        var asciiFrames = renderer.RenderGif(input.FullName);
+                        IReadOnlyList<AsciiFrame> asciiFrames;
+                        if (downloadedStream != null)
+                        {
+                            var ms = new MemoryStream(downloadedStream.ToArray());
+                            asciiFrames = renderer.RenderGifStream(ms);
+                        }
+                        else
+                        {
+                            asciiFrames = renderer.RenderGif(input);
+                        }
                         // Convert AsciiFrames to IAnimationFrame using adapter
                         return asciiFrames.Select(f => new AsciiFrameAdapter(f, !noColor, effectiveDarkThreshold, effectiveLightThreshold)).ToList<IAnimationFrame>();
                     },
@@ -384,12 +849,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 // Render all GIF frames as static output
                 using var renderer = new AsciiRenderer(options);
-                var frames = renderer.RenderGif(input.FullName);
+                IReadOnlyList<AsciiFrame> frames;
+                if (downloadedStream != null)
+                {
+                    downloadedStream.Position = 0;
+                    frames = renderer.RenderGifStream(downloadedStream);
+                }
+                else
+                {
+                    frames = renderer.RenderGif(input);
+                }
 
-                if (output != null)
+                if (outputFile != null)
                 {
                     // Write all frames to file
-                    using var writer = new StreamWriter(output.FullName);
+                    using var writer = new StreamWriter(outputFile);
                     for (int i = 0; i < frames.Count; i++)
                     {
                         if (i > 0)
@@ -400,7 +874,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         }
                         writer.WriteLine(frames[i].ToString());
                     }
-                    Console.WriteLine($"Wrote {frames.Count} frames to {output.FullName}");
+                    Console.WriteLine($"Wrote {frames.Count} frames to {outputFile}");
                 }
                 else
                 {
@@ -416,7 +890,16 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 // Render single image
                 using var renderer = new AsciiRenderer(options);
-                var frame = renderer.RenderFile(input.FullName);
+                AsciiFrame frame;
+                if (downloadedStream != null)
+                {
+                    downloadedStream.Position = 0;
+                    frame = renderer.RenderStream(downloadedStream);
+                }
+                else
+                {
+                    frame = renderer.RenderFile(input);
+                }
                 // Determine brightness thresholds based on terminal mode (Invert)
                 float? effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
                 float? effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
@@ -434,14 +917,16 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 }
                 else
                 {
-                    OutputFrame(frame, !noColor, output, options);
+                    OutputFrame(frame, !noColor, outputFile, options);
                 }
             }
         }
+        downloadedStream?.Dispose();
         return 0;
     }
     catch (Exception ex)
     {
+        downloadedStream?.Dispose();
         if (jsonOutput)
         {
             OutputJson($"{{\"success\":false,\"error\":\"{JsonEscape(ex.Message)}\"}}");
@@ -454,7 +939,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
 return await rootCommand.Parse(args).InvokeAsync();
 
-static void OutputFrame(AsciiFrame frame, bool useColor, FileInfo? output, RenderOptions options)
+static void OutputFrame(AsciiFrame frame, bool useColor, string? outputPath, RenderOptions options)
 {
     // Determine brightness thresholds based on terminal mode (Invert)
     float? darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
@@ -462,10 +947,10 @@ static void OutputFrame(AsciiFrame frame, bool useColor, FileInfo? output, Rende
 
     string result = useColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString();
 
-    if (output != null)
+    if (outputPath != null)
     {
-        File.WriteAllText(output.FullName, frame.ToString()); // Don't write ANSI codes to file
-        Console.WriteLine($"Written to {output.FullName}");
+        File.WriteAllText(outputPath, frame.ToString()); // Don't write ANSI codes to file
+        Console.WriteLine($"Written to {outputPath}");
     }
     else
     {

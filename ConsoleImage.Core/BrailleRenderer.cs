@@ -47,16 +47,11 @@ public class BrailleRenderer : IDisposable
     /// </summary>
     public string RenderImage(Image<Rgba32> image)
     {
-        // Calculate output dimensions (each char = 2x4 pixels)
-        // Braille dots are effectively square because the 2x4 grid within a ~2:1 terminal character
-        // compensates for terminal aspect ratio. Don't apply CharacterAspectRatio again.
-        int charWidth = _options.Width ?? Math.Min(image.Width / 2, _options.MaxWidth);
-        int charHeight = _options.Height ?? (int)((float)charWidth * image.Height / image.Width / 2);
-        charHeight = Math.Min(charHeight, _options.MaxHeight);
-
-        // Pixel dimensions (2x width, 4x height for braille)
-        int pixelWidth = charWidth * 2;
-        int pixelHeight = charHeight * 4;
+        // Calculate output dimensions (each char = 2x4 braille dots)
+        // Use CharacterAspectRatio to ensure correct visual aspect ratio
+        var (pixelWidth, pixelHeight) = CalculateBrailleDimensions(image.Width, image.Height);
+        int charWidth = pixelWidth / 2;
+        int charHeight = pixelHeight / 4;
 
         // Resize image
         var resized = image.Clone(ctx => ctx.Resize(pixelWidth, pixelHeight));
@@ -260,7 +255,12 @@ public class BrailleRenderer : IDisposable
             }
         }
 
-        return bestThreshold / 255f;
+        float threshold = bestThreshold / 255f;
+
+        // Clamp threshold to preserve detail in both dark and bright areas
+        // Min 0.15 ensures very dark images still show dots
+        // Max 0.65 ensures very bright images don't lose all detail
+        return Math.Clamp(threshold, 0.15f, 0.65f);
     }
 
     /// <summary>
@@ -293,11 +293,41 @@ public class BrailleRenderer : IDisposable
     }
 
     /// <summary>
+    /// Render a file to a BrailleFrame.
+    /// </summary>
+    public BrailleFrame RenderFileToFrame(string filePath)
+    {
+        return new BrailleFrame(RenderFile(filePath), 0);
+    }
+
+    /// <summary>
+    /// Render an image to a BrailleFrame.
+    /// </summary>
+    public BrailleFrame RenderImageToFrame(Image<Rgba32> image)
+    {
+        return new BrailleFrame(RenderImage(image), 0);
+    }
+
+    /// <summary>
     /// Render a GIF file to a list of braille frames
     /// </summary>
     public List<BrailleFrame> RenderGif(string filePath)
     {
         using var image = Image.Load<Rgba32>(filePath);
+        return RenderGifFramesInternal(image);
+    }
+
+    /// <summary>
+    /// Render a GIF file to a list of braille frames (for GIF output).
+    /// </summary>
+    public List<BrailleFrame> RenderGifFrames(string filePath)
+    {
+        using var image = Image.Load<Rgba32>(filePath);
+        return RenderGifFramesInternal(image);
+    }
+
+    private List<BrailleFrame> RenderGifFramesInternal(Image<Rgba32> image)
+    {
         var frames = new List<BrailleFrame>();
 
         for (int i = 0; i < image.Frames.Count; i++)
@@ -328,6 +358,22 @@ public class BrailleRenderer : IDisposable
     private static bool ColorsEqual(Rgba32 a, Rgba32 b)
     {
         return a.R == b.R && a.G == b.G && a.B == b.B;
+    }
+
+    /// <summary>
+    /// Calculate braille pixel dimensions accounting for CharacterAspectRatio.
+    /// Uses the shared CalculateVisualDimensions method from RenderOptions.
+    /// </summary>
+    private (int width, int height) CalculateBrailleDimensions(int imageWidth, int imageHeight)
+    {
+        // Braille: 2 pixels per char width, 4 pixels per char height
+        var (width, height) = _options.CalculateVisualDimensions(imageWidth, imageHeight, 2, 4);
+
+        // Ensure dimensions are multiples of 2x4 for braille
+        width = (width / 2) * 2;
+        height = (height / 4) * 4;
+
+        return (Math.Max(2, width), Math.Max(4, height));
     }
 
     public void Dispose()
