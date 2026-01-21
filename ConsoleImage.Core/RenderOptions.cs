@@ -69,9 +69,9 @@ public class RenderOptions
     /// <summary>
     /// Gamma correction for brightness adjustment.
     /// Values less than 1.0 brighten the output, greater than 1.0 darken it.
-    /// Default: 0.85 (slight brightening to compensate for character density)
+    /// Default: 0.65 (brighten to compensate for character density)
     /// </summary>
-    public float Gamma { get; set; } = 0.85f;
+    public float Gamma { get; set; } = 0.65f;
 
     /// <summary>
     /// Invert the output so black source pixels become spaces.
@@ -119,9 +119,10 @@ public class RenderOptions
 
     /// <summary>
     /// Automatically detect and suppress background based on edge pixels.
-    /// Works for both light and dark backgrounds. Default is TRUE.
+    /// Works for both light and dark backgrounds. Default is FALSE because
+    /// it can cause unexpected results on high-contrast content.
     /// </summary>
-    public bool AutoBackgroundSuppression { get; set; } = true;
+    public bool AutoBackgroundSuppression { get; set; } = false;
 
     /// <summary>
     /// Enable parallel processing for faster rendering (default: true)
@@ -257,13 +258,13 @@ public class RenderOptions
     };
 
     /// <summary>
-    /// Create options with automatic background detection and suppression.
-    /// Works for both light and dark backgrounds.
+    /// Create options with higher contrast for better detail.
+    /// Use BackgroundThreshold or DarkBackgroundThreshold for manual control.
     /// </summary>
-    public static RenderOptions WithAutoBackground => new()
+    public static RenderOptions HighContrast => new()
     {
-        AutoBackgroundSuppression = true,
-        ContrastPower = 2.5f
+        ContrastPower = 3.5f,
+        DirectionalContrastStrength = 0.4f
     };
 
     /// <summary>

@@ -72,8 +72,9 @@ var contrastOption = new Option<float>("--contrast")
 var gammaOption = new Option<float>("--gamma")
 {
     Description = "Gamma correction (< 1.0 brightens, > 1.0 darkens)",
-    DefaultValueFactory = _ => 0.85f
+    DefaultValueFactory = _ => 0.65f
 };
+gammaOption.Aliases.Add("-g");
 
 var charsetOption = new Option<string?>("--charset") { Description = "Custom character set (ordered from light to dark)" };
 
@@ -152,7 +153,6 @@ modeOption.Aliases.Add("-m");
 
 // GIF output options - save rendered output as animated GIF
 var outputGifOption = new Option<FileInfo?>("--output-gif") { Description = "Save rendered output as animated GIF (emulated console)" };
-outputGifOption.Aliases.Add("-g");
 
 var gifLengthOption = new Option<double?>("--gif-length") { Description = "Length of GIF output in seconds (for videos/long animations)" };
 var gifFramesOption = new Option<int?>("--gif-frames") { Description = "Number of frames for GIF output" };

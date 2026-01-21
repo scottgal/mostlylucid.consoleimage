@@ -422,7 +422,6 @@ var options = new RenderOptions
     ContrastPower = 3.0f,
     DirectionalContrastStrength = 0.3f,
     CharacterSetPreset = "extended",
-    AutoBackgroundSuppression = true,
     UseParallelProcessing = true
 };
 
@@ -565,7 +564,6 @@ await player.PlayAsync(cancellationToken);
     "DirectionalContrastStrength": 0.3,
     "UseColor": true,
     "Invert": true,
-    "AutoBackgroundSuppression": true,
     "CharacterSetPreset": "default"
   }
 }

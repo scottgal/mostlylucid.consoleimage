@@ -171,12 +171,23 @@ public readonly struct ShapeVector : IEquatable<ShapeVector>
     }
 
     /// <summary>
-    /// Apply contrast enhancement by normalizing, applying power, and denormalizing
+    /// Minimum coverage threshold below which a cell is considered uniform/empty.
+    /// Prevents noise amplification on near-white or near-black frames.
+    /// </summary>
+    private const float MinCoverageThreshold = 0.03f;
+
+    /// <summary>
+    /// Apply contrast enhancement by normalizing, applying power, and denormalizing.
+    /// Returns zero vector if max coverage is below threshold to prevent noise amplification.
     /// </summary>
     public ShapeVector ApplyContrast(float power)
     {
         float max = Max();
-        if (max <= 0) return this;
+
+        // If max coverage is below threshold, the cell is essentially uniform
+        // (near-white or near-black). Return zero vector to prevent noise amplification
+        // that could cause random character matching on uniform frames.
+        if (max <= MinCoverageThreshold) return default;
 
         float invMax = 1f / max;
         return new ShapeVector(

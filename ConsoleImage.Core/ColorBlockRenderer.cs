@@ -97,6 +97,10 @@ public class ColorBlockRenderer : IDisposable
         float? darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
         float? lightThreshold = !_options.Invert ? _options.LightTerminalBrightnessThreshold : null;
 
+        // Gamma correction
+        float gamma = _options.Gamma;
+        bool applyGamma = gamma != 1.0f;
+
         // Parallel row rendering for performance
         if (_options.UseParallelProcessing && charRows > 4)
         {
@@ -112,6 +116,14 @@ public class ColorBlockRenderer : IDisposable
                 {
                     var upper = image[x, y1];
                     var lower = image[x, y2];
+
+                    // Apply gamma correction
+                    if (applyGamma)
+                    {
+                        upper = ApplyGamma(upper, gamma);
+                        lower = ApplyGamma(lower, gamma);
+                    }
+
                     AppendColoredBlock(rowSb, upper, lower, darkThreshold, lightThreshold);
                 }
 
@@ -134,6 +146,13 @@ public class ColorBlockRenderer : IDisposable
                 var upper = image[x, y1];
                 var lower = image[x, y2];
 
+                // Apply gamma correction
+                if (applyGamma)
+                {
+                    upper = ApplyGamma(upper, gamma);
+                    lower = ApplyGamma(lower, gamma);
+                }
+
                 AppendColoredBlock(sb, upper, lower, darkThreshold, lightThreshold);
             }
 
@@ -143,6 +162,16 @@ public class ColorBlockRenderer : IDisposable
         }
 
         return sb.ToString();
+    }
+
+    private static Rgba32 ApplyGamma(Rgba32 pixel, float gamma)
+    {
+        return new Rgba32(
+            (byte)Math.Clamp(MathF.Pow(pixel.R / 255f, gamma) * 255f, 0, 255),
+            (byte)Math.Clamp(MathF.Pow(pixel.G / 255f, gamma) * 255f, 0, 255),
+            (byte)Math.Clamp(MathF.Pow(pixel.B / 255f, gamma) * 255f, 0, 255),
+            pixel.A
+        );
     }
 
     private static void AppendColoredBlock(StringBuilder sb, Rgba32 upper, Rgba32 lower, float? darkThreshold, float? lightThreshold)

@@ -92,6 +92,10 @@ var noColorOption = new Option<bool>("--no-color") { Description = "Disable colo
 var contrastOption = new Option<float>("--contrast") { Description = "Contrast enhancement (1.0 = none, higher = more contrast)" };
 contrastOption.DefaultValueFactory = _ => 2.5f;
 
+var gammaOption = new Option<float>("--gamma") { Description = "Gamma correction (lower = brighter, higher = darker). Default: 0.65" };
+gammaOption.DefaultValueFactory = _ => 0.65f;
+gammaOption.Aliases.Add("-g");
+
 var charAspectOption = new Option<float?>("--char-aspect") { Description = "Character aspect ratio (width/height). Uses saved calibration or 0.5 if not set." };
 
 var charsetOption = new Option<string?>("--charset") { Description = "Custom character set (light to dark)" };
@@ -153,6 +157,7 @@ rootCommand.Options.Add(colorBlocksOption);
 rootCommand.Options.Add(brailleOption);
 rootCommand.Options.Add(noColorOption);
 rootCommand.Options.Add(contrastOption);
+rootCommand.Options.Add(gammaOption);
 rootCommand.Options.Add(charAspectOption);
 rootCommand.Options.Add(charsetOption);
 rootCommand.Options.Add(presetOption);
@@ -190,6 +195,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var useBraille = parseResult.GetValue(brailleOption);
     var noColor = parseResult.GetValue(noColorOption);
     var contrast = parseResult.GetValue(contrastOption);
+    var gamma = parseResult.GetValue(gammaOption);
     var charAspect = parseResult.GetValue(charAspectOption);
     var charset = parseResult.GetValue(charsetOption);
     var preset = parseResult.GetValue(presetOption);
@@ -403,7 +409,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         return await HandleImageFile(
             input, width, height, maxWidth, maxHeight, charAspect, savedCalibration,
             parseResult.GetValue(colorBlocksOption), parseResult.GetValue(brailleOption),
-            noColor, contrast, loop, speed, outputGif,
+            noColor, contrast, gamma, loop, speed, outputGif,
             parseResult.GetValue(gifFontSizeOption), parseResult.GetValue(gifScaleOption),
             parseResult.GetValue(gifColorsOption),
             outputAsJson, jsonOutputPath,
@@ -479,6 +485,16 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         Console.WriteLine($"Bitrate: {info.BitRate / 1000} kbps");
         Console.WriteLine($"Hardware Accel: {(string.IsNullOrEmpty(ffmpeg.HardwareAccelerationType) ? "none" : ffmpeg.HardwareAccelerationType)}");
         return 0;
+    }
+
+    // Calculate end time from duration if specified (must be done before any output mode)
+    if (duration.HasValue && start.HasValue)
+    {
+        end = start.Value + duration.Value;
+    }
+    else if (duration.HasValue)
+    {
+        end = duration.Value;
     }
 
     // GIF output mode - render video frames to animated GIF
@@ -565,6 +581,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             MaxHeight = charHeight,
             CharacterAspectRatio = gifEffectiveAspect,
             ContrastPower = contrast,
+            Gamma = gamma,
             UseColor = !noColor,
             Invert = true,
             UseParallelProcessing = true
@@ -654,16 +671,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         return 0;
     }
 
-    // Calculate end time from duration if specified
-    if (duration.HasValue && start.HasValue)
-    {
-        end = start.Value + duration.Value;
-    }
-    else if (duration.HasValue)
-    {
-        end = duration.Value;
-    }
-
     // Streaming JSON output mode - render video frames to JSON document incrementally
     if (outputAsJson && !string.IsNullOrEmpty(jsonOutputPath))
     {
@@ -727,6 +734,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             MaxHeight = charHeight,
             CharacterAspectRatio = jsonEffectiveAspect,
             ContrastPower = contrast,
+            Gamma = gamma,
             UseColor = !noColor,
             Invert = true,
             UseParallelProcessing = true
@@ -844,6 +852,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             CharacterSet = characterSet,
             CharacterAspectRatio = effectiveAspect,
             ContrastPower = contrast,
+            Gamma = gamma,
             UseColor = !noColor,
             Invert = true,
             UseParallelProcessing = true,
@@ -951,7 +960,7 @@ static async Task<int> HandleImageFile(
     int? width, int? height, int maxWidth, int maxHeight,
     float? charAspect, CalibrationSettings? savedCalibration,
     bool useBlocks, bool useBraille,
-    bool noColor, float contrast, int loop, float speed,
+    bool noColor, float contrast, float gamma, int loop, float speed,
     FileInfo? outputGif,
     int gifFontSize, float gifScale, int gifColors,
     bool outputAsJson, string? jsonOutputPath,
@@ -979,6 +988,7 @@ static async Task<int> HandleImageFile(
         MaxHeight = maxHeight,
         CharacterAspectRatio = effectiveAspect,
         ContrastPower = contrast,
+        Gamma = gamma,
         UseColor = !noColor,
         Invert = true,
         UseParallelProcessing = true,

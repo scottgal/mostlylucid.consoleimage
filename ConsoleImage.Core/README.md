@@ -158,14 +158,7 @@ Dithering is particularly effective for:
 
 ### Automatic Background Suppression
 
-Detect and suppress uniform backgrounds:
-
-```csharp
-var options = new RenderOptions
-{
-    AutoBackgroundSuppression = true  // Auto-detect background
-};
-```
+Use manual thresholds for better control over backgrounds:
 
 ### Manual Threshold Control
 
@@ -215,14 +208,13 @@ var options = new RenderOptions
 
     // Features
     EnableDithering = true,          // Floyd-Steinberg dithering
-    EnableEdgeDirectionChars = true, // Use /\|- for edges
-    EnableEdgeDetection = false,     // Sobel edge detection
-    UseParallelProcessing = true,    // Multi-threaded rendering
+    EnableEdgeDirectionChars = false, // Use /\|- for edges (experimental)
+    EnableEdgeDetection = false,      // Sobel edge detection (experimental)
+    UseParallelProcessing = true,     // Multi-threaded rendering
 
-    // Background handling
-    AutoBackgroundSuppression = true,
-    BackgroundThreshold = null,      // Light bg threshold (0-1)
-    DarkBackgroundThreshold = null,  // Dark bg threshold (0-1)
+    // Background handling (manual thresholds)
+    BackgroundThreshold = null,       // Light bg threshold (0-1)
+    DarkBackgroundThreshold = null,   // Dark bg threshold (0-1)
 
     // Terminal optimization
     DarkTerminalBrightnessThreshold = 0.1f,  // Skip very dark colors
