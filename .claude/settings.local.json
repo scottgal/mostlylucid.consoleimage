@@ -48,7 +48,14 @@
       "Bash(sort:*)",
       "Bash(cmd /c copy \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\wiggum_braille_v6.gif\" \"F:\\\\Gifs\\\\wiggum_braille_v6.gif\")",
       "WebFetch(domain:github.com)",
-      "Bash(cmd /c copy:*)"
+      "Bash(cmd /c copy:*)",
+      "Bash(cmd /c \"taskkill /IM consoleimage.exe /F\")",
+      "Bash(cmd /c:*)",
+      "Bash(wsl --list:*)",
+      "Bash(dotnet publish:*)",
+      "Bash(wsl -e bash -c \"cd /mnt/e/source/vectorascii/ConsoleImage && dotnet --version\":*)",
+      "Bash(pwsh:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File generate-samples.ps1)"
     ]
   }
 }

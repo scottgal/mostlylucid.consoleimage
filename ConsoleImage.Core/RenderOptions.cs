@@ -67,6 +67,13 @@ public class RenderOptions
     public float DirectionalContrastStrength { get; set; } = 0.3f;
 
     /// <summary>
+    /// Gamma correction for brightness adjustment.
+    /// Values less than 1.0 brighten the output, greater than 1.0 darken it.
+    /// Default: 0.85 (slight brightening to compensate for character density)
+    /// </summary>
+    public float Gamma { get; set; } = 0.85f;
+
+    /// <summary>
     /// Invert the output so black source pixels become spaces.
     /// Default is TRUE because most terminals have dark backgrounds.
     /// </summary>
@@ -376,6 +383,7 @@ public class RenderOptions
         FontFamily = FontFamily,
         ContrastPower = ContrastPower,
         DirectionalContrastStrength = DirectionalContrastStrength,
+        Gamma = Gamma,
         Invert = Invert,
         UseColor = UseColor,
         AnimationSpeedMultiplier = AnimationSpeedMultiplier,

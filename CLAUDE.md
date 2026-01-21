@@ -13,6 +13,9 @@ ConsoleImage/
 │   ├── BrailleRenderer.cs       # Braille character rendering (2x4 dots per cell)
 │   ├── AsciiAnimationPlayer.cs  # GIF playback with DECSET 2026
 │   ├── ResizableAnimationPlayer.cs # Dynamic console resize support
+│   ├── ConsoleImageDocument.cs  # JSON document format for saving/loading
+│   ├── StreamingDocumentWriter.cs # NDJSON streaming writer for long videos
+│   ├── DocumentPlayer.cs        # Playback of saved JSON documents
 │   ├── AsciiFrame.cs            # Single frame data structure
 │   ├── CharacterMap.cs          # Character shape analysis and matching
 │   ├── RenderOptions.cs         # All configuration options
@@ -28,9 +31,11 @@ ConsoleImage/
 │   ├── FFmpegService.cs         # FFmpeg process management
 │   ├── VideoAnimationPlayer.cs  # Video streaming player
 │   └── VideoRenderOptions.cs    # Video-specific options
-└── ConsoleImage.Video/          # CLI tool for video files
-    ├── Program.cs               # Video CLI
-    └── calibration.json         # Saved aspect ratio calibration
+├── ConsoleImage.Video/          # CLI tool for video files
+│   ├── Program.cs               # Video CLI
+│   └── calibration.json         # Saved aspect ratio calibration
+└── docs/
+    └── JSON-FORMAT.md           # JSON document format specification
 ```
 
 ## Key Classes
@@ -59,6 +64,26 @@ All configuration in one class. Key properties:
 - `UseColor` - Enable ANSI color codes
 - `FrameSampleRate` - Skip frames for efficiency (1 = all, 2 = every 2nd, etc.)
 - `EnableDithering/EnableEdgeDirectionChars` - Experimental features
+
+### ConsoleImageDocument
+Self-contained JSON document format for saving/loading rendered ASCII art.
+- Stores all frames with ANSI escape codes
+- Preserves render settings for reproducibility
+- JSON-LD compatible (`@context`, `@type` fields)
+- AOT-compatible using System.Text.Json source generation
+- Auto-detects standard JSON vs streaming NDJSON format on load
+
+### StreamingDocumentWriter
+Writes frames incrementally to NDJSON (JSON Lines) format for long videos.
+- One JSON object per line - each line is valid JSON
+- Auto-finalizes on dispose (Ctrl+C produces valid document)
+- No memory buildup - frames written as processed
+
+### DocumentPlayer
+Plays back saved JSON documents with animation support.
+- Handles both single-frame and animated documents
+- Respects saved settings (speed, loop count)
+- Can override settings at playback time
 
 ### CalibrationHelper
 Manages terminal font aspect ratio calibration. Each render mode (ASCII, Blocks, Braille)
@@ -123,6 +148,15 @@ consoleimage photo.png --braille
 
 # Frame sampling for large GIFs
 consoleimage big.gif --frame-sample 2  # Every 2nd frame
+
+# Save to JSON document
+consoleimage animation.gif -o json:output.json
+
+# Play saved JSON document
+consoleimage output.json
+
+# Stream long video to NDJSON (writes frames incrementally)
+consolevideo movie.mp4 -o json:movie.ndjson
 ```
 
 ### Calibration
@@ -168,6 +202,7 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `-f, --frame-sample` - Frame sampling rate (skip frames)
 - `-b, --blocks` - Use colored Unicode blocks
 - `-B, --braille` - Use braille characters (2x4 dots per cell)
+- `-o, --output` - Output: file, `gif:file.gif`, `json:file.json`
 - `--calibrate` - Show aspect ratio calibration pattern
 - `--save` - Save calibration to calibration.json
 - `--no-color` - Disable color output
@@ -184,4 +219,19 @@ dotnet run --project ConsoleImage -- image.jpg
 
 - SixLabors.ImageSharp (image loading/processing)
 - System.CommandLine (CLI parsing)
-- Targets .NET 8.0 and .NET 10.0
+- System.Text.Json (JSON document format with source generation)
+- Targets .NET 10.0
+
+## JSON Document Format
+
+See [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) for the full specification.
+
+**Two formats supported:**
+- **Standard JSON** - Single JSON object with all frames (images, short GIFs)
+- **Streaming NDJSON** - JSON Lines format, one record per line (long videos)
+
+**Key features:**
+- JSON-LD compatible (`@context`, `@type` fields)
+- Self-contained - no source file needed for playback
+- Auto-detects format on load
+- Streaming format auto-finalizes on Ctrl+C

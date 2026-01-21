@@ -23,7 +23,7 @@ Real-time video to ASCII art renderer using FFmpeg for .NET 10.
 
 | ASCII Mode | ColorBlocks Mode | Braille Mode |
 |------------|------------------|--------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_ascii.gif" width="200" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_blocks.gif" width="200" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_braille.gif" width="200" alt="Braille Mode"> |
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif" width="200" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_blocks.gif" width="200" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_braille.gif" width="200" alt="Braille Mode"> |
 
 **Real-time video rendering** in three modes with hardware-accelerated FFmpeg decoding
 

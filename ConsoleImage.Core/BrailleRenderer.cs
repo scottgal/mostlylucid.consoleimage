@@ -48,7 +48,6 @@ public class BrailleRenderer : IDisposable
     public string RenderImage(Image<Rgba32> image)
     {
         // Calculate output dimensions (each char = 2x4 braille dots)
-        // Use CharacterAspectRatio to ensure correct visual aspect ratio
         var (pixelWidth, pixelHeight) = CalculateBrailleDimensions(image.Width, image.Height);
         int charWidth = pixelWidth / 2;
         int charHeight = pixelHeight / 4;
@@ -56,178 +55,318 @@ public class BrailleRenderer : IDisposable
         // Resize image
         var resized = image.Clone(ctx => ctx.Resize(pixelWidth, pixelHeight));
 
-        // Calculate threshold using autocontrast approach (based on img2braille technique)
-        // This adjusts to the image's actual brightness range for better results
-        var (minBrightness, maxBrightness) = CalculateBrightnessRange(resized);
-        float brightnessRange = maxBrightness - minBrightness;
+        // Pre-compute brightness values and colors for all pixels
+        var (brightness, colors) = PrecomputePixelData(resized);
 
-        // Use lower threshold to show more dots - dark areas should still show colored dots
-        // This approach is inspired by img2braille's autocontrast feature
-        float threshold = minBrightness + (brightnessRange * 0.20f);
+        // Calculate threshold using autocontrast
+        // Use 0.5 (midpoint) for balanced dot distribution instead of 0.20 which creates too many solid blocks
+        var (minBrightness, maxBrightness) = GetBrightnessRangeFromBuffer(brightness);
+        float threshold = minBrightness + ((maxBrightness - minBrightness) * 0.5f);
+        bool invertMode = _options.Invert;
 
-        // Note: Braille has 8 dots per character cell (2x4), giving high enough resolution
-        // that dithering is not needed - it actually introduces stippling noise.
-        // We use direct brightness comparison for cleaner output.
-
-        var sb = new System.Text.StringBuilder();
-        Rgba32? lastColor = null;
-
-        for (int cy = 0; cy < charHeight; cy++)
+        // Apply Floyd-Steinberg dithering if enabled for better gradients
+        if (_options.EnableDithering)
         {
-            for (int cx = 0; cx < charWidth; cx++)
+            brightness = ApplyFloydSteinbergDithering(brightness, pixelWidth, pixelHeight, threshold);
+            // After dithering, values are 0 or 1, so use 0.5 threshold
+            threshold = 0.5f;
+        }
+
+        // Pre-size StringBuilder: each char cell needs ~20 bytes for ANSI codes + 1 char
+        // Plus newlines and resets
+        int estimatedSize = charWidth * charHeight * (_options.UseColor ? 25 : 1) + charHeight * 10;
+        var sb = new System.Text.StringBuilder(estimatedSize);
+
+        if (_options.UseColor && _options.UseParallelProcessing && charHeight > 4)
+        {
+            // Parallel processing: compute each row independently, then combine
+            var rowStrings = new string[charHeight];
+            var rowColors = new Rgba32?[charHeight]; // Track last color for each row
+
+            System.Threading.Tasks.Parallel.For(0, charHeight, cy =>
             {
-                int px = cx * 2;
-                int py = cy * 4;
+                var rowSb = new System.Text.StringBuilder(charWidth * 25);
+                Rgba32? lastColor = null;
 
-                int brailleCode = 0;
-                float totalR = 0, totalG = 0, totalB = 0;
-                int colorCount = 0;
-
-                // Sample each of the 8 dots in the 2x4 grid
-                for (int dy = 0; dy < 4; dy++)
+                for (int cx = 0; cx < charWidth; cx++)
                 {
-                    for (int dx = 0; dx < 2; dx++)
+                    int px = cx * 2;
+                    int py = cy * 4;
+
+                    int brailleCode = 0;
+                    int totalR = 0, totalG = 0, totalB = 0;
+                    int colorCount = 0;
+
+                    // Sample 8 dots
+                    for (int dy = 0; dy < 4; dy++)
                     {
-                        int imgX = px + dx;
                         int imgY = py + dy;
+                        if (imgY >= pixelHeight) continue;
+                        int rowOffset = imgY * pixelWidth;
 
-                        if (imgX < resized.Width && imgY < resized.Height)
+                        for (int dx = 0; dx < 2; dx++)
                         {
-                            var pixel = resized[imgX, imgY];
-                            float rawBrightness = GetBrightness(pixel);
+                            int imgX = px + dx;
+                            if (imgX >= pixelWidth) continue;
 
-                            // For dark terminals (default): bright pixels = dots (white/colored on black)
-                            // For light terminals: dark pixels = dots (dark on white)
-                            //
-                            // Use direct brightness comparison - braille's high resolution (8 dots/cell)
-                            // means we don't need dithering and it actually causes stippling artifacts
-                            bool isDot;
-                            if (_options.Invert)
-                            {
-                                // Dark terminal mode: dots represent brightness
-                                isDot = rawBrightness > threshold;
-                            }
-                            else
-                            {
-                                // Light terminal mode: dots represent darkness
-                                isDot = rawBrightness < (1f - threshold);
-                            }
+                            int idx = rowOffset + imgX;
+                            // In invert mode (dark terminal): show dots where brightness is HIGH
+                            // In non-invert mode (light terminal): show dots where brightness is LOW
+                            bool isDot = invertMode
+                                ? brightness[idx] > threshold
+                                : brightness[idx] < threshold;
 
                             if (isDot)
-                            {
-                                int dotIndex = dy * 2 + dx;
-                                brailleCode |= DotBits[dotIndex];
-                            }
+                                brailleCode |= DotBits[dy * 2 + dx];
 
-                            // Accumulate color for the cell (use original pixel, not dithered brightness)
-                            totalR += pixel.R;
-                            totalG += pixel.G;
-                            totalB += pixel.B;
+                            var c = colors[idx];
+                            totalR += c.R;
+                            totalG += c.G;
+                            totalB += c.B;
                             colorCount++;
                         }
                     }
-                }
 
-                char brailleChar = (char)(BrailleBase + brailleCode);
+                    char brailleChar = (char)(BrailleBase + brailleCode);
 
-                if (_options.UseColor && colorCount > 0)
-                {
-                    var avgColor = new Rgba32(
-                        (byte)(totalR / colorCount),
-                        (byte)(totalG / colorCount),
-                        (byte)(totalB / colorCount),
-                        255
-                    );
-
-                    // No black cutoff - render all colors directly
-                    // This preserves dark details that would otherwise be lost
-                    if (lastColor == null || !ColorsEqual(lastColor.Value, avgColor))
+                    if (colorCount > 0)
                     {
-                        sb.Append($"\x1b[38;2;{avgColor.R};{avgColor.G};{avgColor.B}m");
-                        lastColor = avgColor;
+                        byte r = (byte)(totalR / colorCount);
+                        byte g = (byte)(totalG / colorCount);
+                        byte b = (byte)(totalB / colorCount);
+
+                        // Apply gamma correction to brighten colors
+                        if (_options.Gamma != 1.0f)
+                        {
+                            r = (byte)Math.Clamp(MathF.Pow(r / 255f, _options.Gamma) * 255f, 0, 255);
+                            g = (byte)Math.Clamp(MathF.Pow(g / 255f, _options.Gamma) * 255f, 0, 255);
+                            b = (byte)Math.Clamp(MathF.Pow(b / 255f, _options.Gamma) * 255f, 0, 255);
+                        }
+
+                        var avgColor = new Rgba32(r, g, b, 255);
+
+                        if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
+                        {
+                            rowSb.Append("\x1b[38;2;");
+                            rowSb.Append(avgColor.R);
+                            rowSb.Append(';');
+                            rowSb.Append(avgColor.G);
+                            rowSb.Append(';');
+                            rowSb.Append(avgColor.B);
+                            rowSb.Append('m');
+                            lastColor = avgColor;
+                        }
                     }
-                    sb.Append(brailleChar);
+                    rowSb.Append(brailleChar);
                 }
-                else
-                {
-                    sb.Append(brailleChar);
-                }
-            }
 
-            if (cy < charHeight - 1)
+                rowStrings[cy] = rowSb.ToString();
+            });
+
+            // Combine rows
+            for (int cy = 0; cy < charHeight; cy++)
             {
-                if (_options.UseColor)
+                sb.Append(rowStrings[cy]);
+                if (cy < charHeight - 1)
+                {
                     sb.Append("\x1b[0m");
-                sb.AppendLine();
-                lastColor = null;
+                    sb.AppendLine();
+                }
             }
-        }
-
-        if (_options.UseColor)
             sb.Append("\x1b[0m");
+        }
+        else
+        {
+            // Sequential processing (non-color or small images)
+            Rgba32? lastColor = null;
+
+            for (int cy = 0; cy < charHeight; cy++)
+            {
+                for (int cx = 0; cx < charWidth; cx++)
+                {
+                    int px = cx * 2;
+                    int py = cy * 4;
+
+                    int brailleCode = 0;
+                    int totalR = 0, totalG = 0, totalB = 0;
+                    int colorCount = 0;
+
+                    for (int dy = 0; dy < 4; dy++)
+                    {
+                        int imgY = py + dy;
+                        if (imgY >= pixelHeight) continue;
+                        int rowOffset = imgY * pixelWidth;
+
+                        for (int dx = 0; dx < 2; dx++)
+                        {
+                            int imgX = px + dx;
+                            if (imgX >= pixelWidth) continue;
+
+                            int idx = rowOffset + imgX;
+                            // In invert mode (dark terminal): show dots where brightness is HIGH
+                            // In non-invert mode (light terminal): show dots where brightness is LOW
+                            bool isDot = invertMode
+                                ? brightness[idx] > threshold
+                                : brightness[idx] < threshold;
+
+                            if (isDot)
+                                brailleCode |= DotBits[dy * 2 + dx];
+
+                            var c = colors[idx];
+                            totalR += c.R;
+                            totalG += c.G;
+                            totalB += c.B;
+                            colorCount++;
+                        }
+                    }
+
+                    char brailleChar = (char)(BrailleBase + brailleCode);
+
+                    if (_options.UseColor && colorCount > 0)
+                    {
+                        byte r = (byte)(totalR / colorCount);
+                        byte g = (byte)(totalG / colorCount);
+                        byte b = (byte)(totalB / colorCount);
+
+                        // Apply gamma correction to brighten colors
+                        if (_options.Gamma != 1.0f)
+                        {
+                            r = (byte)Math.Clamp(MathF.Pow(r / 255f, _options.Gamma) * 255f, 0, 255);
+                            g = (byte)Math.Clamp(MathF.Pow(g / 255f, _options.Gamma) * 255f, 0, 255);
+                            b = (byte)Math.Clamp(MathF.Pow(b / 255f, _options.Gamma) * 255f, 0, 255);
+                        }
+
+                        var avgColor = new Rgba32(r, g, b, 255);
+
+                        if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
+                        {
+                            sb.Append("\x1b[38;2;");
+                            sb.Append(avgColor.R);
+                            sb.Append(';');
+                            sb.Append(avgColor.G);
+                            sb.Append(';');
+                            sb.Append(avgColor.B);
+                            sb.Append('m');
+                            lastColor = avgColor;
+                        }
+                        sb.Append(brailleChar);
+                    }
+                    else
+                    {
+                        sb.Append(brailleChar);
+                    }
+                }
+
+                if (cy < charHeight - 1)
+                {
+                    if (_options.UseColor)
+                        sb.Append("\x1b[0m");
+                    sb.AppendLine();
+                    lastColor = null;
+                }
+            }
+
+            if (_options.UseColor)
+                sb.Append("\x1b[0m");
+        }
 
         resized.Dispose();
         return sb.ToString();
     }
 
     /// <summary>
-    /// Calculate adaptive threshold using Otsu's method for optimal binarization
+    /// Pre-compute brightness and color data for all pixels.
+    /// This is faster than individual pixel access during rendering.
     /// </summary>
-    private float CalculateAdaptiveThreshold(Image<Rgba32> image)
+    private (float[] brightness, Rgba32[] colors) PrecomputePixelData(Image<Rgba32> image)
     {
-        // Build histogram
-        int[] histogram = new int[256];
-        int totalPixels = image.Width * image.Height;
+        int width = image.Width;
+        int height = image.Height;
+        int totalPixels = width * height;
+        var brightness = new float[totalPixels];
+        var colors = new Rgba32[totalPixels];
 
-        for (int y = 0; y < image.Height; y++)
+        image.ProcessPixelRows(accessor =>
         {
-            for (int x = 0; x < image.Width; x++)
+            for (int y = 0; y < accessor.Height; y++)
             {
-                int brightness = (int)(GetBrightness(image[x, y]) * 255);
-                histogram[Math.Clamp(brightness, 0, 255)]++;
+                var row = accessor.GetRowSpan(y);
+                int rowOffset = y * width;
+                for (int x = 0; x < row.Length; x++)
+                {
+                    var pixel = row[x];
+                    brightness[rowOffset + x] = BrightnessHelper.GetBrightness(pixel);
+                    colors[rowOffset + x] = pixel;
+                }
+            }
+        });
+
+        return (brightness, colors);
+    }
+
+    /// <summary>
+    /// Get min/max brightness from pre-computed buffer.
+    /// </summary>
+    private (float min, float max) GetBrightnessRangeFromBuffer(float[] brightness)
+    {
+        float min = 1f;
+        float max = 0f;
+        for (int i = 0; i < brightness.Length; i++)
+        {
+            if (brightness[i] < min) min = brightness[i];
+            if (brightness[i] > max) max = brightness[i];
+        }
+        return min >= max ? (0f, 1f) : (min, max);
+    }
+
+    /// <summary>
+    /// Apply Floyd-Steinberg dithering to brightness values for smoother gradients.
+    /// Returns a new array with dithered values (0 or 1).
+    /// </summary>
+    private float[] ApplyFloydSteinbergDithering(float[] brightness, int width, int height, float threshold)
+    {
+        // Normalize brightness values to 0-1 range based on min/max
+        var (min, max) = GetBrightnessRangeFromBuffer(brightness);
+        float range = max - min;
+        if (range < 0.01f) range = 1f; // Avoid division issues
+
+        // Work with a copy to avoid modifying original
+        var result = new float[brightness.Length];
+        for (int i = 0; i < brightness.Length; i++)
+        {
+            result[i] = (brightness[i] - min) / range;
+        }
+
+        // Floyd-Steinberg error diffusion
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int idx = y * width + x;
+                float oldVal = result[idx];
+                float newVal = oldVal > 0.5f ? 1f : 0f;
+                result[idx] = newVal;
+                float error = oldVal - newVal;
+
+                // Distribute error to neighboring pixels
+                // Right:       7/16
+                // Below-left:  3/16
+                // Below:       5/16
+                // Below-right: 1/16
+                if (x + 1 < width)
+                    result[idx + 1] += error * (7f / 16f);
+                if (y + 1 < height)
+                {
+                    if (x > 0)
+                        result[(y + 1) * width + (x - 1)] += error * (3f / 16f);
+                    result[(y + 1) * width + x] += error * (5f / 16f);
+                    if (x + 1 < width)
+                        result[(y + 1) * width + (x + 1)] += error * (1f / 16f);
+                }
             }
         }
 
-        // Otsu's method: find threshold that minimizes intra-class variance
-        float sum = 0;
-        for (int i = 0; i < 256; i++)
-            sum += i * histogram[i];
-
-        float sumB = 0;
-        int wB = 0;
-        int wF;
-
-        float maxVariance = 0;
-        int bestThreshold = 128;
-
-        for (int t = 0; t < 256; t++)
-        {
-            wB += histogram[t];
-            if (wB == 0) continue;
-
-            wF = totalPixels - wB;
-            if (wF == 0) break;
-
-            sumB += t * histogram[t];
-
-            float mB = sumB / wB;
-            float mF = (sum - sumB) / wF;
-
-            float variance = (float)wB * wF * (mB - mF) * (mB - mF);
-
-            if (variance > maxVariance)
-            {
-                maxVariance = variance;
-                bestThreshold = t;
-            }
-        }
-
-        float threshold = bestThreshold / 255f;
-
-        // Clamp threshold to preserve detail in both dark and bright areas
-        // Min 0.15 ensures very dark images still show dots
-        // Max 0.65 ensures very bright images don't lose all detail
-        return Math.Clamp(threshold, 0.15f, 0.65f);
+        return result;
     }
 
     /// <summary>
@@ -243,7 +382,7 @@ public class BrailleRenderer : IDisposable
         {
             for (int x = 0; x < image.Width; x++)
             {
-                float brightness = GetBrightness(image[x, y]);
+                float brightness = BrightnessHelper.GetBrightness(image[x, y]);
                 if (brightness < min) min = brightness;
                 if (brightness > max) max = brightness;
             }
@@ -257,78 +396,6 @@ public class BrailleRenderer : IDisposable
         }
 
         return (min, max);
-    }
-
-    /// <summary>
-    /// Apply Floyd-Steinberg error diffusion dithering
-    /// </summary>
-    private void ApplyFloydSteinbergDithering(float[,] buffer, int width, int height, float threshold)
-    {
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                float oldValue = buffer[y, x];
-                float newValue = oldValue < threshold ? 0f : 1f;
-                float error = oldValue - newValue;
-                buffer[y, x] = newValue;
-
-                // Distribute error to neighbors
-                if (x + 1 < width)
-                    buffer[y, x + 1] += error * 7f / 16f;
-                if (y + 1 < height)
-                {
-                    if (x > 0)
-                        buffer[y + 1, x - 1] += error * 3f / 16f;
-                    buffer[y + 1, x] += error * 5f / 16f;
-                    if (x + 1 < width)
-                        buffer[y + 1, x + 1] += error * 1f / 16f;
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Apply selective Floyd-Steinberg dithering - only in mid-tone regions.
-    /// Very dark and very bright areas are left undithered for clean boundaries.
-    /// </summary>
-    private void ApplySelectiveDithering(float[,] buffer, int width, int height, float threshold)
-    {
-        const float darkCutoff = 0.03f;  // Below this = true black only, no dithering
-        const float brightCutoff = 0.75f; // Above this = true bright, no dithering
-
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                float oldValue = buffer[y, x];
-
-                // Skip dithering for very dark or very bright pixels
-                // This prevents noise in uniform regions
-                if (oldValue < darkCutoff || oldValue > brightCutoff)
-                {
-                    continue; // Leave original value untouched
-                }
-
-                // Apply dithering to mid-tones
-                float newValue = oldValue < threshold ? 0f : 1f;
-                float error = oldValue - newValue;
-                buffer[y, x] = newValue;
-
-                // Distribute error only to mid-tone neighbors
-                if (x + 1 < width && buffer[y, x + 1] >= darkCutoff && buffer[y, x + 1] <= brightCutoff)
-                    buffer[y, x + 1] += error * 7f / 16f;
-                if (y + 1 < height)
-                {
-                    if (x > 0 && buffer[y + 1, x - 1] >= darkCutoff && buffer[y + 1, x - 1] <= brightCutoff)
-                        buffer[y + 1, x - 1] += error * 3f / 16f;
-                    if (buffer[y + 1, x] >= darkCutoff && buffer[y + 1, x] <= brightCutoff)
-                        buffer[y + 1, x] += error * 5f / 16f;
-                    if (x + 1 < width && buffer[y + 1, x + 1] >= darkCutoff && buffer[y + 1, x + 1] <= brightCutoff)
-                        buffer[y + 1, x + 1] += error * 1f / 16f;
-                }
-            }
-        }
     }
 
     /// <summary>
@@ -386,51 +453,6 @@ public class BrailleRenderer : IDisposable
         }
 
         return frames;
-    }
-
-    private static float GetBrightness(Rgba32 pixel)
-    {
-        // Perceived brightness formula
-        return (0.299f * pixel.R + 0.587f * pixel.G + 0.114f * pixel.B) / 255f;
-    }
-
-    private static float GetSaturation(Rgba32 pixel)
-    {
-        // Calculate HSL saturation (0-1)
-        float r = pixel.R / 255f;
-        float g = pixel.G / 255f;
-        float b = pixel.B / 255f;
-
-        float max = MathF.Max(r, MathF.Max(g, b));
-        float min = MathF.Min(r, MathF.Min(g, b));
-        float delta = max - min;
-
-        if (delta < 0.001f) return 0f; // Grayscale
-
-        float lightness = (max + min) / 2f;
-        return delta / (1f - MathF.Abs(2f * lightness - 1f));
-    }
-
-    /// <summary>
-    /// Apply contrast enhancement using power curve.
-    /// </summary>
-    private static float ApplyContrast(float brightness, float power)
-    {
-        // S-curve contrast enhancement centered at 0.5
-        // Higher power = more contrast
-        if (brightness <= 0.5f)
-        {
-            return 0.5f * MathF.Pow(2f * brightness, power);
-        }
-        else
-        {
-            return 1f - 0.5f * MathF.Pow(2f * (1f - brightness), power);
-        }
-    }
-
-    private static bool ColorsEqual(Rgba32 a, Rgba32 b)
-    {
-        return a.R == b.R && a.G == b.G && a.B == b.B;
     }
 
     /// <summary>

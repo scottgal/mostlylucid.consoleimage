@@ -69,6 +69,12 @@ var contrastOption = new Option<float>("--contrast")
     DefaultValueFactory = _ => 2.5f
 };
 
+var gammaOption = new Option<float>("--gamma")
+{
+    Description = "Gamma correction (< 1.0 brightens, > 1.0 darkens)",
+    DefaultValueFactory = _ => 0.85f
+};
+
 var charsetOption = new Option<string?>("--charset") { Description = "Custom character set (ordered from light to dark)" };
 
 var presetOption = new Option<string?>("--preset") { Description = "Character set preset: extended (default), simple, block, classic" };
@@ -163,6 +169,7 @@ rootCommand.Options.Add(maxHeightOption);
 rootCommand.Options.Add(noColorOption);
 rootCommand.Options.Add(noInvertOption);
 rootCommand.Options.Add(contrastOption);
+rootCommand.Options.Add(gammaOption);
 rootCommand.Options.Add(charsetOption);
 rootCommand.Options.Add(presetOption);
 rootCommand.Options.Add(outputOption);
@@ -209,6 +216,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var noColor = parseResult.GetValue(noColorOption);
     var noInvert = parseResult.GetValue(noInvertOption);
     var contrast = parseResult.GetValue(contrastOption);
+    var gamma = parseResult.GetValue(gammaOption);
     var charset = parseResult.GetValue(charsetOption);
     var preset = parseResult.GetValue(presetOption);
     var output = parseResult.GetValue(outputOption);
@@ -241,10 +249,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var gifWidth = parseResult.GetValue(gifWidthOption);
     var gifHeight = parseResult.GetValue(gifHeightOption);
 
-    // Parse output option: can be "path.txt", "gif", "gif:path.gif"
+    // Parse output option: can be "path.txt", "gif", "gif:path.gif", "json", "json:path.json"
     string? outputFile = null;
     bool outputAsGif = false;
     string? gifOutputPath = null;
+    bool outputAsJson = false;
+    string? jsonOutputPath = null;
 
     if (!string.IsNullOrEmpty(output))
     {
@@ -262,6 +272,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             outputAsGif = true;
             gifOutputPath = output;
+        }
+        else if (output.Equals("json", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsJson = true;
+            // Use input filename with .json extension - will set later when we have input
+        }
+        else if (output.StartsWith("json:", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsJson = true;
+            jsonOutputPath = output[5..]; // Everything after "json:"
+        }
+        else if (output.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            outputAsJson = true;
+            jsonOutputPath = output;
         }
         else
         {
@@ -400,6 +425,24 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         gifOutputPath = baseName + "_ascii.gif";
     }
 
+    // Determine JSON output path if needed
+    if (outputAsJson && string.IsNullOrEmpty(jsonOutputPath))
+    {
+        string baseName = isUrl
+            ? Path.GetFileNameWithoutExtension(new Uri(input).AbsolutePath)
+            : Path.GetFileNameWithoutExtension(input);
+        if (string.IsNullOrEmpty(baseName)) baseName = "output";
+        jsonOutputPath = baseName + "_ascii.json";
+    }
+
+    // Check if input is a JSON document (load and play it)
+    // Supports both .json and .ndjson (streaming JSON Lines format)
+    if (!isUrl && (input.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
+                   input.EndsWith(".ndjson", StringComparison.OrdinalIgnoreCase)))
+    {
+        return await HandleJsonDocument(input, speed, loop, cancellationToken);
+    }
+
     // Show download progress for URLs
     string inputPath = input;
     MemoryStream? downloadedStream = null;
@@ -457,6 +500,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         UseColor = !noColor || colorBlocks,
         Invert = !noInvert,
         ContrastPower = contrast,
+        Gamma = gamma,
         CharacterSet = characterSet,
         AnimationSpeedMultiplier = speed,
         LoopCount = loop,
@@ -541,6 +585,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 UseColor = options.UseColor,
                 Invert = options.Invert,
                 ContrastPower = options.ContrastPower,
+                Gamma = options.Gamma,
                 CharacterSet = options.CharacterSet,
                 AnimationSpeedMultiplier = options.AnimationSpeedMultiplier,
                 LoopCount = options.LoopCount,
@@ -717,25 +762,33 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 // Static image rendering
                 using var blockRenderer = new ColorBlockRenderer(options);
-                string result;
+                ColorBlockFrame frame;
                 if (downloadedStream != null)
                 {
                     downloadedStream.Position = 0;
-                    result = blockRenderer.RenderStream(downloadedStream);
+                    frame = blockRenderer.RenderStreamToFrame(downloadedStream);
                 }
                 else
                 {
-                    result = blockRenderer.RenderFile(input);
+                    frame = blockRenderer.RenderFileToFrame(input);
                 }
                 if (outputFile != null)
                 {
-                    File.WriteAllText(outputFile, result);
+                    File.WriteAllText(outputFile, frame.Content);
                     Console.WriteLine($"Written to {outputFile}");
                 }
                 else
                 {
-                    Console.WriteLine(result);
+                    Console.WriteLine(frame.Content);
                     Console.Write("\x1b[0m"); // Reset colors
+                }
+
+                // Save as JSON document if requested
+                if (outputAsJson && !string.IsNullOrEmpty(jsonOutputPath))
+                {
+                    var doc = ConsoleImageDocument.FromColorBlockFrames(new[] { frame }, options, input);
+                    await doc.SaveAsync(jsonOutputPath, cancellationToken);
+                    Console.Error.WriteLine($"Saved JSON document to: {jsonOutputPath}");
                 }
             }
         }
@@ -778,26 +831,34 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             else
             {
                 using var brailleRenderer = new BrailleRenderer(options);
-                string result;
+                BrailleFrame frame;
                 if (downloadedStream != null)
                 {
                     downloadedStream.Position = 0;
                     using var img = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(downloadedStream);
-                    result = brailleRenderer.RenderImage(img);
+                    frame = brailleRenderer.RenderImageToFrame(img);
                 }
                 else
                 {
-                    result = brailleRenderer.RenderFile(input);
+                    frame = brailleRenderer.RenderFileToFrame(input);
                 }
                 if (outputFile != null)
                 {
-                    File.WriteAllText(outputFile, result);
+                    File.WriteAllText(outputFile, frame.Content);
                     Console.WriteLine($"Written to {outputFile}");
                 }
                 else
                 {
-                    Console.WriteLine(result);
+                    Console.WriteLine(frame.Content);
                     Console.Write("\x1b[0m");
+                }
+
+                // Save as JSON document if requested
+                if (outputAsJson && !string.IsNullOrEmpty(jsonOutputPath))
+                {
+                    var doc = ConsoleImageDocument.FromBrailleFrames(new[] { frame }, options, input);
+                    await doc.SaveAsync(jsonOutputPath, cancellationToken);
+                    Console.Error.WriteLine($"Saved JSON document to: {jsonOutputPath}");
                 }
             }
         }
@@ -920,6 +981,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 {
                     OutputFrame(frame, !noColor, outputFile, options);
                 }
+
+                // Save as JSON document if requested
+                if (outputAsJson && !string.IsNullOrEmpty(jsonOutputPath))
+                {
+                    var doc = ConsoleImageDocument.FromAsciiFrames(new[] { frame }, options, input);
+                    await doc.SaveAsync(jsonOutputPath, cancellationToken);
+                    Console.Error.WriteLine($"Saved JSON document to: {jsonOutputPath}");
+                }
             }
         }
         downloadedStream?.Dispose();
@@ -956,5 +1025,54 @@ static void OutputFrame(AsciiFrame frame, bool useColor, string? outputPath, Ren
     else
     {
         Console.WriteLine(result);
+    }
+}
+
+/// <summary>
+/// Load and play a ConsoleImageDocument JSON file
+/// </summary>
+static async Task<int> HandleJsonDocument(string path, float speed, int loop, CancellationToken ct)
+{
+    try
+    {
+        Console.Error.WriteLine($"Loading document: {path}");
+        var doc = await ConsoleImageDocument.LoadAsync(path, ct);
+
+        // Display document info
+        Console.Error.WriteLine($"Loaded: {doc.RenderMode} mode, {doc.FrameCount} frame(s)");
+        if (doc.IsAnimated)
+        {
+            Console.Error.WriteLine($"Duration: {doc.TotalDurationMs}ms");
+        }
+
+        // Override settings if specified
+        float effectiveSpeed = speed != 1.0f ? speed : doc.Settings.AnimationSpeedMultiplier;
+        int effectiveLoop = loop != 0 ? loop : doc.Settings.LoopCount;
+
+        // Play the document
+        using var player = new DocumentPlayer(doc, effectiveSpeed, effectiveLoop);
+
+        if (doc.IsAnimated)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            Console.CancelKeyPress += (s, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+            };
+
+            await player.PlayAsync(cts.Token);
+        }
+        else
+        {
+            player.Display();
+        }
+
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Error loading document: {ex.Message}");
+        return 1;
     }
 }

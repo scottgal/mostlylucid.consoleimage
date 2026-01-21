@@ -1,0 +1,391 @@
+// ConsoleImageDocument - Self-contained JSON format for storing rendered ASCII art
+// Allows saving and loading rendered frames with all settings needed to reproduce the output
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace ConsoleImage.Core;
+
+/// <summary>
+/// JSON source generator for AOT compatibility (indented output)
+/// </summary>
+[JsonSourceGenerationOptions(
+    WriteIndented = true,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(ConsoleImageDocument))]
+[JsonSerializable(typeof(DocumentRenderSettings))]
+[JsonSerializable(typeof(DocumentFrame))]
+[JsonSerializable(typeof(List<DocumentFrame>))]
+public partial class ConsoleImageJsonContext : JsonSerializerContext
+{
+}
+
+/// <summary>
+/// JSON source generator for AOT compatibility (compact output)
+/// </summary>
+[JsonSourceGenerationOptions(
+    WriteIndented = false,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(ConsoleImageDocument))]
+public partial class ConsoleImageJsonCompactContext : JsonSerializerContext
+{
+}
+
+/// <summary>
+/// A self-contained document format for storing rendered ASCII art frames.
+/// Can be saved to JSON and loaded for playback without the original source.
+/// </summary>
+public class ConsoleImageDocument
+{
+    /// <summary>
+    /// Document format version for compatibility
+    /// </summary>
+    [JsonPropertyName("@context")]
+    public string Context { get; set; } = "https://schema.org/";
+
+    [JsonPropertyName("@type")]
+    public string Type { get; set; } = "ConsoleImageDocument";
+
+    /// <summary>
+    /// Document version for format compatibility
+    /// </summary>
+    public string Version { get; set; } = "2.0";
+
+    /// <summary>
+    /// When this document was created
+    /// </summary>
+    public DateTime Created { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Original source file name (if known)
+    /// </summary>
+    public string? SourceFile { get; set; }
+
+    /// <summary>
+    /// Render mode used: ASCII, ColorBlocks, or Braille
+    /// </summary>
+    public string RenderMode { get; set; } = "ASCII";
+
+    /// <summary>
+    /// The render settings used to generate this output
+    /// </summary>
+    public DocumentRenderSettings Settings { get; set; } = new();
+
+    /// <summary>
+    /// The rendered frames
+    /// </summary>
+    public List<DocumentFrame> Frames { get; set; } = new();
+
+    /// <summary>
+    /// Total number of frames
+    /// </summary>
+    public int FrameCount => Frames.Count;
+
+    /// <summary>
+    /// Whether this is an animation (more than 1 frame)
+    /// </summary>
+    public bool IsAnimated => Frames.Count > 1;
+
+    /// <summary>
+    /// Total duration in milliseconds (for animations)
+    /// </summary>
+    public int TotalDurationMs => Frames.Sum(f => f.DelayMs);
+
+    /// <summary>
+    /// Save this document to a JSON file (AOT-compatible)
+    /// </summary>
+    public async Task SaveAsync(string path, CancellationToken ct = default)
+    {
+        await using var stream = File.Create(path);
+        await JsonSerializer.SerializeAsync(stream, this, ConsoleImageJsonContext.Default.ConsoleImageDocument, ct);
+    }
+
+    /// <summary>
+    /// Save this document to a JSON string (AOT-compatible)
+    /// </summary>
+    public string ToJson(bool indented = true)
+    {
+        return indented
+            ? JsonSerializer.Serialize(this, ConsoleImageJsonContext.Default.ConsoleImageDocument)
+            : JsonSerializer.Serialize(this, ConsoleImageJsonCompactContext.Default.ConsoleImageDocument);
+    }
+
+    /// <summary>
+    /// Load a document from a JSON file (AOT-compatible)
+    /// Auto-detects whether the file is regular JSON or streaming NDJSON format
+    /// </summary>
+    public static async Task<ConsoleImageDocument> LoadAsync(string path, CancellationToken ct = default)
+    {
+        // Check if this is a streaming document (NDJSON format)
+        if (await StreamingDocumentReader.IsStreamingDocumentAsync(path, ct))
+        {
+            return await StreamingDocumentReader.LoadAsync(path, ct);
+        }
+
+        // Regular JSON format
+        await using var stream = File.OpenRead(path);
+        return await JsonSerializer.DeserializeAsync(stream, ConsoleImageJsonContext.Default.ConsoleImageDocument, ct)
+               ?? throw new InvalidOperationException("Failed to deserialize document");
+    }
+
+    /// <summary>
+    /// Load a document from a JSON string (AOT-compatible)
+    /// </summary>
+    public static ConsoleImageDocument FromJson(string json)
+    {
+        return JsonSerializer.Deserialize(json, ConsoleImageJsonContext.Default.ConsoleImageDocument)
+               ?? throw new InvalidOperationException("Failed to deserialize document");
+    }
+
+    /// <summary>
+    /// Add a frame to the document (for streaming use)
+    /// </summary>
+    public void AddFrame(DocumentFrame frame)
+    {
+        Frames.Add(frame);
+    }
+
+    /// <summary>
+    /// Add a frame from content string (for streaming use)
+    /// </summary>
+    public void AddFrame(string content, int delayMs = 0, int width = 0, int height = 0)
+    {
+        var lines = content.Split('\n');
+        Frames.Add(new DocumentFrame
+        {
+            Content = content,
+            DelayMs = delayMs,
+            Width = width > 0 ? width : (lines.Length > 0 ? lines[0].Length : 0),
+            Height = height > 0 ? height : lines.Length
+        });
+    }
+
+    /// <summary>
+    /// Create a document from ASCII frames
+    /// </summary>
+    public static ConsoleImageDocument FromAsciiFrames(
+        IEnumerable<AsciiFrame> frames,
+        RenderOptions options,
+        string? sourceFile = null)
+    {
+        var doc = new ConsoleImageDocument
+        {
+            RenderMode = "ASCII",
+            SourceFile = sourceFile,
+            Settings = DocumentRenderSettings.FromRenderOptions(options)
+        };
+
+        foreach (var frame in frames)
+        {
+            doc.Frames.Add(DocumentFrame.FromAsciiFrame(frame, options));
+        }
+
+        return doc;
+    }
+
+    /// <summary>
+    /// Create a document from ColorBlock frames
+    /// </summary>
+    public static ConsoleImageDocument FromColorBlockFrames(
+        IEnumerable<ColorBlockFrame> frames,
+        RenderOptions options,
+        string? sourceFile = null)
+    {
+        var doc = new ConsoleImageDocument
+        {
+            RenderMode = "ColorBlocks",
+            SourceFile = sourceFile,
+            Settings = DocumentRenderSettings.FromRenderOptions(options)
+        };
+
+        foreach (var frame in frames)
+        {
+            doc.Frames.Add(DocumentFrame.FromColorBlockFrame(frame));
+        }
+
+        return doc;
+    }
+
+    /// <summary>
+    /// Create a document from Braille frames
+    /// </summary>
+    public static ConsoleImageDocument FromBrailleFrames(
+        IEnumerable<BrailleFrame> frames,
+        RenderOptions options,
+        string? sourceFile = null)
+    {
+        var doc = new ConsoleImageDocument
+        {
+            RenderMode = "Braille",
+            SourceFile = sourceFile,
+            Settings = DocumentRenderSettings.FromRenderOptions(options)
+        };
+
+        foreach (var frame in frames)
+        {
+            doc.Frames.Add(DocumentFrame.FromBrailleFrame(frame));
+        }
+
+        return doc;
+    }
+
+    /// <summary>
+    /// Create a document from a single static image
+    /// </summary>
+    public static ConsoleImageDocument FromSingleFrame(
+        string content,
+        string renderMode,
+        RenderOptions options,
+        string? sourceFile = null)
+    {
+        var doc = new ConsoleImageDocument
+        {
+            RenderMode = renderMode,
+            SourceFile = sourceFile,
+            Settings = DocumentRenderSettings.FromRenderOptions(options)
+        };
+
+        doc.Frames.Add(new DocumentFrame { Content = content, DelayMs = 0 });
+
+        return doc;
+    }
+}
+
+/// <summary>
+/// Render settings stored in the document
+/// </summary>
+public class DocumentRenderSettings
+{
+    public int? Width { get; set; }
+    public int? Height { get; set; }
+    public int MaxWidth { get; set; } = 120;
+    public int MaxHeight { get; set; } = 60;
+    public float CharacterAspectRatio { get; set; } = 0.5f;
+    public float ContrastPower { get; set; } = 2.5f;
+    public float Gamma { get; set; } = 0.85f;
+    public bool UseColor { get; set; } = true;
+    public bool Invert { get; set; } = true;
+    public string? CharacterSetPreset { get; set; }
+    public float AnimationSpeedMultiplier { get; set; } = 1.0f;
+    public int LoopCount { get; set; } = 0;
+
+    /// <summary>
+    /// Create settings from RenderOptions
+    /// </summary>
+    public static DocumentRenderSettings FromRenderOptions(RenderOptions options)
+    {
+        return new DocumentRenderSettings
+        {
+            Width = options.Width,
+            Height = options.Height,
+            MaxWidth = options.MaxWidth,
+            MaxHeight = options.MaxHeight,
+            CharacterAspectRatio = options.CharacterAspectRatio,
+            ContrastPower = options.ContrastPower,
+            Gamma = options.Gamma,
+            UseColor = options.UseColor,
+            Invert = options.Invert,
+            CharacterSetPreset = options.CharacterSetPreset,
+            AnimationSpeedMultiplier = options.AnimationSpeedMultiplier,
+            LoopCount = options.LoopCount
+        };
+    }
+
+    /// <summary>
+    /// Convert to RenderOptions, with optional overrides
+    /// </summary>
+    public RenderOptions ToRenderOptions(RenderOptions? overrides = null)
+    {
+        var options = new RenderOptions
+        {
+            Width = overrides?.Width ?? Width,
+            Height = overrides?.Height ?? Height,
+            MaxWidth = overrides?.MaxWidth ?? MaxWidth,
+            MaxHeight = overrides?.MaxHeight ?? MaxHeight,
+            CharacterAspectRatio = overrides?.CharacterAspectRatio ?? CharacterAspectRatio,
+            ContrastPower = overrides?.ContrastPower ?? ContrastPower,
+            Gamma = overrides?.Gamma ?? Gamma,
+            UseColor = overrides?.UseColor ?? UseColor,
+            Invert = overrides?.Invert ?? Invert,
+            CharacterSetPreset = overrides?.CharacterSetPreset ?? CharacterSetPreset,
+            AnimationSpeedMultiplier = overrides?.AnimationSpeedMultiplier ?? AnimationSpeedMultiplier,
+            LoopCount = overrides?.LoopCount ?? LoopCount
+        };
+
+        return options;
+    }
+}
+
+/// <summary>
+/// A single frame in the document
+/// </summary>
+public class DocumentFrame
+{
+    /// <summary>
+    /// The rendered content (ANSI-escaped string)
+    /// </summary>
+    public string Content { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Frame delay in milliseconds (for animations)
+    /// </summary>
+    public int DelayMs { get; set; }
+
+    /// <summary>
+    /// Width of this frame in characters
+    /// </summary>
+    public int Width { get; set; }
+
+    /// <summary>
+    /// Height of this frame in lines
+    /// </summary>
+    public int Height { get; set; }
+
+    /// <summary>
+    /// Create from AsciiFrame
+    /// </summary>
+    public static DocumentFrame FromAsciiFrame(AsciiFrame frame, RenderOptions options)
+    {
+        // Get brightness thresholds
+        float? darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
+        float? lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
+
+        return new DocumentFrame
+        {
+            Content = options.UseColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString(),
+            DelayMs = frame.DelayMs,
+            Width = frame.Width,
+            Height = frame.Height
+        };
+    }
+
+    /// <summary>
+    /// Create from ColorBlockFrame
+    /// </summary>
+    public static DocumentFrame FromColorBlockFrame(ColorBlockFrame frame)
+    {
+        var lines = frame.Content.Split('\n');
+        return new DocumentFrame
+        {
+            Content = frame.Content,
+            DelayMs = frame.DelayMs,
+            Width = lines.Length > 0 ? lines[0].Length : 0,
+            Height = lines.Length
+        };
+    }
+
+    /// <summary>
+    /// Create from BrailleFrame
+    /// </summary>
+    public static DocumentFrame FromBrailleFrame(BrailleFrame frame)
+    {
+        var lines = frame.Content.Split('\n');
+        return new DocumentFrame
+        {
+            Content = frame.Content,
+            DelayMs = frame.DelayMs,
+            Width = lines.Length > 0 ? lines[0].Length : 0,
+            Height = lines.Length
+        };
+    }
+}

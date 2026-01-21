@@ -1,20 +1,36 @@
 # mostlylucid.consoleimage
 
-High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+**Version 2.0** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 **Based on [Alex Harri's excellent article](https://alexharri.com/blog/ascii-rendering)** on ASCII rendering techniques.
 
+## What's New in 2.0
+
+- **Video superset** - `consolevideo` now handles images AND videos
+- **URL support** - Load images directly from HTTP/HTTPS URLs
+- **Native terminal protocols** - iTerm2, Kitty, Sixel auto-detection
+- **JSON document format** - Save/load rendered output as portable JSON-LD documents
+- **Streaming JSON** - Write frames incrementally for long videos (NDJSON format)
+- **GIF output** - Save rendered output as animated GIF files
+- **Dynamic resize** - Animations re-render when you resize the console
+- **Flicker-free** - DECSET 2026 synchronized output with diff-based rendering
+- **Performance** - Parallel rendering, pre-computed lookup tables
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
 | ASCII Mode | ColorBlocks Mode | Braille Mode |
 |------------|------------------|--------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_braille.gif" width="250" alt="Braille Mode"> |
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> |
 
 **Original GIF → Three rendering modes** (shape-matched ASCII, Unicode half-blocks, braille dots)
+
+> **Note:** These example images are rendered to GIF using the tool's `-o gif:` output option with a consistent monospace font. Actual terminal display may vary depending on your terminal emulator, font choice, and color support. GIF output typically produces cleaner results than live terminal display.
 
 ### Video to ASCII
 
 | ASCII | ColorBlocks | Braille |
 |-------|-------------|---------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_ascii.gif" width="250" alt="Video ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_blocks.gif" width="250" alt="Video Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/familyguy_braille.gif" width="250" alt="Video Braille"> |
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif" width="250" alt="Video ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_blocks.gif" width="250" alt="Video Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_braille.gif" width="250" alt="Video Braille"> |
 
 **Video playback with [ConsoleImage.Video](ConsoleImage.Video/README.md)** (FFmpeg-powered, hardware accelerated)
 
@@ -22,9 +38,41 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 | Landscape | Portrait |
 |-----------|----------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/demo_mountain_blocks.gif" width="350" alt="Mountain Landscape"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/demo_portrait_blocks.gif" width="250" alt="Portrait"> |
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_mountain_blocks.gif" width="350" alt="Mountain Landscape"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_blocks.gif" width="250" alt="Portrait"> |
 
 **High-fidelity ColorBlocks mode** - 2x vertical resolution with 24-bit color
+
+### Edge Detection
+
+| Standard | With Edge Detection |
+|----------|---------------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_ascii.gif" width="250" alt="Standard"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_edge.gif" width="250" alt="Edge Detection"> |
+
+**Enhanced foreground visibility** - `--edge` option uses Sobel edge detection
+
+### Character Set Presets
+
+| Extended (default) | Simple | Block |
+|--------------------|--------|-------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_ascii.gif" width="200" alt="Extended"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_simple.gif" width="200" alt="Simple"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_block.gif" width="200" alt="Block"> |
+
+**Multiple presets** - `-p simple`, `-p block`, `-p classic`, or `-p extended` (default)
+
+### Gamma Correction (Brightness)
+
+| No Gamma (1.0) | Default (0.85) | Brighter (0.7) |
+|----------------|----------------|----------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_1.0.gif" width="200" alt="Gamma 1.0"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_0.85.gif" width="200" alt="Gamma 0.85"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_0.7.gif" width="200" alt="Gamma 0.7"> |
+
+**Automatic brightness compensation** - `--gamma` adjusts output brightness. Values < 1.0 brighten, > 1.0 darken. Default 0.85 compensates for character/dot density.
+
+### Animated GIF - Earth Rotation
+
+| ASCII | ColorBlocks | Braille |
+|-------|-------------|---------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_ascii.gif" width="200" alt="Earth ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_blocks.gif" width="200" alt="Earth Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_braille.gif" width="200" alt="Earth Braille"> |
+
+**Smooth animation** - DECSET 2026 synchronized output with diff-based rendering
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -103,6 +151,12 @@ consoleimage --calibrate --aspect-ratio 0.5 --save
 
 # Save as animated GIF
 consoleimage animation.gif -o gif:output.gif
+
+# Save as JSON document (portable, no source needed)
+consoleimage animation.gif -o json:output.json
+
+# Play back saved JSON document
+consoleimage output.json
 ```
 
 ### Library
@@ -198,6 +252,12 @@ consoleimage photo.jpg -o output.txt
 # Save as animated GIF
 consoleimage animation.gif -o gif:output.gif
 
+# Save as JSON document (self-contained, portable)
+consoleimage animation.gif -o json:output.json
+
+# Play saved JSON document
+consoleimage output.json
+
 # GIF with compression options
 consoleimage animation.gif -o gif:output.gif --gif-scale 0.5 --gif-colors 32
 
@@ -228,9 +288,10 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `--no-color` | Disable colored output | Color ON |
 | `--no-invert` | Don't invert (for light backgrounds) | Invert ON |
 | `--contrast` | Contrast power (1.0 = none) | 2.5 |
+| `--gamma` | Gamma correction (< 1.0 brightens, > 1.0 darkens) | 0.85 |
 | `--charset` | Custom character set | - |
 | `-p, --preset` | Preset: extended, simple, block, classic | extended |
-| `-o, --output` | Write to file | Console |
+| `-o, --output` | Output: file, `gif:file.gif`, `json:file.json` | Console |
 | `--no-animate` | Don't animate GIFs | Animate ON |
 | `-s, --speed` | Animation speed multiplier | 1.0 |
 | `-l, --loop` | Animation loop count (0 = infinite) | 0 |
@@ -258,6 +319,62 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `--gif-font-size` | GIF font size in pixels | 10 |
 | `--gif-length` | Max GIF length in seconds | - |
 | `--gif-frames` | Max GIF frames | - |
+
+## JSON Document Format
+
+Save rendered ASCII art to self-contained JSON documents that can be played back without the original source file. See [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) for the full specification.
+
+### Quick Usage
+
+```bash
+# Save to JSON while displaying
+consoleimage animation.gif -o json:movie.json
+
+# Save braille mode
+consoleimage photo.jpg --braille -o json:photo.json
+
+# Play back saved document
+consoleimage movie.json
+
+# Stream long video to JSON (frames written incrementally)
+consolevideo long_movie.mp4 -o json:movie.ndjson
+```
+
+### Library API
+
+```csharp
+using ConsoleImage.Core;
+
+// Save rendered frames to document
+var doc = ConsoleImageDocument.FromAsciiFrames(frames, options, "source.gif");
+await doc.SaveAsync("output.json");
+
+// Load and play
+var loaded = await ConsoleImageDocument.LoadAsync("output.json");
+using var player = new DocumentPlayer(loaded);
+await player.PlayAsync();
+
+// Streaming write for long videos (NDJSON format)
+await using var writer = new StreamingDocumentWriter("output.ndjson", "ASCII", options, "source.mp4");
+await writer.WriteHeaderAsync();
+
+foreach (var frame in frames)
+{
+    await writer.WriteFrameAsync(frame.Content, frame.DelayMs);
+}
+
+await writer.FinalizeAsync();  // Or let dispose auto-finalize
+```
+
+### Format Features
+
+- **JSON-LD compatible** - Uses `@context` and `@type` for semantic structure
+- **Self-contained** - All render settings preserved for reproducible output
+- **Two formats supported**:
+  - **Standard JSON** (`.json`) - Single JSON object with all frames
+  - **Streaming NDJSON** (`.json` or `.ndjson`) - JSON Lines format, one record per line
+- **Auto-detection** - `LoadAsync()` automatically detects which format
+- **Stop anytime** - Streaming format auto-finalizes on Ctrl+C, always valid
 
 ## Library API
 

@@ -327,7 +327,18 @@ public class AsciiRenderer : IDisposable
             {
                 int srcX = x * cellWidth;
                 int srcY = y * cellHeight;
-                colors[y, x] = SampleCellColor(image, srcX, srcY, cellWidth, cellHeight);
+                var color = SampleCellColor(image, srcX, srcY, cellWidth, cellHeight);
+
+                // Apply gamma correction to brighten colors
+                if (_options.Gamma != 1.0f)
+                {
+                    color = new SixLabors.ImageSharp.PixelFormats.Rgb24(
+                        (byte)Math.Clamp(MathF.Pow(color.R / 255f, _options.Gamma) * 255f, 0, 255),
+                        (byte)Math.Clamp(MathF.Pow(color.G / 255f, _options.Gamma) * 255f, 0, 255),
+                        (byte)Math.Clamp(MathF.Pow(color.B / 255f, _options.Gamma) * 255f, 0, 255));
+                }
+
+                colors[y, x] = color;
             }
         }
     }

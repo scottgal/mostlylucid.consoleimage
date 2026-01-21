@@ -1,6 +1,6 @@
 # mostlylucid.consoleimage
 
-High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+**Version 2.0** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -9,13 +9,15 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 | ASCII Mode | ColorBlocks Mode | Braille Mode |
 |------------|------------------|--------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_ascii.gif" width="200" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_blocks.gif" width="200" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_braille.gif" width="200" alt="Braille"> |
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="200" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="200" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="200" alt="Braille"> |
+
+> **Note:** These images are rendered using the tool's GIF output with a consistent monospace font. Actual terminal display varies by terminal emulator, font, and color support.
 
 ### Still Images
 
 | Landscape | Portrait |
 |-----------|----------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/demo_mountain_blocks.gif" width="280" alt="Mountain"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/demo_portrait_blocks.gif" width="200" alt="Portrait"> |
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_mountain_blocks.gif" width="280" alt="Mountain"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_blocks.gif" width="200" alt="Portrait"> |
 
 ## Quick Start
 
@@ -36,7 +38,7 @@ await AsciiArt.PlayGif("animation.gif");
 
 ### ASCII (Shape-Matched Characters)
 
-<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_ascii.gif" width="300" alt="ASCII Mode">
+<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="300" alt="ASCII Mode">
 
 Characters selected by visual shape similarity using 6-point sampling grid.
 
@@ -49,7 +51,7 @@ Console.WriteLine(frame.ToString());      // Plain text
 
 ### ColorBlocks (Unicode Half-Blocks)
 
-<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_blocks.gif" width="300" alt="ColorBlocks Mode">
+<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="300" alt="ColorBlocks Mode">
 
 2x vertical resolution using `▀▄█` characters with 24-bit color.
 
@@ -61,7 +63,7 @@ Console.WriteLine(output);
 
 ### Braille (Ultra-High Resolution)
 
-<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/wiggum_braille.gif" width="300" alt="Braille Mode">
+<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="300" alt="Braille Mode">
 
 2x4 dots per character cell (8 dots total) for maximum detail. Uses advanced rendering techniques:
 

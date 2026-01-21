@@ -81,18 +81,17 @@ public class AsciiFrame
             for (int x = 0; x < Width; x++)
             {
                 var color = Colors[y, x];
-                float brightness = GetBrightness(color);
+                float brightness = BrightnessHelper.GetBrightness(color);
 
                 // Skip colors that match terminal background
-                bool skipColor = (darkThreshold.HasValue && brightness < darkThreshold.Value) ||
-                                 (lightThreshold.HasValue && brightness > lightThreshold.Value);
+                bool skipColor = BrightnessHelper.ShouldSkipColor(brightness, darkThreshold, lightThreshold);
 
                 if (skipColor)
                 {
                     // Output space without color code (blends with terminal background)
                     if (!lastWasSkipped && lastColor != null)
                     {
-                        sb.Append("\x1b[0m"); // Reset before outputting plain space
+                        sb.Append(AnsiCodes.Reset); // Reset before outputting plain space
                     }
                     sb.Append(' ');
                     lastWasSkipped = true;
@@ -100,9 +99,9 @@ public class AsciiFrame
                 }
                 else
                 {
-                    if (lastColor == null || !lastColor.Value.Equals(color))
+                    if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, color))
                     {
-                        sb.Append($"\x1b[38;2;{color.R};{color.G};{color.B}m");
+                        sb.Append(AnsiCodes.Foreground(color));
                         lastColor = color;
                     }
                     sb.Append(Characters[y, x]);
@@ -113,16 +112,8 @@ public class AsciiFrame
                 sb.AppendLine();
         }
 
-        sb.Append("\x1b[0m"); // Reset
+        sb.Append(AnsiCodes.Reset);
         return sb.ToString();
-    }
-
-    /// <summary>
-    /// Calculate perceived brightness of a color (0.0-1.0)
-    /// </summary>
-    private static float GetBrightness(Rgb24 color)
-    {
-        return (0.299f * color.R + 0.587f * color.G + 0.114f * color.B) / 255f;
     }
 
     /// <summary>
@@ -162,17 +153,16 @@ public class AsciiFrame
         for (int x = 0; x < Width; x++)
         {
             var color = Colors[row, x];
-            float brightness = GetBrightness(color);
+            float brightness = BrightnessHelper.GetBrightness(color);
 
             // Skip colors that match terminal background
-            bool skipColor = (darkThreshold.HasValue && brightness < darkThreshold.Value) ||
-                             (lightThreshold.HasValue && brightness > lightThreshold.Value);
+            bool skipColor = BrightnessHelper.ShouldSkipColor(brightness, darkThreshold, lightThreshold);
 
             if (skipColor)
             {
                 if (!lastWasSkipped && lastColor != null)
                 {
-                    sb.Append("\x1b[0m");
+                    sb.Append(AnsiCodes.Reset);
                 }
                 sb.Append(' ');
                 lastWasSkipped = true;
@@ -180,9 +170,9 @@ public class AsciiFrame
             }
             else
             {
-                if (lastColor == null || !lastColor.Value.Equals(color))
+                if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, color))
                 {
-                    sb.Append($"\x1b[38;2;{color.R};{color.G};{color.B}m");
+                    sb.Append(AnsiCodes.Foreground(color));
                     lastColor = color;
                 }
                 sb.Append(Characters[row, x]);
@@ -190,7 +180,7 @@ public class AsciiFrame
             }
         }
 
-        sb.Append("\x1b[0m");
+        sb.Append(AnsiCodes.Reset);
         return sb.ToString();
     }
 }

@@ -148,49 +148,40 @@ public class ColorBlockRenderer : IDisposable
     private static void AppendColoredBlock(StringBuilder sb, Rgba32 upper, Rgba32 lower, float? darkThreshold, float? lightThreshold)
     {
         // Calculate brightness
-        float upperBrightness = GetBrightness(upper);
-        float lowerBrightness = GetBrightness(lower);
+        float upperBrightness = BrightnessHelper.GetBrightness(upper);
+        float lowerBrightness = BrightnessHelper.GetBrightness(lower);
 
         // Check if pixels should be skipped (blend with terminal background)
-        bool upperSkip = upper.A < 128 ||
-                         (darkThreshold.HasValue && upperBrightness < darkThreshold.Value) ||
-                         (lightThreshold.HasValue && upperBrightness > lightThreshold.Value);
-        bool lowerSkip = lower.A < 128 ||
-                         (darkThreshold.HasValue && lowerBrightness < darkThreshold.Value) ||
-                         (lightThreshold.HasValue && lowerBrightness > lightThreshold.Value);
+        bool upperSkip = upper.A < 128 || BrightnessHelper.ShouldSkipColor(upperBrightness, darkThreshold, lightThreshold);
+        bool lowerSkip = lower.A < 128 || BrightnessHelper.ShouldSkipColor(lowerBrightness, darkThreshold, lightThreshold);
 
         if (upperSkip && lowerSkip)
         {
             // Both should blend with background - reset colors and output space
-            // Reset needed to clear any previous background color
-            sb.Append("\x1b[0m ");
+            sb.Append(AnsiCodes.Reset);
+            sb.Append(' ');
             return;
         }
 
         if (upperSkip)
         {
-            // Only lower visible - use lower half block with foreground color only (no background)
-            // Reset first to clear any previous background color
-            sb.Append($"\x1b[0m\x1b[38;2;{lower.R};{lower.G};{lower.B}m{LowerHalfBlock}");
+            // Only lower visible - use lower half block with foreground color only
+            AnsiCodes.AppendResetAndForeground(sb, lower);
+            sb.Append(LowerHalfBlock);
             return;
         }
 
         if (lowerSkip)
         {
-            // Only upper visible - use upper half block with foreground color only (no background)
-            // Reset first to clear any previous background color
-            sb.Append($"\x1b[0m\x1b[38;2;{upper.R};{upper.G};{upper.B}m{UpperHalfBlock}");
+            // Only upper visible - use upper half block with foreground color only
+            AnsiCodes.AppendResetAndForeground(sb, upper);
+            sb.Append(UpperHalfBlock);
             return;
         }
 
         // Both visible - use upper half block with upper as foreground, lower as background
-        // The upper half block (▀) shows the foreground color in top half, background in bottom half
-        sb.Append($"\x1b[38;2;{upper.R};{upper.G};{upper.B};48;2;{lower.R};{lower.G};{lower.B}m{UpperHalfBlock}");
-    }
-
-    private static float GetBrightness(Rgba32 pixel)
-    {
-        return (0.299f * pixel.R + 0.587f * pixel.G + 0.114f * pixel.B) / 255f;
+        AnsiCodes.AppendForegroundAndBackground(sb, upper, lower);
+        sb.Append(UpperHalfBlock);
     }
 
     /// <summary>
