@@ -43,6 +43,7 @@ public class CalibrationHelperTests
     [InlineData(RenderMode.Ascii, 0.4f)]
     [InlineData(RenderMode.ColorBlocks, 0.6f)]
     [InlineData(RenderMode.Braille, 0.55f)]
+    [InlineData(RenderMode.Matrix, 0.45f)]
     public void CalibrationSettings_WithAspectRatio_UpdatesCorrectMode(RenderMode mode, float newValue)
     {
         var original = new CalibrationSettings();
@@ -51,12 +52,24 @@ public class CalibrationHelperTests
         // Verify the correct mode was updated
         Assert.Equal(newValue, updated.GetAspectRatio(mode));
 
-        // Verify other modes remain unchanged
+        // Verify other modes remain unchanged (accounting for shared properties)
+        // Matrix and Ascii share the same underlying property (AsciiCharacterAspectRatio)
         foreach (RenderMode otherMode in Enum.GetValues<RenderMode>())
         {
             if (otherMode != mode)
             {
-                Assert.Equal(0.5f, updated.GetAspectRatio(otherMode));
+                // Matrix and Ascii share the same property, so both change together
+                bool sharesProperty = (mode == RenderMode.Ascii && otherMode == RenderMode.Matrix) ||
+                                     (mode == RenderMode.Matrix && otherMode == RenderMode.Ascii);
+
+                if (sharesProperty)
+                {
+                    Assert.Equal(newValue, updated.GetAspectRatio(otherMode));
+                }
+                else
+                {
+                    Assert.Equal(0.5f, updated.GetAspectRatio(otherMode));
+                }
             }
         }
 
