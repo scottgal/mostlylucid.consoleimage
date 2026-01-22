@@ -41,7 +41,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="README.md" Pack="true" PackagePath="\" />
+        <!-- Use NuGet-specific README with proper image URLs -->
+        <None Include="README.nuget.md" Pack="true" PackagePath="README.md" />
         <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')" />
     </ItemGroup>
 

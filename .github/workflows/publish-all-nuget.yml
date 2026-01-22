@@ -227,11 +227,45 @@ jobs:
         exit 0
 
   # ============================================
+  # Wait for Spectre to be available (for SpectreDemo verification)
+  # ============================================
+  wait-for-spectre:
+    runs-on: ubuntu-latest
+    needs: [publish-core, publish-spectre]
+    steps:
+    - name: Wait for Spectre package availability on NuGet
+      run: |
+        VERSION="${{ needs.publish-core.outputs.version }}"
+        echo "Waiting for mostlylucid.consoleimage.spectre version ${VERSION} to be available on NuGet..."
+
+        MAX_ATTEMPTS=60
+        ATTEMPT=0
+
+        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          ATTEMPT=$((ATTEMPT + 1))
+          echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: Checking NuGet API..."
+
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.nuget.org/v3-flatcontainer/mostlylucid.consoleimage.spectre/${VERSION}/mostlylucid.consoleimage.spectre.${VERSION}.nupkg")
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Package mostlylucid.consoleimage.spectre ${VERSION} is available!"
+            exit 0
+          fi
+
+          echo "Package not yet available (HTTP ${HTTP_STATUS}), waiting 30 seconds..."
+          sleep 30
+        done
+
+        echo "Warning: Timeout waiting for package. It may still be indexing."
+        exit 0
+
+  # ============================================
   # STEP 4: Build CLIs using NuGet packages (verification)
   # ============================================
-  verify-cli-builds:
+  verify-consoleimage:
     runs-on: ubuntu-latest
-    needs: [publish-core, wait-for-core, publish-video, wait-for-video]
+    needs: [publish-core, wait-for-core]
     steps:
     - uses: actions/checkout@v6
 
@@ -245,21 +279,44 @@ jobs:
           -p:UseNuGetDependency=true \
           -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
 
+  verify-consolevideo:
+    runs-on: ubuntu-latest
+    needs: [publish-core, publish-video, wait-for-video]
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
     - name: Build consolevideo CLI using NuGet package
       run: |
         dotnet build ConsoleImage.Video/ConsoleImage.Video.csproj -c Release \
           -p:UseNuGetDependency=true \
           -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }}
 
-    - name: Verification passed
-      run: echo "Both CLIs built successfully using NuGet packages!"
+  verify-spectredemo:
+    runs-on: ubuntu-latest
+    needs: [publish-core, publish-video, publish-spectre, wait-for-video, wait-for-spectre]
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Build SpectreDemo using NuGet package
+      run: |
+        dotnet build ConsoleImage.SpectreDemo/ConsoleImage.SpectreDemo.csproj -c Release \
+          -p:UseNuGetDependency=true \
+          -p:SpectrePackageVersion=${{ needs.publish-core.outputs.version }}
 
   # ============================================
   # Summary
   # ============================================
   summary:
     runs-on: ubuntu-latest
-    needs: [publish-core, publish-video, publish-spectre, verify-cli-builds]
+    needs: [publish-core, publish-video, publish-spectre, verify-consoleimage, verify-consolevideo, verify-spectredemo]
     if: always()
     steps:
     - name: Summary
@@ -274,5 +331,6 @@ jobs:
         echo "| mostlylucid.consoleimage.spectre | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/${VERSION}) | [GitHub](https://github.com/${{ github.repository_owner }}/ConsoleImage/packages) |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### CLI Verification" >> $GITHUB_STEP_SUMMARY
-        echo "- consoleimage: ${{ needs.verify-cli-builds.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- consolevideo: ${{ needs.verify-cli-builds.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- consoleimage: ${{ needs.verify-consoleimage.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- consolevideo: ${{ needs.verify-consolevideo.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- spectredemo: ${{ needs.verify-spectredemo.result }}" >> $GITHUB_STEP_SUMMARY

@@ -68,7 +68,8 @@
       "Bash(E:/source/vectorascii/ConsoleImage/ConsoleImage/bin/Debug/net10.0/consoleimage.exe:*)",
       "WebFetch(domain:carlnewton.github.io)",
       "Bash(dotnet:*)",
-      "Bash(gh workflow view:*)"
+      "Bash(gh workflow view:*)",
+      "Bash(git add:*)"
     ]
   }
 }

@@ -16,14 +16,41 @@ public enum AnimationMode
     /// <summary>High-fidelity colored Unicode blocks.</summary>
     ColorBlock,
     /// <summary>Ultra-high resolution braille characters.</summary>
-    Braille
+    Braille,
+    /// <summary>Matrix digital rain effect.</summary>
+    Matrix
 }
 
 /// <summary>
 /// Animated image for use with Spectre.Console's Live display.
-/// Supports ASCII, ColorBlock, and Braille rendering modes.
+/// Supports ASCII, ColorBlock, Braille, and Matrix rendering modes.
 /// </summary>
-public class AnimatedImage : IRenderable
+/// <remarks>
+/// <para>
+/// Use this class to display animated GIFs or create animation effects from static images.
+/// Each frame is pre-rendered at construction time for smooth playback.
+/// </para>
+/// <para>
+/// <b>Basic usage:</b>
+/// <code>
+/// var animation = new AnimatedImage("cat.gif", AnimationMode.Braille);
+/// await animation.PlayAsync(cancellationToken);
+/// </code>
+/// </para>
+/// <para>
+/// <b>Manual control:</b>
+/// <code>
+/// await AnsiConsole.Live(animation).StartAsync(async ctx => {
+///     while (!token.IsCancellationRequested) {
+///         animation.TryAdvanceFrame();
+///         ctx.Refresh();
+///         await Task.Delay(16);
+///     }
+/// });
+/// </code>
+/// </para>
+/// </remarks>
+public partial class AnimatedImage : IRenderable
 {
     private readonly List<FrameData> _frames;
     private readonly int _width;
@@ -71,6 +98,9 @@ public class AnimatedImage : IRenderable
             case AnimationMode.Braille:
                 LoadBrailleFrames(filePath, options);
                 break;
+            case AnimationMode.Matrix:
+                LoadMatrixFrames(filePath, options);
+                break;
         }
 
         if (_frames.Count > 0)
@@ -105,6 +135,17 @@ public class AnimatedImage : IRenderable
     private void LoadBrailleFrames(string filePath, CoreRenderOptions options)
     {
         using var renderer = new BrailleRenderer(options);
+        var frames = renderer.RenderGif(filePath);
+        foreach (var frame in frames)
+        {
+            var (width, height) = GetDimensionsFromContent(frame.Content);
+            _frames.Add(new FrameData(frame.Content, width, height, frame.DelayMs));
+        }
+    }
+
+    private void LoadMatrixFrames(string filePath, CoreRenderOptions options)
+    {
+        using var renderer = new MatrixRenderer(options);
         var frames = renderer.RenderGif(filePath);
         foreach (var frame in frames)
         {

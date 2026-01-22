@@ -18,11 +18,13 @@ if (args.Length == 0)
     AnsiConsole.MarkupLine("  [dim]--ascii[/]      Standard ASCII art (default)");
     AnsiConsole.MarkupLine("  [dim]--blocks[/]     High-fidelity color blocks");
     AnsiConsole.MarkupLine("  [dim]--braille[/]    Ultra-high resolution braille");
+    AnsiConsole.MarkupLine("  [dim]--matrix[/]     Matrix digital rain effect");
     AnsiConsole.MarkupLine("");
     AnsiConsole.MarkupLine("[dim]Examples:[/]");
     AnsiConsole.MarkupLine("  ConsoleImage.SpectreDemo image.png");
     AnsiConsole.MarkupLine("  ConsoleImage.SpectreDemo a.gif b.gif --blocks");
     AnsiConsole.MarkupLine("  ConsoleImage.SpectreDemo a.png b.png c.png --braille");
+    AnsiConsole.MarkupLine("  ConsoleImage.SpectreDemo photo.jpg --matrix");
     return;
 }
 
@@ -35,6 +37,7 @@ foreach (var arg in args)
     if (arg == "--ascii") mode = AnimationMode.Ascii;
     else if (arg == "--blocks") mode = AnimationMode.ColorBlock;
     else if (arg == "--braille") mode = AnimationMode.Braille;
+    else if (arg == "--matrix") mode = AnimationMode.Matrix;
     else files.Add(new FileInfo(arg));
 }
 
@@ -84,6 +87,7 @@ static void DisplaySingle(FileInfo file, AnimationMode mode, RenderOptions optio
     {
         AnimationMode.ColorBlock => new ColorBlockImage(file.FullName, options),
         AnimationMode.Braille => new BrailleImage(file.FullName, options),
+        AnimationMode.Matrix => new MatrixImage(file.FullName, options),
         _ => new AsciiImage(file.FullName, options)
     };
 
@@ -104,6 +108,7 @@ static void DisplaySideBySide(List<FileInfo> files, AnimationMode mode, RenderOp
         {
             AnimationMode.ColorBlock => new ColorBlockImage(file.FullName, options),
             AnimationMode.Braille => new BrailleImage(file.FullName, options),
+            AnimationMode.Matrix => new MatrixImage(file.FullName, options),
             _ => new AsciiImage(file.FullName, options)
         };
 
