@@ -1,4 +1,4 @@
-using ConsoleImage.Core;
+using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -10,10 +10,7 @@ public class ColorBlockRendererTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var image in _disposableImages)
-        {
-            image.Dispose();
-        }
+        foreach (var image in _disposableImages) image.Dispose();
     }
 
     private Image<Rgba32> CreateTestImage(int width, int height, Rgba32 color)
@@ -78,7 +75,7 @@ public class ColorBlockRendererTests : IDisposable
             output.Contains('\u2580') || // Upper half block
             output.Contains('\u2584') || // Lower half block
             output.Contains('\u2588') || // Full block
-            output.Contains(' '),        // Space (for transparency)
+            output.Contains(' '), // Space (for transparency)
             "Output should contain block characters");
     }
 
@@ -225,6 +222,6 @@ public class ColorBlockRendererTests : IDisposable
     private static string StripAnsiCodes(string input)
     {
         // Remove ANSI escape sequences
-        return System.Text.RegularExpressions.Regex.Replace(input, @"\x1b\[[0-9;]*m", "");
+        return Regex.Replace(input, @"\x1b\[[0-9;]*m", "");
     }
 }

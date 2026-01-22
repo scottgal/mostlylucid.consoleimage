@@ -8,16 +8,33 @@ using System.Text;
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Helper class to enable ANSI escape sequence processing on Windows consoles.
-/// Modern terminals like Windows Terminal have this enabled by default,
-/// but older consoles or certain configurations may need explicit enabling.
-/// Also enables UTF-8 encoding for Unicode characters (Braille, block chars, etc.)
+///     Helper class to enable ANSI escape sequence processing on Windows consoles.
+///     Modern terminals like Windows Terminal have this enabled by default,
+///     but older consoles or certain configurations may need explicit enabling.
+///     Also enables UTF-8 encoding for Unicode characters (Braille, block chars, etc.)
 /// </summary>
 public static class ConsoleHelper
 {
     private const int STD_OUTPUT_HANDLE = -11;
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
     private const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
+
+    private const uint CP_UTF8 = 65001;
+
+    private static bool _initialized;
+    private static bool _ansiEnabled;
+
+    /// <summary>
+    ///     Check if ANSI escape sequences are supported
+    /// </summary>
+    public static bool IsAnsiSupported
+    {
+        get
+        {
+            EnableAnsiSupport();
+            return _ansiEnabled;
+        }
+    }
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GetStdHandle(int nStdHandle);
@@ -31,15 +48,10 @@ public static class ConsoleHelper
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetConsoleOutputCP(uint wCodePageID);
 
-    private const uint CP_UTF8 = 65001;
-
-    private static bool _initialized;
-    private static bool _ansiEnabled;
-
     /// <summary>
-    /// Enable ANSI escape sequence processing and UTF-8 encoding on the console.
-    /// Safe to call multiple times - will only initialize once.
-    /// Returns true if ANSI is enabled (or already was).
+    ///     Enable ANSI escape sequence processing and UTF-8 encoding on the console.
+    ///     Safe to call multiple times - will only initialize once.
+    ///     Returns true if ANSI is enabled (or already was).
     /// </summary>
     public static bool EnableAnsiSupport()
     {
@@ -77,7 +89,7 @@ public static class ConsoleHelper
                 return false;
             }
 
-            if (!GetConsoleMode(handle, out uint mode))
+            if (!GetConsoleMode(handle, out var mode))
             {
                 _ansiEnabled = false;
                 return false;
@@ -100,18 +112,6 @@ public static class ConsoleHelper
             // P/Invoke might fail in restricted environments
             _ansiEnabled = false;
             return false;
-        }
-    }
-
-    /// <summary>
-    /// Check if ANSI escape sequences are supported
-    /// </summary>
-    public static bool IsAnsiSupported
-    {
-        get
-        {
-            EnableAnsiSupport();
-            return _ansiEnabled;
         }
     }
 }

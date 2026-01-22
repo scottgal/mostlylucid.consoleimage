@@ -1,14 +1,27 @@
-using System.Text.RegularExpressions;
-
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Helper for loading images from remote URLs with download progress.
+///     Helper for loading images from remote URLs with download progress.
 /// </summary>
-public static partial class UrlHelper
+public static class UrlHelper
 {
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpeg", "mpg", "3gp"
+    };
+
+    private static readonly HashSet<string> AnimatedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "gif", "webp", "apng"
+    };
+
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "jpg", "jpeg", "png", "bmp", "tiff", "tif", "ico", "svg", "gif", "webp"
+    };
+
     /// <summary>
-    /// Check if the given path is a URL (http:// or https://).
+    ///     Check if the given path is a URL (http:// or https://).
     /// </summary>
     public static bool IsUrl(string path)
     {
@@ -18,7 +31,7 @@ public static partial class UrlHelper
     }
 
     /// <summary>
-    /// Download content from a URL to a memory stream with progress reporting.
+    ///     Download content from a URL to a memory stream with progress reporting.
     /// </summary>
     /// <param name="url">The URL to download from</param>
     /// <param name="progress">Optional progress callback (bytesDownloaded, totalBytes). totalBytes may be -1 if unknown.</param>
@@ -32,7 +45,8 @@ public static partial class UrlHelper
         using var httpClient = new HttpClient();
         httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("ConsoleImage/1.0");
 
-        using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response =
+            await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var totalBytes = response.Content.Headers.ContentLength ?? -1;
@@ -56,7 +70,7 @@ public static partial class UrlHelper
     }
 
     /// <summary>
-    /// Download content from a URL synchronously with progress reporting.
+    ///     Download content from a URL synchronously with progress reporting.
     /// </summary>
     public static MemoryStream Download(
         string url,
@@ -67,7 +81,7 @@ public static partial class UrlHelper
     }
 
     /// <summary>
-    /// Get the file extension from a URL, or guess from content type if not present.
+    ///     Get the file extension from a URL, or guess from content type if not present.
     /// </summary>
     public static string? GetExtension(string url)
     {
@@ -90,11 +104,12 @@ public static partial class UrlHelper
         {
             // Ignore URL parsing errors
         }
+
         return null;
     }
 
     /// <summary>
-    /// Get content type from URL using HEAD request.
+    ///     Get content type from URL using HEAD request.
     /// </summary>
     public static async Task<string?> GetContentTypeAsync(string url, CancellationToken cancellationToken = default)
     {
@@ -106,69 +121,43 @@ public static partial class UrlHelper
             using var request = new HttpRequestMessage(HttpMethod.Head, url);
             using var response = await httpClient.SendAsync(request, cancellationToken);
 
-            if (response.IsSuccessStatusCode)
-            {
-                return response.Content.Headers.ContentType?.MediaType;
-            }
+            if (response.IsSuccessStatusCode) return response.Content.Headers.ContentType?.MediaType;
         }
         catch
         {
             // Ignore errors - content type is optional
         }
+
         return null;
     }
 
     /// <summary>
-    /// Determine if URL likely points to a video file based on extension or content type.
+    ///     Determine if URL likely points to a video file based on extension or content type.
     /// </summary>
     public static bool IsLikelyVideo(string url)
     {
         var ext = GetExtension(url);
-        if (ext != null)
-        {
-            return VideoExtensions.Contains(ext);
-        }
+        if (ext != null) return VideoExtensions.Contains(ext);
         return false;
     }
 
     /// <summary>
-    /// Determine if URL likely points to an animated image (GIF, WebP, APNG).
+    ///     Determine if URL likely points to an animated image (GIF, WebP, APNG).
     /// </summary>
     public static bool IsLikelyAnimated(string url)
     {
         var ext = GetExtension(url);
-        if (ext != null)
-        {
-            return AnimatedImageExtensions.Contains(ext);
-        }
+        if (ext != null) return AnimatedImageExtensions.Contains(ext);
         return false;
     }
 
     /// <summary>
-    /// Determine if URL likely points to a static image.
+    ///     Determine if URL likely points to a static image.
     /// </summary>
     public static bool IsLikelyImage(string url)
     {
         var ext = GetExtension(url);
-        if (ext != null)
-        {
-            return ImageExtensions.Contains(ext);
-        }
+        if (ext != null) return ImageExtensions.Contains(ext);
         return false;
     }
-
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpeg", "mpg", "3gp"
-    };
-
-    private static readonly HashSet<string> AnimatedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "gif", "webp", "apng"
-    };
-
-    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "jpg", "jpeg", "png", "bmp", "tiff", "tif", "ico", "svg", "gif", "webp"
-    };
 }

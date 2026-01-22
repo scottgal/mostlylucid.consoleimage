@@ -3,9 +3,8 @@
 // If this compiles, the documentation is accurate
 
 using ConsoleImage.Core;
-using ConsoleImage.Video.Core;
 using ConsoleImage.Spectre;
-using Spectre.Console;
+using ConsoleImage.Video.Core;
 using SixLabors.ImageSharp.PixelFormats;
 
 // Test image path - using a sample from the repo
@@ -52,7 +51,7 @@ else
         var _ = frame.ToAnsiString(); // Colored
         Console.WriteLine("[OK] frame.ToAnsiString()");
 
-        var __ = frame.ToString();      // Plain text
+        var __ = frame.ToString(); // Plain text
         Console.WriteLine("[OK] frame.ToString()");
     }
 }
@@ -64,7 +63,7 @@ else
 
     if (File.Exists(testImage))
     {
-        string output = renderer.RenderFile(testImage);
+        var output = renderer.RenderFile(testImage);
         Console.WriteLine($"[OK] ColorBlockRenderer.RenderFile() -> {output.Length} chars");
     }
 }
@@ -76,7 +75,7 @@ else
 
     if (File.Exists(testImage))
     {
-        string output = renderer.RenderFile(testImage);
+        var output = renderer.RenderFile(testImage);
         Console.WriteLine($"[OK] BrailleRenderer.RenderFile() -> {output.Length} chars");
     }
 }
@@ -86,7 +85,7 @@ else
     var options = new RenderOptions { MaxWidth = 80 };
     var matrixOpts = new MatrixOptions
     {
-        BaseColor = new Rgba32(0, 255, 65, 255),  // Classic green
+        BaseColor = new Rgba32(0, 255, 65, 255), // Classic green
         Density = 0.5f,
         SpeedMultiplier = 1.0f,
         TargetFps = 20,
@@ -172,7 +171,8 @@ Console.WriteLine("\n--- ConsoleImage.Video.Core API Tests ---\n");
     var playMethod = typeof(VideoPlayer).GetMethod("PlayAsync", new[] { typeof(string), typeof(CancellationToken) });
     Console.WriteLine($"[OK] VideoPlayer.PlayAsync(path) exists: {playMethod != null}");
 
-    var playWithOptionsMethod = typeof(VideoPlayer).GetMethod("PlayAsync", new[] { typeof(string), typeof(VideoRenderOptions), typeof(CancellationToken) });
+    var playWithOptionsMethod = typeof(VideoPlayer).GetMethod("PlayAsync",
+        new[] { typeof(string), typeof(VideoRenderOptions), typeof(CancellationToken) });
     Console.WriteLine($"[OK] VideoPlayer.PlayAsync(path, options) exists: {playWithOptionsMethod != null}");
 
     var getInfoMethod = typeof(VideoPlayer).GetMethod("GetInfoAsync");

@@ -2,21 +2,21 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 // Frame differencing for efficient animation - only updates changed pixels
 
-using SixLabors.ImageSharp.PixelFormats;
 using System.Text;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Computes differences between frames and generates efficient ANSI update sequences
-/// that only redraw changed pixels.
+///     Computes differences between frames and generates efficient ANSI update sequences
+///     that only redraw changed pixels.
 /// </summary>
 public static class FrameDiffer
 {
     /// <summary>
-    /// Pre-compute diff sequences for a list of frames.
-    /// Returns an array where index 0 is the full first frame,
-    /// and subsequent indices contain only the changes from the previous frame.
+    ///     Pre-compute diff sequences for a list of frames.
+    ///     Returns an array where index 0 is the full first frame,
+    ///     and subsequent indices contain only the changes from the previous frame.
     /// </summary>
     public static string[] ComputeDiffs(IReadOnlyList<AsciiFrame> frames, bool useColor)
     {
@@ -28,86 +28,73 @@ public static class FrameDiffer
         diffs[0] = useColor ? frames[0].ToAnsiString() : frames[0].ToString();
 
         // Subsequent frames are diffs from previous
-        for (int i = 1; i < frames.Count; i++)
-        {
-            diffs[i] = ComputeFrameDiff(frames[i - 1], frames[i], useColor);
-        }
+        for (var i = 1; i < frames.Count; i++) diffs[i] = ComputeFrameDiff(frames[i - 1], frames[i], useColor);
 
         return diffs;
     }
 
     /// <summary>
-    /// Compute the diff between two frames, returning an ANSI string
-    /// that updates only changed cells.
+    ///     Compute the diff between two frames, returning an ANSI string
+    ///     that updates only changed cells.
     /// </summary>
     public static string ComputeFrameDiff(AsciiFrame prev, AsciiFrame curr, bool useColor)
     {
         if (prev.Width != curr.Width || prev.Height != curr.Height)
-        {
             // Dimensions changed - full redraw needed
             return useColor ? curr.ToAnsiString() : curr.ToString();
-        }
 
         var sb = new StringBuilder();
-        int changedCells = 0;
-        int totalCells = curr.Width * curr.Height;
+        var changedCells = 0;
+        var totalCells = curr.Width * curr.Height;
 
         Rgb24? lastColor = null;
 
-        for (int y = 0; y < curr.Height; y++)
+        for (var y = 0; y < curr.Height; y++)
+        for (var x = 0; x < curr.Width; x++)
         {
-            for (int x = 0; x < curr.Width; x++)
+            var prevChar = prev.Characters[y, x];
+            var currChar = curr.Characters[y, x];
+
+            var prevColor = prev.Colors?[y, x];
+            var currColor = curr.Colors?[y, x];
+
+            var charChanged = prevChar != currChar;
+            var colorChanged = useColor && !ColorsEqual(prevColor, currColor);
+
+            if (charChanged || colorChanged)
             {
-                char prevChar = prev.Characters[y, x];
-                char currChar = curr.Characters[y, x];
+                changedCells++;
 
-                Rgb24? prevColor = prev.Colors?[y, x];
-                Rgb24? currColor = curr.Colors?[y, x];
+                // Move cursor to this position (1-indexed)
+                sb.Append($"\x1b[{y + 1};{x + 1}H");
 
-                bool charChanged = prevChar != currChar;
-                bool colorChanged = useColor && !ColorsEqual(prevColor, currColor);
-
-                if (charChanged || colorChanged)
+                // Set color if needed
+                if (useColor && currColor.HasValue)
                 {
-                    changedCells++;
-
-                    // Move cursor to this position (1-indexed)
-                    sb.Append($"\x1b[{y + 1};{x + 1}H");
-
-                    // Set color if needed
-                    if (useColor && currColor.HasValue)
+                    var c = currColor.Value;
+                    if (lastColor == null || !lastColor.Value.Equals(c))
                     {
-                        var c = currColor.Value;
-                        if (lastColor == null || !lastColor.Value.Equals(c))
-                        {
-                            sb.Append($"\x1b[38;2;{c.R};{c.G};{c.B}m");
-                            lastColor = c;
-                        }
+                        sb.Append($"\x1b[38;2;{c.R};{c.G};{c.B}m");
+                        lastColor = c;
                     }
-
-                    sb.Append(currChar);
                 }
+
+                sb.Append(currChar);
             }
         }
 
         // If more than 60% changed, just do a full redraw (more efficient)
-        if (changedCells > totalCells * 0.6)
-        {
-            return useColor ? curr.ToAnsiString() : curr.ToString();
-        }
+        if (changedCells > totalCells * 0.6) return useColor ? curr.ToAnsiString() : curr.ToString();
 
         // Reset color at end
-        if (useColor && sb.Length > 0)
-        {
-            sb.Append("\x1b[0m");
-        }
+        if (useColor && sb.Length > 0) sb.Append("\x1b[0m");
 
         return sb.ToString();
     }
 
     /// <summary>
-    /// Compute diffs for color block frames (string-based).
-    /// Since color blocks use complex ANSI sequences, we do line-by-line comparison.
+    ///     Compute diffs for color block frames (string-based).
+    ///     Since color blocks use complex ANSI sequences, we do line-by-line comparison.
     /// </summary>
     public static string[] ComputeColorBlockDiffs(IReadOnlyList<ColorBlockFrame> frames)
     {
@@ -119,10 +106,8 @@ public static class FrameDiffer
         diffs[0] = frames[0].Content;
 
         // For color blocks, compare line by line
-        for (int i = 1; i < frames.Count; i++)
-        {
+        for (var i = 1; i < frames.Count; i++)
             diffs[i] = ComputeColorBlockDiff(frames[i - 1].Content, frames[i].Content);
-        }
 
         return diffs;
     }
@@ -133,16 +118,12 @@ public static class FrameDiffer
         var currLines = curr.Split('\n');
 
         // If line count differs, full redraw
-        if (prevLines.Length != currLines.Length)
-        {
-            return curr;
-        }
+        if (prevLines.Length != currLines.Length) return curr;
 
         var sb = new StringBuilder();
-        int changedLines = 0;
+        var changedLines = 0;
 
-        for (int y = 0; y < currLines.Length; y++)
-        {
+        for (var y = 0; y < currLines.Length; y++)
             if (prevLines[y] != currLines[y])
             {
                 changedLines++;
@@ -150,13 +131,9 @@ public static class FrameDiffer
                 sb.Append($"\x1b[{y + 1};1H\x1b[2K");
                 sb.Append(currLines[y]);
             }
-        }
 
         // If more than 50% of lines changed, full redraw
-        if (changedLines > currLines.Length * 0.5)
-        {
-            return curr;
-        }
+        if (changedLines > currLines.Length * 0.5) return curr;
 
         return sb.ToString();
     }

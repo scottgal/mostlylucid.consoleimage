@@ -8,8 +8,8 @@ using SixLabors.ImageSharp.PixelFormats;
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Edge direction detection for selecting directional ASCII characters.
-/// Uses Sobel operator to detect edge angles and maps them to appropriate characters.
+///     Edge direction detection for selecting directional ASCII characters.
+///     Uses Sobel operator to detect edge angles and maps them to appropriate characters.
 /// </summary>
 public static class EdgeDirection
 {
@@ -17,13 +17,13 @@ public static class EdgeDirection
     // Angles are in radians, ranging from -PI to PI
     private static readonly (float minAngle, float maxAngle, char character)[] DirectionalChars =
     [
-        (-MathF.PI / 8, MathF.PI / 8, '-'),           // Horizontal (0 deg)
-        (MathF.PI / 8, 3 * MathF.PI / 8, '/'),        // Diagonal up-right (45 deg)
-        (3 * MathF.PI / 8, 5 * MathF.PI / 8, '|'),    // Vertical (90 deg)
-        (5 * MathF.PI / 8, 7 * MathF.PI / 8, '\\'),   // Diagonal up-left (135 deg)
-        (-3 * MathF.PI / 8, -MathF.PI / 8, '\\'),     // Diagonal down-right (-45 deg)
-        (-5 * MathF.PI / 8, -3 * MathF.PI / 8, '|'),  // Vertical (-90 deg)
-        (-7 * MathF.PI / 8, -5 * MathF.PI / 8, '/'),  // Diagonal down-left (-135 deg)
+        (-MathF.PI / 8, MathF.PI / 8, '-'), // Horizontal (0 deg)
+        (MathF.PI / 8, 3 * MathF.PI / 8, '/'), // Diagonal up-right (45 deg)
+        (3 * MathF.PI / 8, 5 * MathF.PI / 8, '|'), // Vertical (90 deg)
+        (5 * MathF.PI / 8, 7 * MathF.PI / 8, '\\'), // Diagonal up-left (135 deg)
+        (-3 * MathF.PI / 8, -MathF.PI / 8, '\\'), // Diagonal down-right (-45 deg)
+        (-5 * MathF.PI / 8, -3 * MathF.PI / 8, '|'), // Vertical (-90 deg)
+        (-7 * MathF.PI / 8, -5 * MathF.PI / 8, '/') // Diagonal down-left (-135 deg)
     ];
 
     // Sobel kernels for edge detection
@@ -31,7 +31,7 @@ public static class EdgeDirection
     private static readonly int[,] SobelY = { { -1, -2, -1 }, { 0, 0, 0 }, { 1, 2, 1 } };
 
     /// <summary>
-    /// Compute edge magnitude and direction for each cell in the image.
+    ///     Compute edge magnitude and direction for each cell in the image.
     /// </summary>
     /// <param name="image">Source image</param>
     /// <param name="outputWidth">Number of output columns (cells)</param>
@@ -40,8 +40,8 @@ public static class EdgeDirection
     public static (float[,] magnitudes, float[,] angles) ComputeEdges(
         Image<Rgba32> image, int outputWidth, int outputHeight)
     {
-        int cellWidth = image.Width / outputWidth;
-        int cellHeight = image.Height / outputHeight;
+        var cellWidth = image.Width / outputWidth;
+        var cellHeight = image.Height / outputHeight;
 
         var magnitudes = new float[outputHeight, outputWidth];
         var angles = new float[outputHeight, outputWidth];
@@ -50,10 +50,10 @@ public static class EdgeDirection
         var grayscale = new float[image.Height, image.Width];
         image.ProcessPixelRows(accessor =>
         {
-            for (int y = 0; y < accessor.Height; y++)
+            for (var y = 0; y < accessor.Height; y++)
             {
                 var row = accessor.GetRowSpan(y);
-                for (int x = 0; x < row.Length; x++)
+                for (var x = 0; x < row.Length; x++)
                 {
                     var p = row[x];
                     grayscale[y, x] = (p.R * 0.299f + p.G * 0.587f + p.B * 0.114f) / 255f;
@@ -62,86 +62,73 @@ public static class EdgeDirection
         });
 
         // Compute edge gradients for each cell
-        for (int cy = 0; cy < outputHeight; cy++)
+        for (var cy = 0; cy < outputHeight; cy++)
+        for (var cx = 0; cx < outputWidth; cx++)
         {
-            for (int cx = 0; cx < outputWidth; cx++)
+            var startX = cx * cellWidth;
+            var startY = cy * cellHeight;
+            var endX = Math.Min(startX + cellWidth, image.Width);
+            var endY = Math.Min(startY + cellHeight, image.Height);
+
+            float totalGx = 0, totalGy = 0;
+            var samples = 0;
+
+            // Sample multiple points in the cell
+            for (var y = startY + 1; y < endY - 1; y++)
+            for (var x = startX + 1; x < endX - 1; x++)
             {
-                int startX = cx * cellWidth;
-                int startY = cy * cellHeight;
-                int endX = Math.Min(startX + cellWidth, image.Width);
-                int endY = Math.Min(startY + cellHeight, image.Height);
+                float gx = 0, gy = 0;
 
-                float totalGx = 0, totalGy = 0;
-                int samples = 0;
-
-                // Sample multiple points in the cell
-                for (int y = startY + 1; y < endY - 1; y++)
+                // Apply Sobel kernels
+                for (var ky = -1; ky <= 1; ky++)
+                for (var kx = -1; kx <= 1; kx++)
                 {
-                    for (int x = startX + 1; x < endX - 1; x++)
+                    var ix = x + kx;
+                    var iy = y + ky;
+
+                    if (ix >= 0 && ix < image.Width && iy >= 0 && iy < image.Height)
                     {
-                        float gx = 0, gy = 0;
-
-                        // Apply Sobel kernels
-                        for (int ky = -1; ky <= 1; ky++)
-                        {
-                            for (int kx = -1; kx <= 1; kx++)
-                            {
-                                int ix = x + kx;
-                                int iy = y + ky;
-
-                                if (ix >= 0 && ix < image.Width && iy >= 0 && iy < image.Height)
-                                {
-                                    float pixel = grayscale[iy, ix];
-                                    gx += pixel * SobelX[ky + 1, kx + 1];
-                                    gy += pixel * SobelY[ky + 1, kx + 1];
-                                }
-                            }
-                        }
-
-                        totalGx += gx;
-                        totalGy += gy;
-                        samples++;
+                        var pixel = grayscale[iy, ix];
+                        gx += pixel * SobelX[ky + 1, kx + 1];
+                        gy += pixel * SobelY[ky + 1, kx + 1];
                     }
                 }
 
-                if (samples > 0)
-                {
-                    float avgGx = totalGx / samples;
-                    float avgGy = totalGy / samples;
+                totalGx += gx;
+                totalGy += gy;
+                samples++;
+            }
 
-                    // Magnitude: strength of edge
-                    magnitudes[cy, cx] = MathF.Sqrt(avgGx * avgGx + avgGy * avgGy);
+            if (samples > 0)
+            {
+                var avgGx = totalGx / samples;
+                var avgGy = totalGy / samples;
 
-                    // Angle: direction of edge (perpendicular to gradient)
-                    // Add PI/2 to get edge direction instead of gradient direction
-                    angles[cy, cx] = MathF.Atan2(avgGy, avgGx);
-                }
+                // Magnitude: strength of edge
+                magnitudes[cy, cx] = MathF.Sqrt(avgGx * avgGx + avgGy * avgGy);
+
+                // Angle: direction of edge (perpendicular to gradient)
+                // Add PI/2 to get edge direction instead of gradient direction
+                angles[cy, cx] = MathF.Atan2(avgGy, avgGx);
             }
         }
 
         // Normalize magnitudes to 0-1 range
         float maxMag = 0;
-        foreach (float m in magnitudes)
-        {
-            if (m > maxMag) maxMag = m;
-        }
+        foreach (var m in magnitudes)
+            if (m > maxMag)
+                maxMag = m;
 
         if (maxMag > 0)
-        {
-            for (int y = 0; y < outputHeight; y++)
-            {
-                for (int x = 0; x < outputWidth; x++)
-                {
-                    magnitudes[y, x] /= maxMag;
-                }
-            }
-        }
+            for (var y = 0; y < outputHeight; y++)
+            for (var x = 0; x < outputWidth; x++)
+                magnitudes[y, x] /= maxMag;
 
         return (magnitudes, angles);
     }
 
     /// <summary>
-    /// Get the appropriate directional character for an edge angle.
+    ///     Get the appropriate directional character for an edge angle.
     /// </summary>
     /// <param name="angle">Edge angle in radians (-PI to PI)</param>
     /// <param name="magnitude">Edge magnitude (0-1), used to decide if edge is strong enough</param>
@@ -155,10 +142,8 @@ public static class EdgeDirection
         // Normalize angle to handle wraparound at +/- PI
         // Check the angle ranges for each directional character
         foreach (var (minAngle, maxAngle, character) in DirectionalChars)
-        {
             if (angle >= minAngle && angle < maxAngle)
                 return character;
-        }
 
         // Handle wraparound near +/- PI (both map to horizontal)
         if (angle >= 7 * MathF.PI / 8 || angle < -7 * MathF.PI / 8)
@@ -168,8 +153,8 @@ public static class EdgeDirection
     }
 
     /// <summary>
-    /// Blend a shape-matched character with an edge-direction character.
-    /// Strong edges use directional chars, weak edges use shape-matched chars.
+    ///     Blend a shape-matched character with an edge-direction character.
+    ///     Strong edges use directional chars, weak edges use shape-matched chars.
     /// </summary>
     /// <param name="shapeMatchedChar">Character from shape matching algorithm</param>
     /// <param name="angle">Edge angle in radians</param>

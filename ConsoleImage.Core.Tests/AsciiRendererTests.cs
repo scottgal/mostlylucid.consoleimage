@@ -1,4 +1,3 @@
-using ConsoleImage.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -10,10 +9,7 @@ public class AsciiRendererTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var image in _disposableImages)
-        {
-            image.Dispose();
-        }
+        foreach (var image in _disposableImages) image.Dispose();
     }
 
     private Image<Rgba32> CreateTestImage(int width, int height, Rgba32 color)
@@ -180,10 +176,8 @@ public class AsciiRendererTests : IDisposable
         var frame2 = renderer2.RenderImage(image);
 
         if (Math.Abs(aspectRatio - 0.5f) > 0.01f)
-        {
             Assert.True(frame1.Width != frame2.Width || frame1.Height != frame2.Height,
                 "Different aspect ratios should produce different dimensions");
-        }
     }
 
     [Fact]

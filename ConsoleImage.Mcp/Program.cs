@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using SixLabors.ImageSharp;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
@@ -25,34 +26,77 @@ await app.RunAsync();
 [JsonSerializable(typeof(GifResult))]
 [JsonSerializable(typeof(MatrixPreset))]
 [JsonSerializable(typeof(MatrixPreset[]))]
+[JsonSerializable(typeof(RenderResult))]
+[JsonSerializable(typeof(DetailedImageInfo))]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-internal partial class McpJsonContext : JsonSerializerContext { }
+internal partial class McpJsonContext : JsonSerializerContext
+{
+}
 
 // DTOs for JSON serialization
 internal record ImageInfo(string Path, int Width, int Height, int FrameCount, bool IsAnimated);
-internal record VideoInfoResult(string Path, double Duration, string DurationFormatted, int Width, int Height, double FrameRate, string? VideoCodec);
+
+internal record VideoInfoResult(
+    string Path,
+    double Duration,
+    string DurationFormatted,
+    int Width,
+    int Height,
+    double FrameRate,
+    string? VideoCodec);
+
 internal record RenderModeInfo(string Mode, string Description, string Resolution, string BestFor, string Characters);
+
 internal record GifResult(bool Success, string OutputPath, int FrameCount, double FileSizeKB);
+
 internal record MatrixPreset(string Name, string Color, string Description);
 
+internal record RenderResult(bool Success, string OutputPath, string Mode, int Width, int Height, double FileSizeKB);
+
+internal record DetailedImageInfo(
+    string FileName,
+    string FullPath,
+    string Format,
+    int Width,
+    int Height,
+    string AspectRatio,
+    long FileSizeBytes,
+    string FileSizeFormatted,
+    int FrameCount,
+    bool IsAnimated,
+    int BitsPerPixel,
+    string PixelFormat,
+    double MegaPixels,
+    Dictionary<string, string>? Metadata
+);
+
 /// <summary>
-/// MCP tools for ConsoleImage - render images to ASCII art
+///     MCP tools for ConsoleImage - render images to ASCII art
 /// </summary>
 [McpServerToolType]
 public sealed class ConsoleImageTools
 {
     /// <summary>
-    /// Render an image file to ASCII art text
+    ///     Render an image file to ASCII art text
     /// </summary>
-    [McpServerTool(Name = "render_image"), Description("Render an image or GIF to ASCII art. Returns ANSI-colored text for terminal display.")]
+    [McpServerTool(Name = "render_image")]
+    [Description("Render an image or GIF to ASCII art. Returns ANSI-colored text for terminal display.")]
     public static string RenderImage(
-        [Description("Path to the image file (JPG, PNG, GIF, WebP, BMP)")] string path,
-        [Description("Render mode: ascii, blocks, braille, or matrix")] string mode = "ascii",
-        [Description("Maximum width in characters (default: 80)")] int maxWidth = 80,
-        [Description("Maximum height in characters (default: 40)")] int maxHeight = 40,
-        [Description("Enable color output (default: true)")] bool useColor = true,
-        [Description("Frame index for GIFs (default: 0 for first frame)")] int frameIndex = 0)
+        [Description("Path to the image file (JPG, PNG, GIF, WebP, BMP)")]
+        string path,
+        [Description("Render mode: ascii, blocks, braille, or matrix")]
+        string mode = "ascii",
+        [Description("Maximum width in characters (default: 80)")]
+        int maxWidth = 80,
+        [Description("Maximum height in characters (default: 40)")]
+        int maxHeight = 40,
+        [Description("Enable color output (default: true)")]
+        bool useColor = true,
+        [Description("Frame index for GIFs (default: 0 for first frame)")]
+        int frameIndex = 0,
+        [Description("Optional: save to file instead of returning content (reduces context usage)")]
+        string? outputPath = null)
     {
         if (!File.Exists(path))
             return $"Error: File not found: {path}";
@@ -66,13 +110,27 @@ public sealed class ConsoleImageTools
                 UseColor = useColor
             };
 
-            return mode.ToLowerInvariant() switch
+            var content = mode.ToLowerInvariant() switch
             {
                 "blocks" or "colorblocks" => RenderWithColorBlocks(path, options),
                 "braille" => RenderWithBraille(path, options),
                 "matrix" => RenderWithMatrix(path, options),
                 _ => RenderWithAscii(path, options, frameIndex)
             };
+
+            // If outputPath provided, write to file and return metadata instead
+            if (!string.IsNullOrEmpty(outputPath))
+            {
+                File.WriteAllText(outputPath, content);
+                var fileInfo = new FileInfo(outputPath);
+                var lines = content.Split('\n');
+                var width = lines.Length > 0 ? lines[0].Length : 0;
+                var height = lines.Length;
+                var result = new RenderResult(true, outputPath, mode, width, height, fileInfo.Length / 1024.0);
+                return JsonSerializer.Serialize(result, McpJsonContext.Default.RenderResult);
+            }
+
+            return content;
         }
         catch (Exception ex)
         {
@@ -89,9 +147,7 @@ public sealed class ConsoleImageTools
         {
             var frames = renderer.RenderGif(path);
             if (frameIndex >= 0 && frameIndex < frames.Count)
-            {
                 return options.UseColor ? frames[frameIndex].ToAnsiString() : frames[frameIndex].ToString();
-            }
             return options.UseColor ? frames[0].ToAnsiString() : frames[0].ToString();
         }
 
@@ -119,9 +175,10 @@ public sealed class ConsoleImageTools
     }
 
     /// <summary>
-    /// Get information about a GIF file
+    ///     Get information about a GIF file
     /// </summary>
-    [McpServerTool(Name = "get_gif_info"), Description("Get information about a GIF file including frame count and dimensions.")]
+    [McpServerTool(Name = "get_gif_info")]
+    [Description("Get information about a GIF file including frame count and dimensions.")]
     public static string GetGifInfo(
         [Description("Path to the GIF file")] string path)
     {
@@ -130,7 +187,7 @@ public sealed class ConsoleImageTools
 
         try
         {
-            using var image = SixLabors.ImageSharp.Image.Load(path);
+            using var image = Image.Load(path);
             var frameCount = image.Frames.Count;
 
             var info = new ImageInfo(
@@ -149,11 +206,116 @@ public sealed class ConsoleImageTools
     }
 
     /// <summary>
-    /// Get information about a video file using FFmpeg
+    ///     Get detailed information about any image file
     /// </summary>
-    [McpServerTool(Name = "get_video_info"), Description("Get information about a video file including duration, resolution, and codec.")]
+    [McpServerTool(Name = "get_image_info")]
+    [Description(
+        "Get detailed information about any image file (JPG, PNG, GIF, WebP, BMP) including dimensions, format, color depth, and metadata.")]
+    public static string GetImageInfo(
+        [Description("Path to the image file")]
+        string path)
+    {
+        if (!File.Exists(path))
+            return $"Error: File not found: {path}";
+
+        try
+        {
+            var fileInfo = new FileInfo(path);
+            using var image = Image.Load(path);
+
+            var frameCount = image.Frames.Count;
+            var isAnimated = frameCount > 1;
+
+            // Get format from file extension
+            var format = Path.GetExtension(path).TrimStart('.').ToUpperInvariant() switch
+            {
+                "JPG" or "JPEG" => "JPEG",
+                "PNG" => "PNG",
+                "GIF" => "GIF",
+                "BMP" => "BMP",
+                "WEBP" => "WebP",
+                "TIF" or "TIFF" => "TIFF",
+                _ => Path.GetExtension(path).TrimStart('.').ToUpperInvariant()
+            };
+
+            // Calculate aspect ratio as simplified fraction
+            var gcd = GCD(image.Width, image.Height);
+            var aspectRatio = $"{image.Width / gcd}:{image.Height / gcd}";
+
+            // Get pixel format info
+            var pixelType = image.PixelType;
+            var bitsPerPixel = pixelType.BitsPerPixel;
+            var pixelFormat = $"{pixelType.AlphaRepresentation?.ToString() ?? "NoAlpha"}, {bitsPerPixel}bpp";
+
+            // Calculate megapixels
+            var megaPixels = Math.Round(image.Width * image.Height / 1_000_000.0, 2);
+
+            // Format file size
+            var fileSizeFormatted = fileInfo.Length switch
+            {
+                < 1024 => $"{fileInfo.Length} B",
+                < 1024 * 1024 => $"{fileInfo.Length / 1024.0:F1} KB",
+                _ => $"{fileInfo.Length / (1024.0 * 1024.0):F2} MB"
+            };
+
+            // Get EXIF/metadata if available
+            Dictionary<string, string>? metadata = null;
+            var exif = image.Metadata.ExifProfile;
+            if (exif != null && exif.Values.Any())
+            {
+                metadata = new Dictionary<string, string>();
+                foreach (var tag in exif.Values.Take(15)) // Limit to 15 tags
+                {
+                    var value = tag.GetValue()?.ToString();
+                    if (!string.IsNullOrEmpty(value) && value.Length < 100) metadata[tag.Tag.ToString()] = value;
+                }
+            }
+
+            var info = new DetailedImageInfo(
+                fileInfo.Name,
+                fileInfo.FullName,
+                format,
+                image.Width,
+                image.Height,
+                aspectRatio,
+                fileInfo.Length,
+                fileSizeFormatted,
+                frameCount,
+                isAnimated,
+                bitsPerPixel,
+                pixelFormat,
+                megaPixels,
+                metadata
+            );
+
+            return JsonSerializer.Serialize(info, McpJsonContext.Default.DetailedImageInfo);
+        }
+        catch (Exception ex)
+        {
+            return $"Error reading image: {ex.Message}";
+        }
+    }
+
+    private static int GCD(int a, int b)
+    {
+        while (b != 0)
+        {
+            var temp = b;
+            b = a % b;
+            a = temp;
+        }
+
+        return a;
+    }
+
+    /// <summary>
+    ///     Get information about a video file using FFmpeg
+    /// </summary>
+    [McpServerTool(Name = "get_video_info")]
+    [Description("Get information about a video file including duration, resolution, and codec.")]
     public static async Task<string> GetVideoInfo(
-        [Description("Path to the video file")] string path)
+        [Description("Path to the video file")]
+        string path)
     {
         if (!File.Exists(path))
             return $"Error: File not found: {path}";
@@ -184,32 +346,46 @@ public sealed class ConsoleImageTools
     }
 
     /// <summary>
-    /// List all available render modes with descriptions
+    ///     List all available render modes with descriptions
     /// </summary>
-    [McpServerTool(Name = "list_render_modes"), Description("List all available render modes with descriptions and use cases.")]
+    [McpServerTool(Name = "list_render_modes")]
+    [Description("List all available render modes with descriptions and use cases.")]
     public static string ListRenderModes()
     {
         var modes = new RenderModeInfo[]
         {
-            new("ascii", "Classic ASCII art using shape-matched characters", "Standard - 1 character per pixel", "Maximum compatibility, nostalgic look", "Uses alphanumeric and punctuation characters"),
-            new("blocks", "Unicode half-block characters with separate foreground/background colors", "2x vertical - 2 pixels per character height", "High color fidelity, photo-realistic images", "Uses Unicode block characters: \u2580\u2584\u2588"),
-            new("braille", "Braille Unicode characters for ultra-high resolution", "2x4 - 8 dots per character (2 wide, 4 tall)", "Maximum detail, fine patterns", "Uses Braille patterns: \u2800-\u28FF"),
-            new("matrix", "Matrix digital rain effect with falling characters", "Standard - 1 character per pixel", "Stylized effect, cyberpunk aesthetic", "Uses half-width katakana, numbers, symbols")
+            new("ascii", "Classic ASCII art using shape-matched characters", "Standard - 1 character per pixel",
+                "Maximum compatibility, nostalgic look", "Uses alphanumeric and punctuation characters"),
+            new("blocks", "Unicode half-block characters with separate foreground/background colors",
+                "2x vertical - 2 pixels per character height", "High color fidelity, photo-realistic images",
+                "Uses Unicode block characters: \u2580\u2584\u2588"),
+            new("braille", "Braille Unicode characters for ultra-high resolution",
+                "2x4 - 8 dots per character (2 wide, 4 tall)", "Maximum detail, fine patterns",
+                "Uses Braille patterns: \u2800-\u28FF"),
+            new("matrix", "Matrix digital rain effect with falling characters", "Standard - 1 character per pixel",
+                "Stylized effect, cyberpunk aesthetic", "Uses half-width katakana, numbers, symbols")
         };
         return JsonSerializer.Serialize(modes, McpJsonContext.Default.RenderModeInfoArray);
     }
 
     /// <summary>
-    /// Render image to GIF file
+    ///     Render image to GIF file
     /// </summary>
-    [McpServerTool(Name = "render_to_gif"), Description("Render an image or animation to an animated GIF file.")]
+    [McpServerTool(Name = "render_to_gif")]
+    [Description("Render an image or animation to an animated GIF file.")]
     public static string RenderToGif(
-        [Description("Path to the source image or GIF")] string inputPath,
-        [Description("Path for the output GIF file")] string outputPath,
-        [Description("Render mode: ascii, blocks, braille, or matrix")] string mode = "ascii",
-        [Description("Maximum width in characters (default: 60)")] int maxWidth = 60,
-        [Description("Font size for rendering (default: 10)")] int fontSize = 10,
-        [Description("Maximum colors in palette (default: 64)")] int maxColors = 64)
+        [Description("Path to the source image or GIF")]
+        string inputPath,
+        [Description("Path for the output GIF file")]
+        string outputPath,
+        [Description("Render mode: ascii, blocks, braille, or matrix")]
+        string mode = "ascii",
+        [Description("Maximum width in characters (default: 60)")]
+        int maxWidth = 60,
+        [Description("Font size for rendering (default: 10)")]
+        int fontSize = 10,
+        [Description("Maximum colors in palette (default: 64)")]
+        int maxColors = 64)
     {
         if (!File.Exists(inputPath))
             return $"Error: File not found: {inputPath}";
@@ -230,7 +406,7 @@ public sealed class ConsoleImageTools
             };
 
             using var gifWriter = new GifWriter(gifOptions);
-            int frameCount = 0;
+            var frameCount = 0;
 
             switch (mode.ToLowerInvariant())
             {
@@ -249,10 +425,11 @@ public sealed class ConsoleImageTools
                         else
                         {
                             var frame = renderer.RenderFileToFrame(inputPath);
-                            gifWriter.AddColorBlockFrame(frame, 100);
+                            gifWriter.AddColorBlockFrame(frame);
                             frameCount = 1;
                         }
                     }
+
                     break;
 
                 case "braille":
@@ -270,19 +447,21 @@ public sealed class ConsoleImageTools
                         else
                         {
                             var frame = renderer.RenderFileToFrame(inputPath);
-                            gifWriter.AddBrailleFrame(frame, 100);
+                            gifWriter.AddBrailleFrame(frame);
                             frameCount = 1;
                         }
                     }
+
                     break;
 
                 case "matrix":
                     using (var renderer = new MatrixRenderer(options, MatrixOptions.ClassicGreen))
                     {
                         var frame = renderer.RenderFile(inputPath);
-                        gifWriter.AddMatrixFrame(frame, 100);
+                        gifWriter.AddMatrixFrame(frame);
                         frameCount = 1;
                     }
+
                     break;
 
                 default:
@@ -300,10 +479,11 @@ public sealed class ConsoleImageTools
                         else
                         {
                             var frame = renderer.RenderFile(inputPath);
-                            gifWriter.AddFrame(frame, 100);
+                            gifWriter.AddFrame(frame);
                             frameCount = 1;
                         }
                     }
+
                     break;
             }
 
@@ -320,9 +500,10 @@ public sealed class ConsoleImageTools
     }
 
     /// <summary>
-    /// Get available matrix color presets
+    ///     Get available matrix color presets
     /// </summary>
-    [McpServerTool(Name = "list_matrix_presets"), Description("List available Matrix digital rain color presets.")]
+    [McpServerTool(Name = "list_matrix_presets")]
+    [Description("List available Matrix digital rain color presets.")]
     public static string ListMatrixPresets()
     {
         var presets = new MatrixPreset[]
@@ -337,12 +518,15 @@ public sealed class ConsoleImageTools
     }
 
     /// <summary>
-    /// Compare an image across all render modes
+    ///     Compare an image across all render modes
     /// </summary>
-    [McpServerTool(Name = "compare_render_modes"), Description("Render the same image in all modes for comparison. Returns a dictionary of mode->output.")]
+    [McpServerTool(Name = "compare_render_modes")]
+    [Description("Render the same image in all modes for comparison. Returns a dictionary of mode->output.")]
     public static string CompareRenderModes(
-        [Description("Path to the image file")] string path,
-        [Description("Maximum width in characters (default: 40)")] int maxWidth = 40)
+        [Description("Path to the image file")]
+        string path,
+        [Description("Maximum width in characters (default: 40)")]
+        int maxWidth = 40)
     {
         if (!File.Exists(path))
             return $"Error: File not found: {path}";

@@ -9,7 +9,8 @@ ConsoleImage supports two JSON formats:
 1. **Standard JSON** - A single JSON object containing all frames (good for images and short animations)
 2. **Streaming NDJSON** - JSON Lines format with one record per line (good for long videos)
 
-Both formats use JSON-LD conventions (`@context`, `@type`) for semantic structure and can be loaded with `ConsoleImageDocument.LoadAsync()`, which auto-detects the format.
+Both formats use JSON-LD conventions (`@context`, `@type`) for semantic structure and can be loaded with
+`ConsoleImageDocument.LoadAsync()`, which auto-detects the format.
 
 ## Standard JSON Format
 
@@ -53,45 +54,45 @@ Used for images and short animations. The entire document is a single JSON objec
 
 ### Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `@context` | string | JSON-LD context URL (always `"https://schema.org/"`) |
-| `@type` | string | Document type (always `"ConsoleImageDocument"`) |
-| `Version` | string | Format version (currently `"2.0"`) |
-| `Created` | string | ISO 8601 timestamp of when document was created |
-| `SourceFile` | string? | Original source filename (optional) |
-| `RenderMode` | string | Render mode: `"ASCII"`, `"ColorBlocks"`, or `"Braille"` |
-| `Settings` | object | Render settings used (see Settings section) |
-| `Frames` | array | Array of frame objects (see Frame section) |
-| `FrameCount` | int | Number of frames (computed) |
-| `IsAnimated` | bool | True if more than one frame (computed) |
-| `TotalDurationMs` | int | Total duration in milliseconds (computed) |
+| Field             | Type    | Description                                             |
+|-------------------|---------|---------------------------------------------------------|
+| `@context`        | string  | JSON-LD context URL (always `"https://schema.org/"`)    |
+| `@type`           | string  | Document type (always `"ConsoleImageDocument"`)         |
+| `Version`         | string  | Format version (currently `"2.0"`)                      |
+| `Created`         | string  | ISO 8601 timestamp of when document was created         |
+| `SourceFile`      | string? | Original source filename (optional)                     |
+| `RenderMode`      | string  | Render mode: `"ASCII"`, `"ColorBlocks"`, or `"Braille"` |
+| `Settings`        | object  | Render settings used (see Settings section)             |
+| `Frames`          | array   | Array of frame objects (see Frame section)              |
+| `FrameCount`      | int     | Number of frames (computed)                             |
+| `IsAnimated`      | bool    | True if more than one frame (computed)                  |
+| `TotalDurationMs` | int     | Total duration in milliseconds (computed)               |
 
 ### Settings Object
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `Width` | int? | null | Explicit width (null = auto) |
-| `Height` | int? | null | Explicit height (null = auto) |
-| `MaxWidth` | int | 120 | Maximum output width |
-| `MaxHeight` | int | 60 | Maximum output height |
-| `CharacterAspectRatio` | float | 0.5 | Character aspect ratio (width/height) |
-| `ContrastPower` | float | 2.5 | Contrast enhancement power |
-| `Gamma` | float | 0.85 | Gamma correction |
-| `UseColor` | bool | true | Use ANSI color codes |
-| `Invert` | bool | true | Invert for dark terminals |
-| `CharacterSetPreset` | string? | null | Character set preset name |
-| `AnimationSpeedMultiplier` | float | 1.0 | Animation speed multiplier |
-| `LoopCount` | int | 0 | Loop count (0 = infinite) |
+| Field                      | Type    | Default | Description                           |
+|----------------------------|---------|---------|---------------------------------------|
+| `Width`                    | int?    | null    | Explicit width (null = auto)          |
+| `Height`                   | int?    | null    | Explicit height (null = auto)         |
+| `MaxWidth`                 | int     | 120     | Maximum output width                  |
+| `MaxHeight`                | int     | 60      | Maximum output height                 |
+| `CharacterAspectRatio`     | float   | 0.5     | Character aspect ratio (width/height) |
+| `ContrastPower`            | float   | 2.5     | Contrast enhancement power            |
+| `Gamma`                    | float   | 0.85    | Gamma correction                      |
+| `UseColor`                 | bool    | true    | Use ANSI color codes                  |
+| `Invert`                   | bool    | true    | Invert for dark terminals             |
+| `CharacterSetPreset`       | string? | null    | Character set preset name             |
+| `AnimationSpeedMultiplier` | float   | 1.0     | Animation speed multiplier            |
+| `LoopCount`                | int     | 0       | Loop count (0 = infinite)             |
 
 ### Frame Object
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field     | Type   | Description                                                         |
+|-----------|--------|---------------------------------------------------------------------|
 | `Content` | string | The rendered content (ANSI-escaped string with `\r\n` line endings) |
-| `DelayMs` | int | Frame delay in milliseconds (for animations) |
-| `Width` | int | Width of this frame in characters |
-| `Height` | int | Height of this frame in lines |
+| `DelayMs` | int    | Frame delay in milliseconds (for animations)                        |
+| `Width`   | int    | Width of this frame in characters                                   |
+| `Height`  | int    | Height of this frame in lines                                       |
 
 ### Content Encoding
 
@@ -104,7 +105,8 @@ The `Content` field contains the rendered ASCII art as a string:
 
 ## Streaming NDJSON Format
 
-Used for long videos where frames are written incrementally. Each line is a complete JSON object (JSON Lines / NDJSON format).
+Used for long videos where frames are written incrementally. Each line is a complete JSON object (JSON Lines / NDJSON
+format).
 
 ### Structure
 
@@ -147,14 +149,14 @@ Same fields as standard format, but `@type` is `"ConsoleImageDocumentHeader"`.
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `@type` | string | Always `"Frame"` |
-| `Index` | int | Zero-based frame index |
-| `Content` | string | Rendered content |
-| `DelayMs` | int | Frame delay in milliseconds |
-| `Width` | int | Frame width in characters |
-| `Height` | int | Frame height in lines |
+| Field     | Type   | Description                 |
+|-----------|--------|-----------------------------|
+| `@type`   | string | Always `"Frame"`            |
+| `Index`   | int    | Zero-based frame index      |
+| `Content` | string | Rendered content            |
+| `DelayMs` | int    | Frame delay in milliseconds |
+| `Width`   | int    | Frame width in characters   |
+| `Height`  | int    | Frame height in lines       |
 
 #### Footer (Last Line)
 
@@ -168,13 +170,13 @@ Same fields as standard format, but `@type` is `"ConsoleImageDocumentHeader"`.
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `@type` | string | Always `"ConsoleImageDocumentFooter"` |
-| `FrameCount` | int | Total number of frames written |
-| `TotalDurationMs` | int | Sum of all frame delays |
-| `Completed` | string | ISO 8601 completion timestamp |
-| `IsComplete` | bool | True if processing completed normally, false if stopped early |
+| Field             | Type   | Description                                                   |
+|-------------------|--------|---------------------------------------------------------------|
+| `@type`           | string | Always `"ConsoleImageDocumentFooter"`                         |
+| `FrameCount`      | int    | Total number of frames written                                |
+| `TotalDurationMs` | int    | Sum of all frame delays                                       |
+| `Completed`       | string | ISO 8601 completion timestamp                                 |
+| `IsComplete`      | bool   | True if processing completed normally, false if stopped early |
 
 ### Benefits of NDJSON Format
 
@@ -188,10 +190,10 @@ Same fields as standard format, but `@type` is `"ConsoleImageDocumentHeader"`.
 
 Both `.json` and `.ndjson` extensions are supported:
 
-| Extension | Recommended For | Notes |
-|-----------|-----------------|-------|
-| `.json` | Images, short GIFs | Can be either format (auto-detected) |
-| `.ndjson` | Long videos | Explicitly indicates streaming format |
+| Extension | Recommended For    | Notes                                 |
+|-----------|--------------------|---------------------------------------|
+| `.json`   | Images, short GIFs | Can be either format (auto-detected)  |
+| `.ndjson` | Long videos        | Explicitly indicates streaming format |
 
 ## API Usage
 

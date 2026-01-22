@@ -5,35 +5,14 @@
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// A k-dimensional tree for fast nearest-neighbor search of shape vectors.
-/// Optimized for 6-dimensional shape vectors used in ASCII character matching.
+///     A k-dimensional tree for fast nearest-neighbor search of shape vectors.
+///     Optimized for 6-dimensional shape vectors used in ASCII character matching.
 /// </summary>
 public class KdTree
 {
     private const int Dimensions = 6;
-    private readonly KdNode? _root;
     private readonly CharacterEntry[] _entries;
-
-    public readonly struct CharacterEntry
-    {
-        public readonly char Character;
-        public readonly ShapeVector Vector;
-
-        public CharacterEntry(char character, ShapeVector vector)
-        {
-            Character = character;
-            Vector = vector;
-        }
-    }
-
-    private class KdNode
-    {
-        public int EntryIndex;
-        public int SplitDimension;
-        public float SplitValue;
-        public KdNode? Left;
-        public KdNode? Right;
-    }
+    private readonly KdNode? _root;
 
     public KdTree(IEnumerable<CharacterEntry> entries)
     {
@@ -50,14 +29,14 @@ public class KdTree
         if (indices.Length == 0)
             return null;
 
-        int dimension = depth % Dimensions;
+        var dimension = depth % Dimensions;
 
         // Sort indices by the current dimension
         Array.Sort(indices, (a, b) =>
             GetDimensionValue(_entries[a].Vector, dimension)
                 .CompareTo(GetDimensionValue(_entries[b].Vector, dimension)));
 
-        int medianIndex = indices.Length / 2;
+        var medianIndex = indices.Length / 2;
 
         var node = new KdNode
         {
@@ -75,18 +54,21 @@ public class KdTree
         return node;
     }
 
-    private static float GetDimensionValue(in ShapeVector vector, int dimension) => vector[dimension];
+    private static float GetDimensionValue(in ShapeVector vector, int dimension)
+    {
+        return vector[dimension];
+    }
 
     /// <summary>
-    /// Find the nearest character to the given shape vector
+    ///     Find the nearest character to the given shape vector
     /// </summary>
     public char FindNearest(in ShapeVector target)
     {
         if (_root == null)
             throw new InvalidOperationException("Tree is empty");
 
-        float bestDistSq = float.MaxValue;
-        int bestIndex = 0;
+        var bestDistSq = float.MaxValue;
+        var bestIndex = 0;
 
         SearchNearest(_root, target, ref bestDistSq, ref bestIndex);
 
@@ -94,15 +76,15 @@ public class KdTree
     }
 
     /// <summary>
-    /// Find the nearest character and return both the character and distance
+    ///     Find the nearest character and return both the character and distance
     /// </summary>
     public (char Character, float Distance) FindNearestWithDistance(in ShapeVector target)
     {
         if (_root == null)
             throw new InvalidOperationException("Tree is empty");
 
-        float bestDistSq = float.MaxValue;
-        int bestIndex = 0;
+        var bestDistSq = float.MaxValue;
+        var bestIndex = 0;
 
         SearchNearest(_root, target, ref bestDistSq, ref bestIndex);
 
@@ -110,13 +92,13 @@ public class KdTree
     }
 
     private void SearchNearest(KdNode? node, in ShapeVector target,
-                               ref float bestDistSq, ref int bestIndex)
+        ref float bestDistSq, ref int bestIndex)
     {
         if (node == null)
             return;
 
         // Check current node
-        float distSq = target.DistanceSquaredTo(_entries[node.EntryIndex].Vector);
+        var distSq = target.DistanceSquaredTo(_entries[node.EntryIndex].Vector);
         if (distSq < bestDistSq)
         {
             bestDistSq = distSq;
@@ -124,19 +106,37 @@ public class KdTree
         }
 
         // Determine which side to search first
-        float targetValue = GetDimensionValue(target, node.SplitDimension);
-        float diff = targetValue - node.SplitValue;
+        var targetValue = GetDimensionValue(target, node.SplitDimension);
+        var diff = targetValue - node.SplitValue;
 
-        KdNode? nearSide = diff < 0 ? node.Left : node.Right;
-        KdNode? farSide = diff < 0 ? node.Right : node.Left;
+        var nearSide = diff < 0 ? node.Left : node.Right;
+        var farSide = diff < 0 ? node.Right : node.Left;
 
         // Search near side first
         SearchNearest(nearSide, target, ref bestDistSq, ref bestIndex);
 
         // Only search far side if it could contain a closer point
-        if (diff * diff < bestDistSq)
+        if (diff * diff < bestDistSq) SearchNearest(farSide, target, ref bestDistSq, ref bestIndex);
+    }
+
+    public readonly struct CharacterEntry
+    {
+        public readonly char Character;
+        public readonly ShapeVector Vector;
+
+        public CharacterEntry(char character, ShapeVector vector)
         {
-            SearchNearest(farSide, target, ref bestDistSq, ref bestIndex);
+            Character = character;
+            Vector = vector;
         }
+    }
+
+    private class KdNode
+    {
+        public int EntryIndex;
+        public KdNode? Left;
+        public KdNode? Right;
+        public int SplitDimension;
+        public float SplitValue;
     }
 }

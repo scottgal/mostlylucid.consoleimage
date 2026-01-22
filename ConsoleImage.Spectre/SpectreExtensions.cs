@@ -7,33 +7,33 @@ using SpectreRenderOptions = Spectre.Console.Rendering.RenderOptions;
 namespace ConsoleImage.Spectre;
 
 /// <summary>
-/// Factory for creating ConsoleImage renderables with a unified API.
+///     Factory for creating ConsoleImage renderables with a unified API.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Use this factory when you need to create images dynamically based on a mode selection,
-/// or when you want a consistent way to create any type of ConsoleImage renderable.
-/// </para>
-/// <para>
-/// <b>Example - Create image based on user selection:</b>
-/// <code>
+///     <para>
+///         Use this factory when you need to create images dynamically based on a mode selection,
+///         or when you want a consistent way to create any type of ConsoleImage renderable.
+///     </para>
+///     <para>
+///         <b>Example - Create image based on user selection:</b>
+///         <code>
 /// AnimationMode mode = GetUserSelection(); // Ascii, ColorBlock, Braille, or Matrix
 /// var image = ConsoleImageFactory.CreateImage("photo.jpg", mode);
 /// AnsiConsole.Write(image);
 /// </code>
-/// </para>
-/// <para>
-/// <b>Example - Create animation:</b>
-/// <code>
+///     </para>
+///     <para>
+///         <b>Example - Create animation:</b>
+///         <code>
 /// var animation = ConsoleImageFactory.CreateAnimation("cat.gif", AnimationMode.Braille);
 /// await AnsiConsole.Live(animation).StartAsync(async ctx => { ... });
 /// </code>
-/// </para>
+///     </para>
 /// </remarks>
 public static class ConsoleImageFactory
 {
     /// <summary>
-    /// Create a static image renderable in any mode.
+    ///     Create a static image renderable in any mode.
     /// </summary>
     /// <param name="filePath">Path to the image file (JPG, PNG, GIF, WebP, etc.)</param>
     /// <param name="mode">Render mode: ASCII, ColorBlock, Braille, or Matrix</param>
@@ -41,17 +41,18 @@ public static class ConsoleImageFactory
     /// <param name="matrixOptions">Matrix-specific options (only used when mode is Matrix)</param>
     /// <returns>An IRenderable that can be used with AnsiConsole.Write() or in Spectre layouts</returns>
     /// <example>
-    /// <code>
+    ///     <code>
     /// // Simple usage
     /// var image = ConsoleImageFactory.CreateImage("photo.jpg", AnimationMode.Braille);
     /// AnsiConsole.Write(image);
-    ///
+    /// 
     /// // With options
     /// var opts = new RenderOptions { MaxWidth = 80, ContrastPower = 3.0f };
     /// var image = ConsoleImageFactory.CreateImage("photo.jpg", AnimationMode.ColorBlock, opts);
     /// </code>
     /// </example>
-    public static IRenderable CreateImage(string filePath, AnimationMode mode, CoreRenderOptions? options = null, MatrixOptions? matrixOptions = null)
+    public static IRenderable CreateImage(string filePath, AnimationMode mode, CoreRenderOptions? options = null,
+        MatrixOptions? matrixOptions = null)
     {
         options ??= new CoreRenderOptions { UseColor = true };
 
@@ -66,7 +67,7 @@ public static class ConsoleImageFactory
     }
 
     /// <summary>
-    /// Create an animated image renderable in any mode.
+    ///     Create an animated image renderable in any mode.
     /// </summary>
     /// <param name="filePath">Path to the image or GIF file</param>
     /// <param name="mode">Render mode for animation frames</param>
@@ -74,13 +75,13 @@ public static class ConsoleImageFactory
     /// <param name="matrixOptions">Matrix-specific options (only used when mode is Matrix)</param>
     /// <returns>An IAnimatedRenderable for use with Spectre's Live display</returns>
     /// <example>
-    /// <code>
+    ///     <code>
     /// var animation = ConsoleImageFactory.CreateAnimation("cat.gif", AnimationMode.Braille);
-    ///
+    /// 
     /// // Play with extension method
     /// if (animation is AnimatedImage anim)
     ///     await anim.PlayAsync(cancellationToken);
-    ///
+    /// 
     /// // Or manual control
     /// await AnsiConsole.Live(animation).StartAsync(async ctx => {
     ///     while (!token.IsCancellationRequested) {
@@ -91,7 +92,8 @@ public static class ConsoleImageFactory
     /// });
     /// </code>
     /// </example>
-    public static IAnimatedRenderable CreateAnimation(string filePath, AnimationMode mode, CoreRenderOptions? options = null, MatrixOptions? matrixOptions = null)
+    public static IAnimatedRenderable CreateAnimation(string filePath, AnimationMode mode,
+        CoreRenderOptions? options = null, MatrixOptions? matrixOptions = null)
     {
         options ??= new CoreRenderOptions { UseColor = true };
 
@@ -104,11 +106,11 @@ public static class ConsoleImageFactory
 }
 
 /// <summary>
-/// Interface for animated renderables that can advance frames.
+///     Interface for animated renderables that can advance frames.
 /// </summary>
 /// <remarks>
-/// Implemented by <see cref="AnimatedImage"/> and <see cref="AnimatedMatrixImage"/>.
-/// Use this interface for polymorphic animation handling.
+///     Implemented by <see cref="AnimatedImage" /> and <see cref="AnimatedMatrixImage" />.
+///     Use this interface for polymorphic animation handling.
 /// </remarks>
 public interface IAnimatedRenderable : IRenderable
 {
@@ -119,7 +121,7 @@ public interface IAnimatedRenderable : IRenderable
     int FrameCount { get; }
 
     /// <summary>
-    /// Advance to next frame if enough time has elapsed based on frame delay.
+    ///     Advance to next frame if enough time has elapsed based on frame delay.
     /// </summary>
     /// <returns>True if frame changed, false if not enough time elapsed</returns>
     bool TryAdvanceFrame();
@@ -133,49 +135,50 @@ public interface IAnimatedRenderable : IRenderable
 }
 
 /// <summary>
-/// Plays multiple animations simultaneously with different render modes.
+///     Plays multiple animations simultaneously with different render modes.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Use this class to display multiple GIFs or images side-by-side, each potentially
-/// using a different render mode. Perfect for comparisons or dashboard-style displays.
-/// </para>
-/// <para>
-/// <b>Example - Compare render modes:</b>
-/// <code>
+///     <para>
+///         Use this class to display multiple GIFs or images side-by-side, each potentially
+///         using a different render mode. Perfect for comparisons or dashboard-style displays.
+///     </para>
+///     <para>
+///         <b>Example - Compare render modes:</b>
+///         <code>
 /// var player = new MultiAnimationPlayer()
 ///     .Add("cat.gif", AnimationMode.Ascii, "ASCII")
 ///     .Add("cat.gif", AnimationMode.Braille, "Braille")
 ///     .Add("cat.gif", AnimationMode.Matrix, "Matrix");
-///
+/// 
 /// await player.PlayAsync(cancellationToken);
 /// </code>
-/// </para>
-/// <para>
-/// <b>Example - Multiple different files:</b>
-/// <code>
+///     </para>
+///     <para>
+///         <b>Example - Multiple different files:</b>
+///         <code>
 /// var player = new MultiAnimationPlayer()
 ///     .Add("earth.gif", AnimationMode.ColorBlock)
 ///     .Add("cat.gif", AnimationMode.Braille)
 ///     .Add("fire.gif", AnimationMode.Matrix);
-///
+/// 
 /// await player.PlayAsync(loopCount: 3);
 /// </code>
-/// </para>
+///     </para>
 /// </remarks>
 public class MultiAnimationPlayer
 {
     private readonly List<(IAnimatedRenderable Animation, string Label)> _animations = new();
 
     /// <summary>
-    /// Add an animation from a file path.
+    ///     Add an animation from a file path.
     /// </summary>
     /// <param name="filePath">Path to image or GIF file</param>
     /// <param name="mode">Render mode for this animation</param>
     /// <param name="label">Display label (defaults to filename)</param>
     /// <param name="options">Render options for this animation</param>
     /// <returns>This player for fluent chaining</returns>
-    public MultiAnimationPlayer Add(string filePath, AnimationMode mode, string? label = null, CoreRenderOptions? options = null)
+    public MultiAnimationPlayer Add(string filePath, AnimationMode mode, string? label = null,
+        CoreRenderOptions? options = null)
     {
         var animation = ConsoleImageFactory.CreateAnimation(filePath, mode, options);
         _animations.Add((animation, label ?? Path.GetFileName(filePath)));
@@ -183,7 +186,7 @@ public class MultiAnimationPlayer
     }
 
     /// <summary>
-    /// Add a pre-created animation.
+    ///     Add a pre-created animation.
     /// </summary>
     /// <param name="animation">Pre-created animated renderable</param>
     /// <param name="label">Display label for the panel header</param>
@@ -195,7 +198,7 @@ public class MultiAnimationPlayer
     }
 
     /// <summary>
-    /// Play all animations side by side using Spectre's Live display.
+    ///     Play all animations side by side using Spectre's Live display.
     /// </summary>
     /// <param name="cancellationToken">Token to cancel playback</param>
     /// <param name="loopCount">Number of loops (0 = infinite)</param>
@@ -204,8 +207,8 @@ public class MultiAnimationPlayer
     {
         if (_animations.Count == 0) return;
 
-        int loops = 0;
-        bool anyFrameZero = false;
+        var loops = 0;
+        var anyFrameZero = false;
 
         IRenderable CreateLayout()
         {
@@ -222,6 +225,7 @@ public class MultiAnimationPlayer
                     .Expand();
                 panels.Add(panel);
             }
+
             return new Columns(panels);
         }
 
@@ -232,7 +236,7 @@ public class MultiAnimationPlayer
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     // Advance all animations
-                    bool anyAtZero = false;
+                    var anyAtZero = false;
                     foreach (var (anim, _) in _animations)
                     {
                         anim.TryAdvanceFrame();
@@ -249,63 +253,81 @@ public class MultiAnimationPlayer
                         if (loopCount > 0 && loops >= loopCount)
                             break;
                     }
+
                     anyFrameZero = anyAtZero;
 
                     try
                     {
                         await Task.Delay(16, cancellationToken);
                     }
-                    catch (OperationCanceledException) { break; }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
                 }
             });
     }
 }
 
 /// <summary>
-/// Displays the same image in multiple render modes side-by-side for comparison.
+///     Displays the same image in multiple render modes side-by-side for comparison.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Perfect for demonstrating the differences between ASCII, ColorBlock, Braille,
-/// and Matrix rendering modes.
-/// </para>
-/// <para>
-/// <b>Example:</b>
-/// <code>
+///     <para>
+///         Perfect for demonstrating the differences between ASCII, ColorBlock, Braille,
+///         and Matrix rendering modes.
+///     </para>
+///     <para>
+///         <b>Example:</b>
+///         <code>
 /// // Compare specific modes
 /// var comparison = RenderModeComparison.FromFile("photo.jpg", null,
 ///     AnimationMode.Ascii, AnimationMode.Braille);
 /// AnsiConsole.Write(comparison);
-///
+/// 
 /// // Or compare all four modes
 /// AnsiConsole.Write(RenderModeComparison.AllModes("photo.jpg"));
 /// </code>
-/// </para>
+///     </para>
 /// </remarks>
 public class RenderModeComparison : IRenderable
 {
     private readonly List<(IRenderable Image, string Label)> _images = new();
 
+    /// <inheritdoc />
+    public Measurement Measure(SpectreRenderOptions options, int maxWidth)
+    {
+        return new Measurement(maxWidth, maxWidth);
+    }
+
+    /// <inheritdoc />
+    public IEnumerable<Segment> Render(SpectreRenderOptions options, int maxWidth)
+    {
+        var panels = _images.Select(x => new Panel(x.Image)
+            .Header($"[cyan]{x.Label}[/]")
+            .Border(BoxBorder.Rounded)
+            .Expand()).ToList();
+
+        var columns = new Columns(panels);
+        return ((IRenderable)columns).Render(options, maxWidth);
+    }
+
     /// <summary>
-    /// Create a comparison of the same file in specified render modes.
+    ///     Create a comparison of the same file in specified render modes.
     /// </summary>
     /// <param name="filePath">Path to image file</param>
     /// <param name="options">Render options (MaxWidth is automatically reduced for side-by-side)</param>
     /// <param name="modes">Render modes to compare</param>
     /// <returns>A renderable comparison layout</returns>
-    public static RenderModeComparison FromFile(string filePath, CoreRenderOptions? options = null, params AnimationMode[] modes)
+    public static RenderModeComparison FromFile(string filePath, CoreRenderOptions? options = null,
+        params AnimationMode[] modes)
     {
         var comparison = new RenderModeComparison();
 
         // Auto-adjust width for side-by-side display
         if (options == null)
-        {
             options = new CoreRenderOptions { UseColor = true, MaxWidth = 40 };
-        }
-        else if (options.MaxWidth > 50)
-        {
-            options.MaxWidth = 40;
-        }
+        else if (options.MaxWidth > 50) options.MaxWidth = 40;
 
         foreach (var mode in modes)
         {
@@ -317,86 +339,70 @@ public class RenderModeComparison : IRenderable
     }
 
     /// <summary>
-    /// Create a comparison showing all four render modes (ASCII, ColorBlock, Braille, Matrix).
+    ///     Create a comparison showing all four render modes (ASCII, ColorBlock, Braille, Matrix).
     /// </summary>
     /// <param name="filePath">Path to image file</param>
     /// <param name="options">Render options</param>
     /// <returns>A renderable comparison layout with all modes</returns>
     public static RenderModeComparison AllModes(string filePath, CoreRenderOptions? options = null)
     {
-        return FromFile(filePath, options, AnimationMode.Ascii, AnimationMode.ColorBlock, AnimationMode.Braille, AnimationMode.Matrix);
-    }
-
-    /// <inheritdoc/>
-    public Measurement Measure(SpectreRenderOptions options, int maxWidth)
-    {
-        return new Measurement(maxWidth, maxWidth);
-    }
-
-    /// <inheritdoc/>
-    public IEnumerable<Segment> Render(SpectreRenderOptions options, int maxWidth)
-    {
-        var panels = _images.Select(x => new Panel(x.Image)
-            .Header($"[cyan]{x.Label}[/]")
-            .Border(BoxBorder.Rounded)
-            .Expand()).ToList();
-
-        var columns = new Columns(panels);
-        return ((IRenderable)columns).Render(options, maxWidth);
+        return FromFile(filePath, options, AnimationMode.Ascii, AnimationMode.ColorBlock, AnimationMode.Braille,
+            AnimationMode.Matrix);
     }
 }
 
 /// <summary>
-/// Extension methods for AnsiConsole to easily display ConsoleImage content.
+///     Extension methods for AnsiConsole to easily display ConsoleImage content.
 /// </summary>
 /// <remarks>
-/// <para>
-/// These extensions provide a fluent, convenient API for displaying images
-/// without needing to manually create renderable instances.
-/// </para>
-/// <para>
-/// <b>Quick display:</b>
-/// <code>
+///     <para>
+///         These extensions provide a fluent, convenient API for displaying images
+///         without needing to manually create renderable instances.
+///     </para>
+///     <para>
+///         <b>Quick display:</b>
+///         <code>
 /// AnsiConsole.WriteImage("photo.jpg", AnimationMode.Braille);
 /// </code>
-/// </para>
-/// <para>
-/// <b>Compare modes:</b>
-/// <code>
+///     </para>
+///     <para>
+///         <b>Compare modes:</b>
+///         <code>
 /// AnsiConsole.WriteComparison("photo.jpg");
 /// </code>
-/// </para>
-/// <para>
-/// <b>Play animation:</b>
-/// <code>
+///     </para>
+///     <para>
+///         <b>Play animation:</b>
+///         <code>
 /// await AnsiConsole.PlayAnimationAsync("cat.gif", AnimationMode.ColorBlock);
 /// </code>
-/// </para>
+///     </para>
 /// </remarks>
 public static class AnsiConsoleExtensions
 {
     /// <summary>
-    /// Display an image file in the specified render mode.
+    ///     Display an image file in the specified render mode.
     /// </summary>
     /// <param name="console">The AnsiConsole instance</param>
     /// <param name="filePath">Path to image file</param>
     /// <param name="mode">Render mode (default: ASCII)</param>
     /// <param name="options">Render options</param>
     /// <example>
-    /// <code>
+    ///     <code>
     /// AnsiConsole.WriteImage("photo.jpg");
     /// AnsiConsole.WriteImage("photo.jpg", AnimationMode.Braille);
     /// AnsiConsole.WriteImage("photo.jpg", AnimationMode.Matrix, new RenderOptions { MaxWidth = 100 });
     /// </code>
     /// </example>
-    public static void WriteImage(this IAnsiConsole console, string filePath, AnimationMode mode = AnimationMode.Ascii, CoreRenderOptions? options = null)
+    public static void WriteImage(this IAnsiConsole console, string filePath, AnimationMode mode = AnimationMode.Ascii,
+        CoreRenderOptions? options = null)
     {
         var image = ConsoleImageFactory.CreateImage(filePath, mode, options);
         console.Write(image);
     }
 
     /// <summary>
-    /// Display an image in a panel with optional header.
+    ///     Display an image in a panel with optional header.
     /// </summary>
     /// <param name="console">The AnsiConsole instance</param>
     /// <param name="filePath">Path to image file</param>
@@ -404,11 +410,12 @@ public static class AnsiConsoleExtensions
     /// <param name="header">Optional panel header text</param>
     /// <param name="options">Render options</param>
     /// <example>
-    /// <code>
+    ///     <code>
     /// AnsiConsole.WriteImagePanel("photo.jpg", AnimationMode.Braille, "My Photo");
     /// </code>
     /// </example>
-    public static void WriteImagePanel(this IAnsiConsole console, string filePath, AnimationMode mode = AnimationMode.Ascii, string? header = null, CoreRenderOptions? options = null)
+    public static void WriteImagePanel(this IAnsiConsole console, string filePath,
+        AnimationMode mode = AnimationMode.Ascii, string? header = null, CoreRenderOptions? options = null)
     {
         var image = ConsoleImageFactory.CreateImage(filePath, mode, options);
         var panel = new Panel(image).Border(BoxBorder.Rounded);
@@ -420,22 +427,23 @@ public static class AnsiConsoleExtensions
     }
 
     /// <summary>
-    /// Display a comparison of the same image in multiple render modes.
+    ///     Display a comparison of the same image in multiple render modes.
     /// </summary>
     /// <param name="console">The AnsiConsole instance</param>
     /// <param name="filePath">Path to image file</param>
     /// <param name="options">Render options</param>
     /// <param name="modes">Modes to compare (default: ASCII, ColorBlock, Braille)</param>
     /// <example>
-    /// <code>
+    ///     <code>
     /// // Default comparison (3 modes)
     /// AnsiConsole.WriteComparison("photo.jpg");
-    ///
+    /// 
     /// // Specific modes
     /// AnsiConsole.WriteComparison("photo.jpg", null, AnimationMode.Ascii, AnimationMode.Matrix);
     /// </code>
     /// </example>
-    public static void WriteComparison(this IAnsiConsole console, string filePath, CoreRenderOptions? options = null, params AnimationMode[] modes)
+    public static void WriteComparison(this IAnsiConsole console, string filePath, CoreRenderOptions? options = null,
+        params AnimationMode[] modes)
     {
         if (modes.Length == 0)
             modes = new[] { AnimationMode.Ascii, AnimationMode.ColorBlock, AnimationMode.Braille };
@@ -445,7 +453,7 @@ public static class AnsiConsoleExtensions
     }
 
     /// <summary>
-    /// Play an animated GIF or apply animation effect to a static image.
+    ///     Play an animated GIF or apply animation effect to a static image.
     /// </summary>
     /// <param name="console">The AnsiConsole instance</param>
     /// <param name="filePath">Path to image or GIF file</param>
@@ -453,14 +461,16 @@ public static class AnsiConsoleExtensions
     /// <param name="options">Render options</param>
     /// <param name="cancellationToken">Token to cancel playback</param>
     /// <example>
-    /// <code>
+    ///     <code>
     /// using var cts = new CancellationTokenSource();
     /// Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
-    ///
+    /// 
     /// await AnsiConsole.PlayAnimationAsync("cat.gif", AnimationMode.Braille, cancellationToken: cts.Token);
     /// </code>
     /// </example>
-    public static async Task PlayAnimationAsync(this IAnsiConsole console, string filePath, AnimationMode mode = AnimationMode.Ascii, CoreRenderOptions? options = null, CancellationToken cancellationToken = default)
+    public static async Task PlayAnimationAsync(this IAnsiConsole console, string filePath,
+        AnimationMode mode = AnimationMode.Ascii, CoreRenderOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
         var animation = ConsoleImageFactory.CreateAnimation(filePath, mode, options);
 
@@ -473,19 +483,25 @@ public static class AnsiConsoleExtensions
                     animation.TryAdvanceFrame();
                     ctx.Refresh();
 
-                    try { await Task.Delay(16, cancellationToken); }
-                    catch (OperationCanceledException) { break; }
+                    try
+                    {
+                        await Task.Delay(16, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
                 }
             });
     }
 
     /// <summary>
-    /// Create a multi-animation player for playing multiple animations simultaneously.
+    ///     Create a multi-animation player for playing multiple animations simultaneously.
     /// </summary>
     /// <param name="console">The AnsiConsole instance</param>
     /// <returns>A fluent builder for adding animations</returns>
     /// <example>
-    /// <code>
+    ///     <code>
     /// await AnsiConsole.CreateMultiAnimation()
     ///     .Add("a.gif", AnimationMode.Ascii, "ASCII")
     ///     .Add("b.gif", AnimationMode.Braille, "Braille")
@@ -500,5 +516,10 @@ public static class AnsiConsoleExtensions
 }
 
 // Partial class declarations to implement IAnimatedRenderable
-public partial class AnimatedImage : IAnimatedRenderable { }
-public partial class AnimatedMatrixImage : IAnimatedRenderable { }
+public partial class AnimatedImage : IAnimatedRenderable
+{
+}
+
+public partial class AnimatedMatrixImage : IAnimatedRenderable
+{
+}

@@ -1,16 +1,17 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Drawing;
 using SixLabors.ImageSharp.Drawing.Processing;
+using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using Path = System.IO.Path;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Settings for calibration, saved to calibration.json.
-/// Each render mode has its own character aspect ratio since they map pixels differently.
+///     Settings for calibration, saved to calibration.json.
+///     Each render mode has its own character aspect ratio since they map pixels differently.
 /// </summary>
 public record CalibrationSettings
 {
@@ -24,26 +25,32 @@ public record CalibrationSettings
     public float BrailleCharacterAspectRatio { get; init; } = 0.5f;
 
     /// <summary>Get the character aspect ratio for a specific render mode</summary>
-    public float GetAspectRatio(RenderMode mode) => mode switch
+    public float GetAspectRatio(RenderMode mode)
     {
-        RenderMode.ColorBlocks => BlocksCharacterAspectRatio,
-        RenderMode.Braille => BrailleCharacterAspectRatio,
-        RenderMode.Matrix => AsciiCharacterAspectRatio, // Matrix uses same 1x1 cell as ASCII
-        _ => AsciiCharacterAspectRatio
-    };
+        return mode switch
+        {
+            RenderMode.ColorBlocks => BlocksCharacterAspectRatio,
+            RenderMode.Braille => BrailleCharacterAspectRatio,
+            RenderMode.Matrix => AsciiCharacterAspectRatio, // Matrix uses same 1x1 cell as ASCII
+            _ => AsciiCharacterAspectRatio
+        };
+    }
 
     /// <summary>Create a new settings with updated aspect ratio for a specific mode</summary>
-    public CalibrationSettings WithAspectRatio(RenderMode mode, float aspectRatio) => mode switch
+    public CalibrationSettings WithAspectRatio(RenderMode mode, float aspectRatio)
     {
-        RenderMode.ColorBlocks => this with { BlocksCharacterAspectRatio = aspectRatio },
-        RenderMode.Braille => this with { BrailleCharacterAspectRatio = aspectRatio },
-        RenderMode.Matrix => this with { AsciiCharacterAspectRatio = aspectRatio }, // Shares with ASCII
-        _ => this with { AsciiCharacterAspectRatio = aspectRatio }
-    };
+        return mode switch
+        {
+            RenderMode.ColorBlocks => this with { BlocksCharacterAspectRatio = aspectRatio },
+            RenderMode.Braille => this with { BrailleCharacterAspectRatio = aspectRatio },
+            RenderMode.Matrix => this with { AsciiCharacterAspectRatio = aspectRatio }, // Shares with ASCII
+            _ => this with { AsciiCharacterAspectRatio = aspectRatio }
+        };
+    }
 }
 
 /// <summary>
-/// JSON serialization context for AOT compatibility
+///     JSON serialization context for AOT compatibility
 /// </summary>
 [JsonSerializable(typeof(CalibrationSettings))]
 [JsonSourceGenerationOptions(WriteIndented = true)]
@@ -52,23 +59,25 @@ public partial class CalibrationJsonContext : JsonSerializerContext
 }
 
 /// <summary>
-/// Helper for generating and managing calibration patterns
+///     Helper for generating and managing calibration patterns
 /// </summary>
 public static class CalibrationHelper
 {
     /// <summary>
-    /// Default calibration file name
+    ///     Default calibration file name
     /// </summary>
     public const string DefaultFileName = "calibration.json";
 
     /// <summary>
-    /// Get the default calibration file path (next to the executable)
+    ///     Get the default calibration file path (next to the executable)
     /// </summary>
-    public static string GetDefaultPath() =>
-        System.IO.Path.Combine(AppContext.BaseDirectory, DefaultFileName);
+    public static string GetDefaultPath()
+    {
+        return Path.Combine(AppContext.BaseDirectory, DefaultFileName);
+    }
 
     /// <summary>
-    /// Load calibration settings from file
+    ///     Load calibration settings from file
     /// </summary>
     public static CalibrationSettings? Load(string? path = null)
     {
@@ -88,7 +97,7 @@ public static class CalibrationHelper
     }
 
     /// <summary>
-    /// Save calibration settings to file
+    ///     Save calibration settings to file
     /// </summary>
     public static void Save(CalibrationSettings settings, string? path = null)
     {
@@ -98,15 +107,15 @@ public static class CalibrationHelper
     }
 
     /// <summary>
-    /// Generate a calibration test image with a circle and crosshairs
+    ///     Generate a calibration test image with a circle and crosshairs
     /// </summary>
     public static Image<Rgba32> GenerateCalibrationImage(int size = 200)
     {
         var image = new Image<Rgba32>(size, size, Color.Black);
 
         var center = new PointF(size / 2f, size / 2f);
-        float radius = size * 0.4f;
-        float strokeWidth = size * 0.05f;
+        var radius = size * 0.4f;
+        var strokeWidth = size * 0.05f;
 
         image.Mutate(ctx =>
         {
@@ -123,7 +132,7 @@ public static class CalibrationHelper
     }
 
     /// <summary>
-    /// Render calibration pattern using the specified mode
+    ///     Render calibration pattern using the specified mode
     /// </summary>
     public static string RenderCalibrationPattern(
         RenderMode mode,
@@ -181,7 +190,7 @@ public static class CalibrationHelper
 }
 
 /// <summary>
-/// Render mode for calibration
+///     Render mode for calibration
 /// </summary>
 public enum RenderMode
 {

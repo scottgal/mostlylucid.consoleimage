@@ -1,5 +1,3 @@
-using ConsoleImage.Core;
-
 namespace ConsoleImage.Core.Tests;
 
 public class RenderOptionsTests
@@ -38,9 +36,9 @@ public class RenderOptionsTests
     }
 
     [Theory]
-    [InlineData(100, 100, 0.5f, 1, 1)]  // Square image, default aspect
-    [InlineData(200, 100, 0.5f, 1, 1)]  // Wide image
-    [InlineData(100, 200, 0.5f, 1, 1)]  // Tall image
+    [InlineData(100, 100, 0.5f, 1, 1)] // Square image, default aspect
+    [InlineData(200, 100, 0.5f, 1, 1)] // Wide image
+    [InlineData(100, 200, 0.5f, 1, 1)] // Tall image
     public void CalculateVisualDimensions_MaintainsAspectRatio(
         int imageWidth, int imageHeight, float charAspect, int pxPerCharW, int pxPerCharH)
     {
@@ -73,11 +71,9 @@ public class RenderOptionsTests
         var (w2, h2) = options2.CalculateVisualDimensions(200, 200, 1, 1);
 
         if (Math.Abs(charAspect - 0.5f) > 0.01f)
-        {
             // Different aspect ratios should produce different dimensions for same image
             Assert.True(w1 != w2 || h1 != h2,
                 $"Different char aspects ({0.5f} vs {charAspect}) should produce different dimensions");
-        }
     }
 
     [Fact]
@@ -133,8 +129,8 @@ public class RenderOptionsTests
     }
 
     [Theory]
-    [InlineData(1, 2)]  // ColorBlocks: 1 pixel/char wide, 2 pixels/char tall
-    [InlineData(2, 4)]  // Braille: 2 pixels/char wide, 4 pixels/char tall
+    [InlineData(1, 2)] // ColorBlocks: 1 pixel/char wide, 2 pixels/char tall
+    [InlineData(2, 4)] // Braille: 2 pixels/char wide, 4 pixels/char tall
     public void CalculateVisualDimensions_PixelMultipliers_Work(int pxPerCharW, int pxPerCharH)
     {
         var options = new RenderOptions

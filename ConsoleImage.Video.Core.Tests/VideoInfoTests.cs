@@ -1,5 +1,3 @@
-using ConsoleImage.Video.Core;
-
 namespace ConsoleImage.Video.Core.Tests;
 
 public class VideoInfoTests

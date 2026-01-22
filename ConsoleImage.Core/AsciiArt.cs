@@ -5,21 +5,21 @@
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Simple, static API for converting images to ASCII art.
-/// For the simplest usage, just call AsciiArt.Render(imagePath).
-/// For more control, use AsciiRenderer directly.
+///     Simple, static API for converting images to ASCII art.
+///     For the simplest usage, just call AsciiArt.Render(imagePath).
+///     For more control, use AsciiRenderer directly.
 /// </summary>
 public static class AsciiArt
 {
     #region Super Simple API
 
     /// <summary>
-    /// Convert an image file to ASCII art string. Just works with sensible defaults.
+    ///     Convert an image file to ASCII art string. Just works with sensible defaults.
     /// </summary>
     /// <param name="path">Path to the image file (PNG, JPG, GIF, etc.)</param>
     /// <returns>ASCII art string ready to print</returns>
     /// <example>
-    /// Console.WriteLine(AsciiArt.Render("photo.jpg"));
+    ///     Console.WriteLine(AsciiArt.Render("photo.jpg"));
     /// </example>
     public static string Render(string path)
     {
@@ -28,13 +28,13 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Convert an image file to ASCII art with specified width.
+    ///     Convert an image file to ASCII art with specified width.
     /// </summary>
     /// <param name="path">Path to the image file</param>
     /// <param name="width">Output width in characters</param>
     /// <returns>ASCII art string</returns>
     /// <example>
-    /// Console.WriteLine(AsciiArt.Render("photo.jpg", 80));
+    ///     Console.WriteLine(AsciiArt.Render("photo.jpg", 80));
     /// </example>
     public static string Render(string path, int width)
     {
@@ -44,12 +44,12 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Convert an image file to colored ASCII art (for terminals supporting ANSI codes).
+    ///     Convert an image file to colored ASCII art (for terminals supporting ANSI codes).
     /// </summary>
     /// <param name="path">Path to the image file</param>
     /// <returns>ASCII art string with ANSI color codes</returns>
     /// <example>
-    /// Console.WriteLine(AsciiArt.RenderColored("photo.jpg"));
+    ///     Console.WriteLine(AsciiArt.RenderColored("photo.jpg"));
     /// </example>
     public static string RenderColored(string path)
     {
@@ -58,8 +58,8 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Convert an image file to non-inverted ASCII art (for light terminal backgrounds).
-    /// Default rendering is inverted for dark terminals; this is for light backgrounds.
+    ///     Convert an image file to non-inverted ASCII art (for light terminal backgrounds).
+    ///     Default rendering is inverted for dark terminals; this is for light backgrounds.
     /// </summary>
     /// <param name="path">Path to the image file</param>
     /// <returns>ASCII art string (non-inverted, for light backgrounds)</returns>
@@ -75,7 +75,7 @@ public static class AsciiArt
     #region Stream-based API
 
     /// <summary>
-    /// Convert an image stream to ASCII art string.
+    ///     Convert an image stream to ASCII art string.
     /// </summary>
     public static string FromStream(Stream stream, RenderOptions? options = null)
     {
@@ -85,7 +85,7 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Convert a byte array to ASCII art string.
+    ///     Convert a byte array to ASCII art string.
     /// </summary>
     public static string FromBytes(byte[] data, RenderOptions? options = null)
     {
@@ -98,8 +98,8 @@ public static class AsciiArt
     #region URL-based API
 
     /// <summary>
-    /// Convert an image from a URL to ASCII art string.
-    /// Downloads the image and renders it.
+    ///     Convert an image from a URL to ASCII art string.
+    ///     Downloads the image and renders it.
     /// </summary>
     /// <param name="url">URL of the image (http:// or https://)</param>
     /// <param name="options">Rendering options</param>
@@ -107,8 +107,8 @@ public static class AsciiArt
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>ASCII art string</returns>
     /// <example>
-    /// var ascii = await AsciiArt.FromUrlAsync("https://example.com/image.jpg");
-    /// Console.WriteLine(ascii);
+    ///     var ascii = await AsciiArt.FromUrlAsync("https://example.com/image.jpg");
+    ///     Console.WriteLine(ascii);
     /// </example>
     public static async Task<string> FromUrlAsync(
         string url,
@@ -121,7 +121,7 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Convert an image from a URL to ASCII art string (synchronous version).
+    ///     Convert an image from a URL to ASCII art string (synchronous version).
     /// </summary>
     public static string FromUrl(string url, RenderOptions? options = null)
     {
@@ -130,23 +130,20 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Render an image from a local file path or URL.
-    /// Automatically detects if input is a URL and handles appropriately.
+    ///     Render an image from a local file path or URL.
+    ///     Automatically detects if input is a URL and handles appropriately.
     /// </summary>
     /// <param name="pathOrUrl">Local file path or URL</param>
     /// <param name="options">Rendering options</param>
     /// <returns>ASCII art string</returns>
     public static string RenderAny(string pathOrUrl, RenderOptions? options = null)
     {
-        if (UrlHelper.IsUrl(pathOrUrl))
-        {
-            return FromUrl(pathOrUrl, options);
-        }
+        if (UrlHelper.IsUrl(pathOrUrl)) return FromUrl(pathOrUrl, options);
         return FromFile(pathOrUrl, options);
     }
 
     /// <summary>
-    /// Render an image from a local file path or URL (async version).
+    ///     Render an image from a local file path or URL (async version).
     /// </summary>
     public static async Task<string> RenderAnyAsync(
         string pathOrUrl,
@@ -154,15 +151,12 @@ public static class AsciiArt
         Action<long, long>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (UrlHelper.IsUrl(pathOrUrl))
-        {
-            return await FromUrlAsync(pathOrUrl, options, progress, cancellationToken);
-        }
+        if (UrlHelper.IsUrl(pathOrUrl)) return await FromUrlAsync(pathOrUrl, options, progress, cancellationToken);
         return FromFile(pathOrUrl, options);
     }
 
     /// <summary>
-    /// Play an animated GIF from a URL.
+    ///     Play an animated GIF from a URL.
     /// </summary>
     public static async Task PlayGifFromUrlAsync(
         string url,
@@ -183,14 +177,14 @@ public static class AsciiArt
     #region Full Options API
 
     /// <summary>
-    /// Convert an image file to ASCII art string with full options.
+    ///     Convert an image file to ASCII art string with full options.
     /// </summary>
     /// <param name="path">Path to the image file</param>
     /// <param name="options">Rendering options</param>
     /// <returns>ASCII art string</returns>
     /// <example>
-    /// var options = new RenderOptions { MaxWidth = 100, UseColor = true };
-    /// Console.WriteLine(AsciiArt.FromFile("photo.jpg", options));
+    ///     var options = new RenderOptions { MaxWidth = 100, UseColor = true };
+    ///     Console.WriteLine(AsciiArt.FromFile("photo.jpg", options));
     /// </example>
     public static string FromFile(string path, RenderOptions? options = null)
     {
@@ -200,7 +194,7 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Convert an image file to an AsciiFrame with character array access.
+    ///     Convert an image file to an AsciiFrame with character array access.
     /// </summary>
     public static AsciiFrame FrameFromFile(string path, RenderOptions? options = null)
     {
@@ -213,19 +207,19 @@ public static class AsciiArt
     #region Animated GIF API
 
     /// <summary>
-    /// Convert an animated GIF to a list of ASCII frames.
+    ///     Convert an animated GIF to a list of ASCII frames.
     /// </summary>
     /// <param name="path">Path to the GIF file</param>
     /// <param name="options">Rendering options</param>
     /// <returns>List of ASCII frames with timing information</returns>
     /// <example>
-    /// var frames = AsciiArt.GifFromFile("animation.gif");
-    /// foreach (var frame in frames)
-    /// {
+    ///     var frames = AsciiArt.GifFromFile("animation.gif");
+    ///     foreach (var frame in frames)
+    ///     {
     ///     Console.Clear();
     ///     Console.WriteLine(frame.ToString());
     ///     Thread.Sleep(frame.DelayMs);
-    /// }
+    ///     }
     /// </example>
     public static IReadOnlyList<AsciiFrame> GifFromFile(string path, RenderOptions? options = null)
     {
@@ -234,7 +228,7 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Convert an animated GIF stream to a list of ASCII frames.
+    ///     Convert an animated GIF stream to a list of ASCII frames.
     /// </summary>
     public static IReadOnlyList<AsciiFrame> GifFromStream(Stream stream, RenderOptions? options = null)
     {
@@ -243,16 +237,16 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Play an animated GIF in the console.
+    ///     Play an animated GIF in the console.
     /// </summary>
     /// <param name="path">Path to the GIF file</param>
     /// <param name="options">Rendering options (LoopCount controls playback)</param>
     /// <param name="cancellationToken">Token to cancel playback</param>
     /// <example>
-    /// await AsciiArt.PlayGif("animation.gif");
+    ///     await AsciiArt.PlayGif("animation.gif");
     /// </example>
     public static async Task PlayGif(string path, RenderOptions? options = null,
-                                      CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         options ??= RenderOptions.ForAnimation();
         var frames = GifFromFile(path, options);
@@ -266,14 +260,14 @@ public static class AsciiArt
     #region Color Block Rendering
 
     /// <summary>
-    /// Render image as colored blocks using Unicode half-block characters.
-    /// Each character cell displays 2 vertical pixels for higher resolution.
-    /// Requires a terminal that supports 24-bit ANSI colors.
+    ///     Render image as colored blocks using Unicode half-block characters.
+    ///     Each character cell displays 2 vertical pixels for higher resolution.
+    ///     Requires a terminal that supports 24-bit ANSI colors.
     /// </summary>
     /// <param name="path">Path to the image file</param>
     /// <returns>String with ANSI color codes and Unicode blocks</returns>
     /// <example>
-    /// Console.WriteLine(AsciiArt.RenderColorBlocks("photo.jpg"));
+    ///     Console.WriteLine(AsciiArt.RenderColorBlocks("photo.jpg"));
     /// </example>
     public static string RenderColorBlocks(string path)
     {
@@ -282,7 +276,7 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Render image as colored blocks with specified options.
+    ///     Render image as colored blocks with specified options.
     /// </summary>
     public static string RenderColorBlocks(string path, RenderOptions? options)
     {
@@ -291,18 +285,18 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Play animated GIF using colored block rendering.
+    ///     Play animated GIF using colored block rendering.
     /// </summary>
     public static async Task PlayColorBlockGif(string path, RenderOptions? options = null,
-                                                CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         options ??= RenderOptions.ForAnimation();
         using var renderer = new ColorBlockRenderer(options);
         var frames = renderer.RenderGif(path);
 
-        int startRow = Console.CursorTop;
-        int loops = 0;
-        int loopCount = options.LoopCount;
+        var startRow = Console.CursorTop;
+        var loops = 0;
+        var loopCount = options.LoopCount;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -323,10 +317,7 @@ public static class AsciiArt
                 Console.Write(frame.Content);
                 Console.Write("\x1b[0m"); // Reset colors
 
-                if (frame.DelayMs > 0)
-                {
-                    await Task.Delay(frame.DelayMs, cancellationToken);
-                }
+                if (frame.DelayMs > 0) await Task.Delay(frame.DelayMs, cancellationToken);
             }
 
             loops++;
@@ -340,17 +331,17 @@ public static class AsciiArt
     #region Configuration Helpers
 
     /// <summary>
-    /// Create a pre-configured renderer that can be reused for multiple images.
-    /// More efficient when rendering many images with the same settings.
+    ///     Create a pre-configured renderer that can be reused for multiple images.
+    ///     More efficient when rendering many images with the same settings.
     /// </summary>
     /// <param name="options">Rendering options</param>
     /// <returns>Configured renderer (remember to dispose)</returns>
     /// <example>
-    /// using var renderer = AsciiArt.CreateRenderer(RenderOptions.HighDetail);
-    /// foreach (var imagePath in imagePaths)
-    /// {
+    ///     using var renderer = AsciiArt.CreateRenderer(RenderOptions.HighDetail);
+    ///     foreach (var imagePath in imagePaths)
+    ///     {
     ///     Console.WriteLine(renderer.RenderFile(imagePath).ToString());
-    /// }
+    ///     }
     /// </example>
     public static AsciiRenderer CreateRenderer(RenderOptions? options = null)
     {
@@ -358,7 +349,7 @@ public static class AsciiArt
     }
 
     /// <summary>
-    /// Create a color block renderer for high-fidelity colored output.
+    ///     Create a color block renderer for high-fidelity colored output.
     /// </summary>
     public static ColorBlockRenderer CreateColorBlockRenderer(RenderOptions? options = null)
     {

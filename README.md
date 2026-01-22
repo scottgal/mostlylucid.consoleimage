@@ -32,82 +32,86 @@
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 
-| ASCII Mode | ColorBlocks Mode | Braille Mode |
-|------------|------------------|--------------|
+| ASCII Mode                                                                                                                        | ColorBlocks Mode                                                                                                                         | Braille Mode                                                                                                                          |
+|-----------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> |
 
 **Original GIF → Three rendering modes** (shape-matched ASCII, Unicode half-blocks, braille dots)
 
-> **Note:** These example images are rendered to GIF using the tool's `-o gif:` output option with a consistent monospace font. Actual terminal display may vary depending on your terminal emulator, font choice, and color support. GIF output typically produces cleaner results than live terminal display.
+> **Note:** These example images are rendered to GIF using the tool's `-o gif:` output option with a consistent
+> monospace font. Actual terminal display may vary depending on your terminal emulator, font choice, and color support.
+> GIF output typically produces cleaner results than live terminal display.
 
 ### Video to ASCII
 
-| ASCII | ColorBlocks | Braille |
-|-------|-------------|---------|
+| ASCII                                                                                                                                 | ColorBlocks                                                                                                                             | Braille                                                                                                                                   |
+|---------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif" width="250" alt="Video ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_blocks.gif" width="250" alt="Video Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_braille.gif" width="250" alt="Video Braille"> |
 
 **Video playback with [ConsoleImage.Video](ConsoleImage.Video/README.md)** (FFmpeg-powered, hardware accelerated)
 
 ### Still Images
 
-| Landscape | Portrait |
-|-----------|----------|
+| Landscape                                                                                                                                         | Portrait                                                                                                                                |
+|---------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_mountain_blocks.gif" width="350" alt="Mountain Landscape"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_blocks.gif" width="250" alt="Portrait"> |
 
 **High-fidelity ColorBlocks mode** - 2x vertical resolution with 24-bit color
 
 ### Edge Detection
 
-| Standard | With Edge Detection |
-|----------|---------------------|
+| Standard                                                                                                                               | With Edge Detection                                                                                                                         |
+|----------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_ascii.gif" width="250" alt="Standard"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_edge.gif" width="250" alt="Edge Detection"> |
 
 **Enhanced foreground visibility** - `--edge` option uses Sobel edge detection
 
 ### Character Set Presets
 
-| Extended (default) | Simple | Block |
-|--------------------|--------|-------|
+| Extended (default)                                                                                                                     | Simple                                                                                                                                | Block                                                                                                                               |
+|----------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_ascii.gif" width="200" alt="Extended"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_simple.gif" width="200" alt="Simple"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_block.gif" width="200" alt="Block"> |
 
 **Multiple presets** - `-p simple`, `-p block`, `-p classic`, or `-p extended` (default)
 
 ### Gamma Correction (Brightness)
 
-| No Gamma (1.0) | Default (0.85) | Brighter (0.7) |
-|----------------|----------------|----------------|
+| No Gamma (1.0)                                                                                                                     | Default (0.85)                                                                                                                       | Brighter (0.7)                                                                                                                     |
+|------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_1.0.gif" width="200" alt="Gamma 1.0"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_0.85.gif" width="200" alt="Gamma 0.85"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_0.7.gif" width="200" alt="Gamma 0.7"> |
 
-**Automatic brightness compensation** - `--gamma` adjusts output brightness. Values < 1.0 brighten, > 1.0 darken. Default 0.85 compensates for character/dot density.
+**Automatic brightness compensation** - `--gamma` adjusts output brightness. Values < 1.0 brighten, > 1.0 darken.
+Default 0.85 compensates for character/dot density.
 
 ### Animated GIF - Earth Rotation
 
-| ASCII | ColorBlocks | Braille |
-|-------|-------------|---------|
+| ASCII                                                                                                                             | ColorBlocks                                                                                                                         | Braille                                                                                                                               |
+|-----------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_ascii.gif" width="200" alt="Earth ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_blocks.gif" width="200" alt="Earth Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_braille.gif" width="200" alt="Earth Braille"> |
 
 **Smooth animation** - DECSET 2026 synchronized output with diff-based rendering
 
 ### Matrix Mode (Digital Rain)
 
-| Classic Green | Full Color | Edge Reveal |
-|---------------|------------|-------------|
+| Classic Green                                                                                                                                  | Full Color                                                                                                                                            | Edge Reveal                                                                                                                                     |
+|------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_portrait_final.gif" width="200" alt="Matrix Classic"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_mountain_fullcolor.gif" width="200" alt="Matrix Full Color"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_edge_reveal.gif" width="200" alt="Matrix Edge Reveal"> |
 
-**The Matrix digital rain effect** - `--matrix` option with color presets (green, red, blue, amber, purple) or full color from source image.
+**The Matrix digital rain effect** - `--matrix` option with color presets (green, red, blue, amber, purple) or full
+color from source image.
 
-**Edge Detection Reveal** - `--matrix-edge-detect --matrix-bright-persist` makes rain "flash" brightly when crossing image edges, revealing the shape through the rain. Characters slow down and collect on horizontal edges like rain on shoulders.
+**Edge Detection Reveal** - `--matrix-edge-detect --matrix-bright-persist` makes rain "flash" brightly when crossing
+image edges, revealing the shape through the rain. Characters slow down and collect on horizontal edges like rain on
+shoulders.
 
-| Binary Rain | Custom Alphabet |
-|-------------|-----------------|
+| Binary Rain                                                                                                                           | Custom Alphabet             |
+|---------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_binary.gif" width="200" alt="Matrix Binary"> | `--matrix-alphabet "HELLO"` |
 
 **Custom alphabets** - `--matrix-alphabet "01"` for binary rain, or any custom string like `"HELLO"`.
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
-
-
 
 ## Features
 
@@ -119,10 +123,10 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 - **Dynamic resize**: Animations automatically re-render when you resize the console window
 - **URL support**: Load images directly from HTTP/HTTPS URLs with download progress
 - **Multiple render modes**:
-  - ANSI colored ASCII characters (extended 91-char set by default)
-  - High-fidelity color blocks using Unicode half-blocks (▀▄)
-  - Ultra-high resolution braille characters (2×4 dots per cell, UTF-8 auto-enabled)
-  - Native terminal protocols: iTerm2, Kitty, Sixel (auto-detected)
+    - ANSI colored ASCII characters (extended 91-char set by default)
+    - High-fidelity color blocks using Unicode half-blocks (▀▄)
+    - Ultra-high resolution braille characters (2×4 dots per cell, UTF-8 auto-enabled)
+    - Native terminal protocols: iTerm2, Kitty, Sixel (auto-detected)
 - **Auto background detection**: Automatically detects dark/light backgrounds
 - **Floyd-Steinberg dithering**: Error diffusion for smoother gradient rendering
 - **Adaptive thresholding**: Otsu's method for optimal braille binarization
@@ -142,12 +146,12 @@ dotnet add package mostlylucid.consoleimage
 
 Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
 
-| Platform | CLI | MCP Server |
-|----------|-----|------------|
-| Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-win-x64-mcp.zip` |
-| Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-linux-x64-mcp.tar.gz` |
+| Platform    | CLI                               | MCP Server                            |
+|-------------|-----------------------------------|---------------------------------------|
+| Windows x64 | `consoleimage-win-x64.zip`        | `consoleimage-win-x64-mcp.zip`        |
+| Linux x64   | `consoleimage-linux-x64.tar.gz`   | `consoleimage-linux-x64-mcp.tar.gz`   |
 | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
-| macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-osx-arm64-mcp.tar.gz` |
+| macOS ARM64 | `consoleimage-osx-arm64.tar.gz`   | `consoleimage-osx-arm64-mcp.tar.gz`   |
 
 ## Requirements
 
@@ -191,9 +195,11 @@ consoleimage output.json
 
 ### MCP Server (AI Tool Integration)
 
-The MCP server exposes ConsoleImage as tools for AI assistants. Once configured, you can simply ask Claude to "render this image as ASCII art" and it will use the tools automatically.
+The MCP server exposes ConsoleImage as tools for AI assistants. Once configured, you can simply ask Claude to "render
+this image as ASCII art" and it will use the tools automatically.
 
 **Claude Desktop** - Add to `claude_desktop_config.json`:
+
 ```json
 {
   "mcpServers": {
@@ -205,6 +211,7 @@ The MCP server exposes ConsoleImage as tools for AI assistants. Once configured,
 ```
 
 **Claude Code** - Create `.mcp.json` in your project root:
+
 ```json
 {
   "mcpServers": {
@@ -258,16 +265,17 @@ Console.WriteLine(AsciiArt.Render("photo.jpg"));
 
 ## Render Modes
 
-| Mode | CLI Option | Description | Best For |
-|------|------------|-------------|----------|
-| **ASCII** | `--mode ascii` (default) | Shape-matched ASCII characters with ANSI colors | General use, widest compatibility |
-| **ColorBlocks** | `--mode blocks` or `-b` | Unicode half-blocks (▀▄) with 24-bit color | High fidelity, photos |
-| **Braille** | `--mode braille` or `-B` | Braille patterns (2×4 dots per cell) | Maximum resolution |
-| **iTerm2** | `--mode iterm2` | Native inline image protocol | iTerm2, WezTerm |
-| **Kitty** | `--mode kitty` | Native graphics protocol | Kitty terminal |
-| **Sixel** | `--mode sixel` | DEC Sixel graphics | xterm, mlterm, foot |
+| Mode            | CLI Option               | Description                                     | Best For                          |
+|-----------------|--------------------------|-------------------------------------------------|-----------------------------------|
+| **ASCII**       | `--mode ascii` (default) | Shape-matched ASCII characters with ANSI colors | General use, widest compatibility |
+| **ColorBlocks** | `--mode blocks` or `-b`  | Unicode half-blocks (▀▄) with 24-bit color      | High fidelity, photos             |
+| **Braille**     | `--mode braille` or `-B` | Braille patterns (2×4 dots per cell)            | Maximum resolution                |
+| **iTerm2**      | `--mode iterm2`          | Native inline image protocol                    | iTerm2, WezTerm                   |
+| **Kitty**       | `--mode kitty`           | Native graphics protocol                        | Kitty terminal                    |
+| **Sixel**       | `--mode sixel`           | DEC Sixel graphics                              | xterm, mlterm, foot               |
 
-**Note:** Protocol modes (iTerm2, Kitty, Sixel) display true images in supported terminals. Use `--mode list` to see all available modes.
+**Note:** Protocol modes (iTerm2, Kitty, Sixel) display true images in supported terminals. Use `--mode list` to see all
+available modes.
 
 ## CLI Usage
 
@@ -348,50 +356,51 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 
 ### CLI Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-w, --width` | Output width in characters | Auto |
-| `-h, --height` | Output height in characters | Auto |
-| `--max-width` | Maximum output width | Console width |
-| `--max-height` | Maximum output height | Console height |
-| `--no-color` | Disable colored output | Color ON |
-| `--no-invert` | Don't invert (for light backgrounds) | Invert ON |
-| `--contrast` | Contrast power (1.0 = none) | 2.5 |
-| `--gamma` | Gamma correction (< 1.0 brightens, > 1.0 darkens) | 0.85 |
-| `--charset` | Custom character set | - |
-| `-p, --preset` | Preset: extended, simple, block, classic | extended |
-| `-o, --output` | Output: file, `gif:file.gif`, `json:file.json` | Console |
-| `--no-animate` | Don't animate GIFs | Animate ON |
-| `-s, --speed` | Animation speed multiplier | 1.0 |
-| `-l, --loop` | Animation loop count (0 = infinite) | 0 |
-| `-r, --framerate` | Fixed framerate in FPS (overrides GIF timing) | GIF timing |
-| `-f, --frame-sample` | Frame sampling rate (skip frames) | 1 |
-| `-e, --edge` | Enable edge detection | OFF |
-| `--bg-threshold` | Light background threshold (0.0-1.0) | Auto |
-| `--dark-bg-threshold` | Dark background threshold (0.0-1.0) | Auto |
-| `--auto-bg` | Auto-detect background | ON |
-| `-b, --blocks` | Use colored Unicode half-blocks | OFF |
-| `-B, --braille` | Use braille characters (2×4 dots/cell) | OFF |
-| `--no-alt-screen` | Keep animation in scrollback | Alt screen ON |
-| `--no-parallel` | Disable parallel processing | Parallel ON |
-| `-a, --aspect-ratio` | Character aspect ratio (width/height) | 0.5 |
-| `--no-dither` | Disable Floyd-Steinberg dithering | Dither ON |
-| `--no-edge-chars` | Disable edge-direction characters | Edge chars ON |
-| `-j, --json` | Output as JSON (for LLM tool calls) | OFF |
-| `--dark-cutoff` | Dark terminal: skip colors below brightness (0.0-1.0) | 0.1 |
-| `--light-cutoff` | Light terminal: skip colors above brightness (0.0-1.0) | 0.9 |
-| `-m, --mode` | Render mode: ascii, blocks, braille, iterm2, kitty, sixel | ascii |
-| `--mode list` | List all available render modes | - |
-| `--gif-scale` | GIF output scale factor (0.25-2.0) | 1.0 |
-| `--gif-colors` | GIF palette size (16-256) | 64 |
-| `--gif-fps` | GIF framerate | 10 |
-| `--gif-font-size` | GIF font size in pixels | 10 |
-| `--gif-length` | Max GIF length in seconds | - |
-| `--gif-frames` | Max GIF frames | - |
+| Option                | Description                                               | Default        |
+|-----------------------|-----------------------------------------------------------|----------------|
+| `-w, --width`         | Output width in characters                                | Auto           |
+| `-h, --height`        | Output height in characters                               | Auto           |
+| `--max-width`         | Maximum output width                                      | Console width  |
+| `--max-height`        | Maximum output height                                     | Console height |
+| `--no-color`          | Disable colored output                                    | Color ON       |
+| `--no-invert`         | Don't invert (for light backgrounds)                      | Invert ON      |
+| `--contrast`          | Contrast power (1.0 = none)                               | 2.5            |
+| `--gamma`             | Gamma correction (< 1.0 brightens, > 1.0 darkens)         | 0.85           |
+| `--charset`           | Custom character set                                      | -              |
+| `-p, --preset`        | Preset: extended, simple, block, classic                  | extended       |
+| `-o, --output`        | Output: file, `gif:file.gif`, `json:file.json`            | Console        |
+| `--no-animate`        | Don't animate GIFs                                        | Animate ON     |
+| `-s, --speed`         | Animation speed multiplier                                | 1.0            |
+| `-l, --loop`          | Animation loop count (0 = infinite)                       | 0              |
+| `-r, --framerate`     | Fixed framerate in FPS (overrides GIF timing)             | GIF timing     |
+| `-f, --frame-sample`  | Frame sampling rate (skip frames)                         | 1              |
+| `-e, --edge`          | Enable edge detection                                     | OFF            |
+| `--bg-threshold`      | Light background threshold (0.0-1.0)                      | Auto           |
+| `--dark-bg-threshold` | Dark background threshold (0.0-1.0)                       | Auto           |
+| `--auto-bg`           | Auto-detect background                                    | ON             |
+| `-b, --blocks`        | Use colored Unicode half-blocks                           | OFF            |
+| `-B, --braille`       | Use braille characters (2×4 dots/cell)                    | OFF            |
+| `--no-alt-screen`     | Keep animation in scrollback                              | Alt screen ON  |
+| `--no-parallel`       | Disable parallel processing                               | Parallel ON    |
+| `-a, --aspect-ratio`  | Character aspect ratio (width/height)                     | 0.5            |
+| `--no-dither`         | Disable Floyd-Steinberg dithering                         | Dither ON      |
+| `--no-edge-chars`     | Disable edge-direction characters                         | Edge chars ON  |
+| `-j, --json`          | Output as JSON (for LLM tool calls)                       | OFF            |
+| `--dark-cutoff`       | Dark terminal: skip colors below brightness (0.0-1.0)     | 0.1            |
+| `--light-cutoff`      | Light terminal: skip colors above brightness (0.0-1.0)    | 0.9            |
+| `-m, --mode`          | Render mode: ascii, blocks, braille, iterm2, kitty, sixel | ascii          |
+| `--mode list`         | List all available render modes                           | -              |
+| `--gif-scale`         | GIF output scale factor (0.25-2.0)                        | 1.0            |
+| `--gif-colors`        | GIF palette size (16-256)                                 | 64             |
+| `--gif-fps`           | GIF framerate                                             | 10             |
+| `--gif-font-size`     | GIF font size in pixels                                   | 10             |
+| `--gif-length`        | Max GIF length in seconds                                 | -              |
+| `--gif-frames`        | Max GIF frames                                            | -              |
 
 ## JSON Document Format
 
-Save rendered ASCII art to self-contained JSON documents that can be played back without the original source file. See [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) for the full specification.
+Save rendered ASCII art to self-contained JSON documents that can be played back without the original source file.
+See [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) for the full specification.
 
 ### Quick Usage
 
@@ -440,8 +449,8 @@ await writer.FinalizeAsync();  // Or let dispose auto-finalize
 - **JSON-LD compatible** - Uses `@context` and `@type` for semantic structure
 - **Self-contained** - All render settings preserved for reproducible output
 - **Two formats supported**:
-  - **Standard JSON** (`.json`) - Single JSON object with all frames
-  - **Streaming NDJSON** (`.json` or `.ndjson`) - JSON Lines format, one record per line
+    - **Standard JSON** (`.json`) - Single JSON object with all frames
+    - **Streaming NDJSON** (`.json` or `.ndjson`) - JSON Lines format, one record per line
 - **Auto-detection** - `LoadAsync()` automatically detects which format
 - **Stop anytime** - Streaming format auto-finalizes on Ctrl+C, always valid
 
@@ -536,7 +545,8 @@ ConsoleHelper.EnableAnsiSupport();
 Console.WriteLine(AsciiArt.RenderColored("photo.jpg"));
 ```
 
-Modern terminals like Windows Terminal have this enabled by default, but older consoles (cmd.exe, older PowerShell) may need this call.
+Modern terminals like Windows Terminal have this enabled by default, but older consoles (cmd.exe, older PowerShell) may
+need this call.
 
 ### Spectre.Console Integration
 
@@ -645,23 +655,23 @@ Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 
 ## Character Set Presets
 
-| Preset | Characters | Use Case |
-|--------|------------|----------|
+| Preset     | Characters     | Use Case                     |
+|------------|----------------|------------------------------|
 | `extended` | 91 ASCII chars | **Default** - Maximum detail |
-| `simple` | ` .:-=+*#%@` | Quick renders |
-| `block` | ` ░▒▓█` | High density blocks |
-| `classic` | 71 ASCII chars | Original algorithm set |
+| `simple`   | ` .:-=+*#%@`   | Quick renders                |
+| `block`    | ` ░▒▓█`        | High density blocks          |
+| `classic`  | 71 ASCII chars | Original algorithm set       |
 
 ## Documentation
 
-| Component | Description | Documentation |
-|-----------|-------------|---------------|
-| **consoleimage** | CLI for images & GIFs | [ConsoleImage/README.md](ConsoleImage/README.md) |
-| **consolevideo** | CLI for video playback | [ConsoleImage.Video/README.md](ConsoleImage.Video/README.md) |
-| **mostlylucid.consoleimage** | Core library (NuGet) | [ConsoleImage.Core/README.md](ConsoleImage.Core/README.md) |
-| **mostlylucid.consoleimage.video** | Video library (NuGet) | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
-| **JSON Format** | Document format spec | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) |
-| **Changelog** | Version history | [CHANGELOG.md](CHANGELOG.md) |
+| Component                          | Description            | Documentation                                                          |
+|------------------------------------|------------------------|------------------------------------------------------------------------|
+| **consoleimage**                   | CLI for images & GIFs  | [ConsoleImage/README.md](ConsoleImage/README.md)                       |
+| **consolevideo**                   | CLI for video playback | [ConsoleImage.Video/README.md](ConsoleImage.Video/README.md)           |
+| **mostlylucid.consoleimage**       | Core library (NuGet)   | [ConsoleImage.Core/README.md](ConsoleImage.Core/README.md)             |
+| **mostlylucid.consoleimage.video** | Video library (NuGet)  | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
+| **JSON Format**                    | Document format spec   | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md)                             |
+| **Changelog**                      | Version history        | [CHANGELOG.md](CHANGELOG.md)                                           |
 
 ## Architecture
 
@@ -687,6 +697,7 @@ ConsoleImage.Video             # Video CLI (consolevideo)
 This library implements [Alex Harri's shape-matching approach](https://alexharri.com/blog/ascii-rendering):
 
 ### 1. Character Analysis
+
 Each ASCII character is rendered and analyzed using **6 sampling circles in a 3×2 staggered grid**:
 
 ```
@@ -694,35 +705,47 @@ Each ASCII character is rendered and analyzed using **6 sampling circles in a 3�
 [3]  [4]  [5]   ← Bottom row
 ```
 
-Left circles are lowered, right circles are raised to minimize gaps while avoiding overlap. Each circle samples "ink coverage" to create a 6D shape vector.
+Left circles are lowered, right circles are raised to minimize gaps while avoiding overlap. Each circle samples "ink
+coverage" to create a 6D shape vector.
 
 ### 2. Normalization
-All character vectors are normalized by dividing by the maximum component value across ALL characters, ensuring comparable magnitudes.
+
+All character vectors are normalized by dividing by the maximum component value across ALL characters, ensuring
+comparable magnitudes.
 
 ### 3. Image Sampling
+
 Input images are sampled the same way, creating shape vectors for each output cell.
 
 ### 4. Contrast Enhancement
 
 **Global contrast** (power function):
+
 ```
 value = (value / max)^power × max
 ```
+
 This "crunches" lower values toward zero while preserving lighter areas.
 
 **Directional contrast** (10 external circles):
 External sampling circles reach outside each cell. For each internal component:
+
 ```
 maxValue = max(internal, external)
 result = applyContrast(maxValue)
 ```
+
 This enhances edges where content meets empty space.
 
 ### 5. K-D Tree Matching
-Fast nearest-neighbor search in 6D space finds the character whose shape vector best matches each image cell. Results are cached for repeated lookups.
+
+Fast nearest-neighbor search in 6D space finds the character whose shape vector best matches each image cell. Results
+are cached for repeated lookups.
 
 ### 6. Animation Optimization
-For GIFs, frame differencing computes only changed pixels between frames, using ANSI cursor positioning to update efficiently.
+
+For GIFs, frame differencing computes only changed pixels between frames, using ANSI cursor positioning to update
+efficiently.
 
 ## Performance
 
@@ -736,7 +759,8 @@ For GIFs, frame differencing computes only changed pixels between frames, using 
 
 Multiple techniques ensure flicker-free animation:
 
-- **DECSET 2026 Synchronized Output**: Batches frame output for atomic rendering (supported by Windows Terminal, WezTerm, Ghostty, Alacritty, iTerm2)
+- **DECSET 2026 Synchronized Output**: Batches frame output for atomic rendering (supported by Windows Terminal,
+  WezTerm, Ghostty, Alacritty, iTerm2)
 - **Diff-based rendering**: Only updates changed lines between frames - no per-line clearing that causes black flashes
 - **Overwrite with padding**: Lines are overwritten in place with space padding, eliminating flicker completely
 - **Dynamic resize**: Animations automatically re-render when you resize the console window

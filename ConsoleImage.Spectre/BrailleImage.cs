@@ -1,5 +1,4 @@
 using ConsoleImage.Core;
-using Spectre.Console;
 using Spectre.Console.Rendering;
 using SpectreRenderOptions = Spectre.Console.Rendering.RenderOptions;
 using CoreRenderOptions = ConsoleImage.Core.RenderOptions;
@@ -7,17 +6,17 @@ using CoreRenderOptions = ConsoleImage.Core.RenderOptions;
 namespace ConsoleImage.Spectre;
 
 /// <summary>
-/// A Spectre.Console renderable that displays an image using braille characters.
-/// Provides ultra-high resolution (2x4 dots per character cell).
+///     A Spectre.Console renderable that displays an image using braille characters.
+///     Provides ultra-high resolution (2x4 dots per character cell).
 /// </summary>
 public class BrailleImage : IRenderable
 {
     private readonly string _content;
-    private readonly int _width;
     private readonly int _height;
+    private readonly int _width;
 
     /// <summary>
-    /// Create a braille image from a file path.
+    ///     Create a braille image from a file path.
     /// </summary>
     public BrailleImage(string filePath, CoreRenderOptions? options = null)
     {
@@ -32,7 +31,7 @@ public class BrailleImage : IRenderable
     }
 
     /// <summary>
-    /// Create a braille image from pre-rendered content.
+    ///     Create a braille image from pre-rendered content.
     /// </summary>
     public BrailleImage(string content, int width, int height)
     {
@@ -42,7 +41,7 @@ public class BrailleImage : IRenderable
     }
 
     /// <summary>
-    /// Create a braille image from a BrailleFrame.
+    ///     Create a braille image from a BrailleFrame.
     /// </summary>
     public BrailleImage(BrailleFrame frame)
     {
@@ -70,10 +69,9 @@ public class BrailleImage : IRenderable
     private static int GetVisibleWidth(string line)
     {
         // Strip ANSI escape sequences to get visible character count
-        int width = 0;
-        bool inEscape = false;
-        foreach (char c in line)
-        {
+        var width = 0;
+        var inEscape = false;
+        foreach (var c in line)
             if (c == '\x1b')
             {
                 inEscape = true;
@@ -87,7 +85,7 @@ public class BrailleImage : IRenderable
             {
                 width++;
             }
-        }
+
         return width;
     }
 }

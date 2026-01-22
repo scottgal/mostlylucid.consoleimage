@@ -1,16 +1,15 @@
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Formats.Png;
 
 namespace ConsoleImage.Core.ProtocolRenderers;
 
 /// <summary>
-/// Renders images using the iTerm2 Inline Images Protocol.
-/// Supported by iTerm2, WezTerm, Mintty, and other compatible terminals.
-///
-/// Protocol: OSC 1337 ; File=[args] : [base64 data] ST
-/// Where ST is \a (BEL) or \x1b\\
+///     Renders images using the iTerm2 Inline Images Protocol.
+///     Supported by iTerm2, WezTerm, Mintty, and other compatible terminals.
+///     Protocol: OSC 1337 ; File=[args] : [base64 data] ST
+///     Where ST is \a (BEL) or \x1b\\
 /// </summary>
 public class ITerm2Renderer : IDisposable
 {
@@ -22,8 +21,15 @@ public class ITerm2Renderer : IDisposable
         _options = options ?? RenderOptions.Default;
     }
 
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
     /// <summary>
-    /// Render an image file using iTerm2 protocol.
+    ///     Render an image file using iTerm2 protocol.
     /// </summary>
     public string RenderFile(string path)
     {
@@ -32,7 +38,7 @@ public class ITerm2Renderer : IDisposable
     }
 
     /// <summary>
-    /// Render an image stream using iTerm2 protocol.
+    ///     Render an image stream using iTerm2 protocol.
     /// </summary>
     public string RenderStream(Stream stream)
     {
@@ -41,7 +47,7 @@ public class ITerm2Renderer : IDisposable
     }
 
     /// <summary>
-    /// Render an image using iTerm2 protocol.
+    ///     Render an image using iTerm2 protocol.
     /// </summary>
     public string RenderImage(Image<Rgba32> image)
     {
@@ -67,7 +73,7 @@ public class ITerm2Renderer : IDisposable
     }
 
     /// <summary>
-    /// Render image and write directly to console with optional progress.
+    ///     Render image and write directly to console with optional progress.
     /// </summary>
     public void RenderToConsole(Image<Rgba32> image)
     {
@@ -77,25 +83,25 @@ public class ITerm2Renderer : IDisposable
 
     private Image<Rgba32> ResizeIfNeeded(Image<Rgba32> image)
     {
-        int maxWidth = _options.Width ?? _options.MaxWidth;
-        int maxHeight = _options.Height ?? _options.MaxHeight;
+        var maxWidth = _options.Width ?? _options.MaxWidth;
+        var maxHeight = _options.Height ?? _options.MaxHeight;
 
         // iTerm2 uses pixels, so we don't need character aspect ratio conversion
         // But we do need to respect terminal cell dimensions
         // Assume each cell is roughly 8x16 pixels for standard fonts
-        int termWidthPixels = maxWidth * 8;
-        int termHeightPixels = maxHeight * 16;
+        var termWidthPixels = maxWidth * 8;
+        var termHeightPixels = maxHeight * 16;
 
         if (image.Width <= termWidthPixels && image.Height <= termHeightPixels)
             return image;
 
-        float scale = Math.Min(
+        var scale = Math.Min(
             (float)termWidthPixels / image.Width,
             (float)termHeightPixels / image.Height
         );
 
-        int newWidth = Math.Max(1, (int)(image.Width * scale));
-        int newHeight = Math.Max(1, (int)(image.Height * scale));
+        var newWidth = Math.Max(1, (int)(image.Width * scale));
+        var newHeight = Math.Max(1, (int)(image.Height * scale));
 
         return image.Clone(ctx => ctx.Resize(newWidth, newHeight));
     }
@@ -112,14 +118,10 @@ public class ITerm2Renderer : IDisposable
     }
 
     /// <summary>
-    /// Check if iTerm2 protocol is supported in the current terminal.
+    ///     Check if iTerm2 protocol is supported in the current terminal.
     /// </summary>
-    public static bool IsSupported() => TerminalCapabilities.SupportsITerm2();
-
-    public void Dispose()
+    public static bool IsSupported()
     {
-        if (_disposed) return;
-        _disposed = true;
-        GC.SuppressFinalize(this);
+        return TerminalCapabilities.SupportsITerm2();
     }
 }

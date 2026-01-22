@@ -6,7 +6,7 @@ using System.Text;
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Displays a status line below rendered ASCII art with file info, progress, etc.
+///     Displays a status line below rendered ASCII art with file info, progress, etc.
 /// </summary>
 public class StatusLine
 {
@@ -20,30 +20,7 @@ public class StatusLine
     }
 
     /// <summary>
-    /// Information to display in the status line
-    /// </summary>
-    public class StatusInfo
-    {
-        public string? FileName { get; set; }
-        public int? SourceWidth { get; set; }
-        public int? SourceHeight { get; set; }
-        public int? OutputWidth { get; set; }
-        public int? OutputHeight { get; set; }
-        public string? RenderMode { get; set; }
-        public int? CurrentFrame { get; set; }
-        public int? TotalFrames { get; set; }
-        public TimeSpan? CurrentTime { get; set; }
-        public TimeSpan? TotalDuration { get; set; }
-        public double? Fps { get; set; }
-        public string? Codec { get; set; }
-        public bool IsPlaying { get; set; } = true;
-        public bool IsPaused { get; set; }
-        public int? LoopNumber { get; set; }
-        public int? TotalLoops { get; set; }
-    }
-
-    /// <summary>
-    /// Render the status line as a string
+    ///     Render the status line as a string
     /// </summary>
     public string Render(StatusInfo info)
     {
@@ -88,9 +65,7 @@ public class StatusLine
 
         // Frame progress
         if (info.CurrentFrame.HasValue && info.TotalFrames.HasValue && info.TotalFrames > 1)
-        {
             parts.Add($"Frame {info.CurrentFrame}/{info.TotalFrames}");
-        }
 
         // Time progress
         if (info.CurrentTime.HasValue && info.TotalDuration.HasValue)
@@ -117,7 +92,7 @@ public class StatusLine
         var line = string.Join(" │ ", parts);
 
         // Progress bar if we have time info
-        string progressBar = "";
+        var progressBar = "";
         if (info.CurrentTime.HasValue && info.TotalDuration.HasValue && info.TotalDuration.Value.TotalSeconds > 0)
         {
             var progress = info.CurrentTime.Value.TotalSeconds / info.TotalDuration.Value.TotalSeconds;
@@ -152,7 +127,7 @@ public class StatusLine
     }
 
     /// <summary>
-    /// Render just a progress bar
+    ///     Render just a progress bar
     /// </summary>
     public string RenderProgressBar(double progress, int width = 20)
     {
@@ -184,7 +159,7 @@ public class StatusLine
     }
 
     /// <summary>
-    /// Clear the status line (move up and clear)
+    ///     Clear the status line (move up and clear)
     /// </summary>
     public static string Clear()
     {
@@ -196,5 +171,28 @@ public class StatusLine
         if (time.TotalHours >= 1)
             return time.ToString(@"h\:mm\:ss");
         return time.ToString(@"m\:ss");
+    }
+
+    /// <summary>
+    ///     Information to display in the status line
+    /// </summary>
+    public class StatusInfo
+    {
+        public string? FileName { get; set; }
+        public int? SourceWidth { get; set; }
+        public int? SourceHeight { get; set; }
+        public int? OutputWidth { get; set; }
+        public int? OutputHeight { get; set; }
+        public string? RenderMode { get; set; }
+        public int? CurrentFrame { get; set; }
+        public int? TotalFrames { get; set; }
+        public TimeSpan? CurrentTime { get; set; }
+        public TimeSpan? TotalDuration { get; set; }
+        public double? Fps { get; set; }
+        public string? Codec { get; set; }
+        public bool IsPlaying { get; set; } = true;
+        public bool IsPaused { get; set; }
+        public int? LoopNumber { get; set; }
+        public int? TotalLoops { get; set; }
     }
 }

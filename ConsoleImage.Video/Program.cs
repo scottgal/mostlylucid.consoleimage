@@ -5,8 +5,8 @@ using System.CommandLine;
 using ConsoleImage.Core;
 using ConsoleImage.Video.Core;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Gif;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
@@ -33,8 +33,8 @@ var heightOption = new Option<int?>("--height") { Description = "Output height i
 heightOption.Aliases.Add("-h");
 
 // Detect console window size for defaults
-int defaultMaxWidth = 120;
-int defaultMaxHeight = 40;
+var defaultMaxWidth = 120;
+var defaultMaxHeight = 40;
 try
 {
     if (Console.WindowWidth > 0)
@@ -42,7 +42,9 @@ try
     if (Console.WindowHeight > 0)
         defaultMaxHeight = Console.WindowHeight - 2;
 }
-catch { }
+catch
+{
+}
 
 var maxWidthOption = new Option<int>("--max-width") { Description = "Maximum output width" };
 maxWidthOption.DefaultValueFactory = _ => defaultMaxWidth;
@@ -73,37 +75,46 @@ var fpsOption = new Option<double?>("--fps") { Description = "Target framerate (
 fpsOption.Aliases.Add("-r");
 
 // Frame sampling options
-var frameStepOption = new Option<int>("--frame-step") { Description = "Frame step (1 = every frame, 2 = every 2nd, etc.)" };
+var frameStepOption = new Option<int>("--frame-step")
+    { Description = "Frame step (1 = every frame, 2 = every 2nd, etc.)" };
 frameStepOption.DefaultValueFactory = _ => 1;
 frameStepOption.Aliases.Add("-f");
 
-var samplingOption = new Option<string>("--sampling") { Description = "Sampling strategy: uniform, keyframe, scene, adaptive" };
+var samplingOption = new Option<string>("--sampling")
+    { Description = "Sampling strategy: uniform, keyframe, scene, adaptive" };
 samplingOption.DefaultValueFactory = _ => "uniform";
 
-var sceneThresholdOption = new Option<double>("--scene-threshold") { Description = "Scene detection threshold (0.0-1.0, lower = more sensitive)" };
+var sceneThresholdOption = new Option<double>("--scene-threshold")
+    { Description = "Scene detection threshold (0.0-1.0, lower = more sensitive)" };
 sceneThresholdOption.DefaultValueFactory = _ => 0.4;
 
 // Rendering options
-var colorBlocksOption = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks for high-fidelity output (requires 24-bit color terminal)" };
+var colorBlocksOption = new Option<bool>("--blocks")
+    { Description = "Use colored Unicode blocks for high-fidelity output (requires 24-bit color terminal)" };
 colorBlocksOption.Aliases.Add("-b");
 
-var brailleOption = new Option<bool>("--braille") { Description = "Use braille characters for ultra-high resolution (2x4 dots per cell)" };
+var brailleOption = new Option<bool>("--braille")
+    { Description = "Use braille characters for ultra-high resolution (2x4 dots per cell)" };
 brailleOption.Aliases.Add("-B");
 
 var noColorOption = new Option<bool>("--no-color") { Description = "Disable colored output" };
 
-var contrastOption = new Option<float>("--contrast") { Description = "Contrast enhancement (1.0 = none, higher = more contrast)" };
+var contrastOption = new Option<float>("--contrast")
+    { Description = "Contrast enhancement (1.0 = none, higher = more contrast)" };
 contrastOption.DefaultValueFactory = _ => 2.5f;
 
-var gammaOption = new Option<float>("--gamma") { Description = "Gamma correction (lower = brighter, higher = darker). Default: 0.65" };
+var gammaOption = new Option<float>("--gamma")
+    { Description = "Gamma correction (lower = brighter, higher = darker). Default: 0.65" };
 gammaOption.DefaultValueFactory = _ => 0.65f;
 gammaOption.Aliases.Add("-g");
 
-var charAspectOption = new Option<float?>("--char-aspect") { Description = "Character aspect ratio (width/height). Uses saved calibration or 0.5 if not set." };
+var charAspectOption = new Option<float?>("--char-aspect")
+    { Description = "Character aspect ratio (width/height). Uses saved calibration or 0.5 if not set." };
 
 var charsetOption = new Option<string?>("--charset") { Description = "Custom character set (light to dark)" };
 
-var presetOption = new Option<string?>("--preset") { Description = "Character set preset: extended (default), simple, block, classic" };
+var presetOption = new Option<string?>("--preset")
+    { Description = "Character set preset: extended (default), simple, block, classic" };
 presetOption.Aliases.Add("-p");
 
 // Performance options
@@ -122,52 +133,69 @@ var infoOption = new Option<bool>("--info") { Description = "Show video info and
 infoOption.Aliases.Add("-i");
 
 // Calibrate option - shows a test pattern to verify aspect ratio
-var calibrateOption = new Option<bool>("--calibrate") { Description = "Display aspect ratio calibration pattern (should show a circle)" };
+var calibrateOption = new Option<bool>("--calibrate")
+    { Description = "Display aspect ratio calibration pattern (should show a circle)" };
 
 // Save calibration option
-var saveCalibrationOption = new Option<bool>("--save") { Description = "Save current --char-aspect to calibration.json (use with --calibrate)" };
+var saveCalibrationOption = new Option<bool>("--save")
+    { Description = "Save current --char-aspect to calibration.json (use with --calibrate)" };
 
 // Status line option - shows progress, timing, file info below the video
-var statusOption = new Option<bool>("--status") { Description = "Show status line below output with progress, timing, file info" };
+var statusOption = new Option<bool>("--status")
+    { Description = "Show status line below output with progress, timing, file info" };
 statusOption.Aliases.Add("-S");
 
 // Unified output option - auto-detects format from extension
 // .gif -> animated GIF, .json/.ndjson -> JSON document, other -> text
-var outputOption = new Option<string?>("--output") { Description = "Output file path. Format auto-detected: .gif for animated GIF, .json for JSON document" };
+var outputOption = new Option<string?>("--output")
+    { Description = "Output file path. Format auto-detected: .gif for animated GIF, .json for JSON document" };
 outputOption.Aliases.Add("-o");
 
 // GIF-specific options (apply when output is .gif)
-var gifFontSizeOption = new Option<int>("--gif-font-size") { Description = "Font size for GIF output (smaller = smaller file)", DefaultValueFactory = _ => 10 };
-var gifScaleOption = new Option<float>("--gif-scale") { Description = "Scale factor for GIF output (0.5 = half size)", DefaultValueFactory = _ => 1.0f };
-var gifColorsOption = new Option<int>("--gif-colors") { Description = "Max colors in GIF palette (16-256, lower = smaller file)", DefaultValueFactory = _ => 64 };
-var gifFpsOption = new Option<int>("--gif-fps") { Description = "Target FPS for GIF output (lower = smaller file)", DefaultValueFactory = _ => 15 };
+var gifFontSizeOption = new Option<int>("--gif-font-size")
+    { Description = "Font size for GIF output (smaller = smaller file)", DefaultValueFactory = _ => 10 };
+var gifScaleOption = new Option<float>("--gif-scale")
+    { Description = "Scale factor for GIF output (0.5 = half size)", DefaultValueFactory = _ => 1.0f };
+var gifColorsOption = new Option<int>("--gif-colors")
+    { Description = "Max colors in GIF palette (16-256, lower = smaller file)", DefaultValueFactory = _ => 64 };
+var gifFpsOption = new Option<int>("--gif-fps")
+    { Description = "Target FPS for GIF output (lower = smaller file)", DefaultValueFactory = _ => 15 };
 var gifLengthOption = new Option<double?>("--gif-length") { Description = "Max length of GIF output in seconds" };
 var gifFramesOption = new Option<int?>("--gif-frames") { Description = "Max number of frames for GIF output" };
-var gifWidthOption = new Option<int?>("--gif-width") { Description = "GIF output width in characters (overrides -w for GIF)" };
-var gifHeightOption = new Option<int?>("--gif-height") { Description = "GIF output height in characters (overrides -h for GIF)" };
+var gifWidthOption = new Option<int?>("--gif-width")
+    { Description = "GIF output width in characters (overrides -w for GIF)" };
+var gifHeightOption = new Option<int?>("--gif-height")
+    { Description = "GIF output height in characters (overrides -h for GIF)" };
 
 // Raw/extract mode - output actual video frames as GIF (no ASCII rendering)
 var rawOption = new Option<bool>("--raw") { Description = "Extract raw video frames as GIF (no ASCII rendering)" };
 rawOption.Aliases.Add("--extract");
-var rawWidthOption = new Option<int?>("--raw-width") { Description = "Width for raw GIF output in pixels (default: 320)" };
-var rawHeightOption = new Option<int?>("--raw-height") { Description = "Height for raw GIF output in pixels (auto-calculated if not set)" };
-var smartKeyframesOption = new Option<bool>("--smart-keyframes") { Description = "Use smart scene detection for keyframe extraction (with --raw)" };
+var rawWidthOption = new Option<int?>("--raw-width")
+    { Description = "Width for raw GIF output in pixels (default: 320)" };
+var rawHeightOption = new Option<int?>("--raw-height")
+    { Description = "Height for raw GIF output in pixels (auto-calculated if not set)" };
+var smartKeyframesOption = new Option<bool>("--smart-keyframes")
+    { Description = "Use smart scene detection for keyframe extraction (with --raw)" };
 smartKeyframesOption.Aliases.Add("--smart");
 
 // FFmpeg download options
-var noAutoDownloadOption = new Option<bool>("--no-ffmpeg-download") { Description = "Don't auto-download FFmpeg, prompt instead" };
+var noAutoDownloadOption = new Option<bool>("--no-ffmpeg-download")
+    { Description = "Don't auto-download FFmpeg, prompt instead" };
 var ffmpegYesOption = new Option<bool>("--yes") { Description = "Auto-confirm FFmpeg download without prompting" };
 ffmpegYesOption.Aliases.Add("-y");
 
 // Options matching consoleimage for consistency
-var noInvertOption = new Option<bool>("--no-invert") { Description = "Don't invert output (for light terminal backgrounds)" };
+var noInvertOption = new Option<bool>("--no-invert")
+    { Description = "Don't invert output (for light terminal backgrounds)" };
 
 var edgeOption = new Option<bool>("--edge") { Description = "Enable edge detection to enhance foreground visibility" };
 edgeOption.Aliases.Add("-e");
 
-var bgThresholdOption = new Option<float?>("--bg-threshold") { Description = "Background suppression threshold (0.0-1.0). Pixels above this brightness are suppressed." };
+var bgThresholdOption = new Option<float?>("--bg-threshold")
+    { Description = "Background suppression threshold (0.0-1.0). Pixels above this brightness are suppressed." };
 
-var darkBgThresholdOption = new Option<float?>("--dark-bg-threshold") { Description = "Dark background suppression threshold (0.0-1.0). Pixels below this brightness are suppressed." };
+var darkBgThresholdOption = new Option<float?>("--dark-bg-threshold")
+    { Description = "Dark background suppression threshold (0.0-1.0). Pixels below this brightness are suppressed." };
 
 var autoBgOption = new Option<bool>("--auto-bg") { Description = "Automatically detect and suppress background" };
 
@@ -175,16 +203,21 @@ var noParallelOption = new Option<bool>("--no-parallel") { Description = "Disabl
 
 var noDitherOption = new Option<bool>("--no-dither") { Description = "Disable Floyd-Steinberg dithering" };
 
-var noEdgeCharsOption = new Option<bool>("--no-edge-chars") { Description = "Disable directional edge characters (/ \\ | -)" };
+var noEdgeCharsOption = new Option<bool>("--no-edge-chars")
+    { Description = "Disable directional edge characters (/ \\ | -)" };
 
-var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (for LLM tool calls and programmatic use)" };
+var jsonOption = new Option<bool>("--json")
+    { Description = "Output as JSON (for LLM tool calls and programmatic use)" };
 jsonOption.Aliases.Add("-j");
 
-var darkCutoffOption = new Option<float?>("--dark-cutoff") { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0). Disabled by default." };
+var darkCutoffOption = new Option<float?>("--dark-cutoff")
+    { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0). Disabled by default." };
 
-var lightCutoffOption = new Option<float?>("--light-cutoff") { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0). Disabled by default." };
+var lightCutoffOption = new Option<float?>("--light-cutoff")
+    { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0). Disabled by default." };
 
-var modeOption = new Option<string?>("--mode") { Description = "Rendering mode: ascii, blocks, braille, sixel, iterm2, kitty, auto, list" };
+var modeOption = new Option<string?>("--mode")
+    { Description = "Rendering mode: ascii, blocks, braille, sixel, iterm2, kitty, auto, list" };
 modeOption.Aliases.Add("-m");
 
 // Add all options
@@ -249,7 +282,7 @@ rootCommand.Options.Add(modeOption);
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
     var inputPath = parseResult.GetValue(inputArg);
-    FileInfo? input = !string.IsNullOrEmpty(inputPath) ? new FileInfo(inputPath) : null;
+    var input = !string.IsNullOrEmpty(inputPath) ? new FileInfo(inputPath) : null;
     var width = parseResult.GetValue(widthOption);
     var height = parseResult.GetValue(heightOption);
     var maxWidth = parseResult.GetValue(maxWidthOption);
@@ -308,7 +341,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var mode = parseResult.GetValue(modeOption);
 
     // Parse unified output option - auto-detect format from extension
-    bool outputAsJson = false;
+    var outputAsJson = false;
     string? jsonOutputPath = null;
     string? gifOutputPath = null;
 
@@ -347,14 +380,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         else
         {
             // Unknown extension - default to GIF for video
-            Console.Error.WriteLine($"Warning: Unknown output format for '{output}'. Use .gif for animated GIF or .json for JSON document.");
+            Console.Error.WriteLine(
+                $"Warning: Unknown output format for '{output}'. Use .gif for animated GIF or .json for JSON document.");
             Console.Error.WriteLine("Assuming GIF output. Use 'json:path' prefix for JSON.");
             gifOutputPath = output.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ? output : output + ".gif";
         }
     }
 
     // Create FileInfo for GIF output if path is set
-    FileInfo? outputGif = !string.IsNullOrEmpty(gifOutputPath) ? new FileInfo(gifOutputPath) : null;
+    var outputGif = !string.IsNullOrEmpty(gifOutputPath) ? new FileInfo(gifOutputPath) : null;
 
     // Calibration mode - show test pattern to verify aspect ratio
     if (calibrate)
@@ -367,11 +401,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             : RenderMode.Ascii;
 
         // Get effective aspect ratio: explicit > saved for mode > default
-        float calibrationAspect = charAspect
-            ?? savedCalibration?.GetAspectRatio(calibrationMode)
-            ?? 0.5f;
+        var calibrationAspect = charAspect
+                                ?? savedCalibration?.GetAspectRatio(calibrationMode)
+                                ?? 0.5f;
 
-        string modeName = calibrationMode switch
+        var modeName = calibrationMode switch
         {
             RenderMode.Braille => "Braille",
             RenderMode.ColorBlocks => "Blocks",
@@ -388,9 +422,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         var calibrationOutput = CalibrationHelper.RenderCalibrationPattern(
             calibrationMode,
             calibrationAspect,
-            useColor: !noColor,
-            width: 40,
-            height: 20);
+            !noColor);
 
         Console.WriteLine(calibrationOutput);
         Console.WriteLine();
@@ -410,7 +442,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             Console.WriteLine();
             Console.WriteLine("Once the circle looks correct, run with --save to remember this setting:");
-            string modeFlag = calibrationMode switch
+            var modeFlag = calibrationMode switch
             {
                 RenderMode.Braille => " --braille",
                 RenderMode.ColorBlocks => " --blocks",
@@ -424,20 +456,19 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     if (input == null)
     {
-        Console.Error.WriteLine("Error: No input file specified. Use --calibrate for aspect ratio testing without a file.");
+        Console.Error.WriteLine(
+            "Error: No input file specified. Use --calibrate for aspect ratio testing without a file.");
         return 1;
     }
 
     // For AOT builds, mapped network drives (like X:) may not be accessible.
     // Try the original path first, then fall back to FileInfo resolution.
-    string inputFullPath = inputPath!;
+    var inputFullPath = inputPath!;
 
     // First try the path exactly as given
     if (!File.Exists(inputFullPath))
-    {
         // Try FileInfo resolution (handles relative paths)
         inputFullPath = input.FullName;
-    }
 
     if (!File.Exists(inputFullPath))
     {
@@ -450,21 +481,30 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // Check if it's a mapped drive issue
         if (inputPath!.Length >= 2 && inputPath[1] == ':')
         {
-            char driveLetter = char.ToUpper(inputPath[0]);
+            var driveLetter = char.ToUpper(inputPath[0]);
             if (driveLetter >= 'D') // Likely a mapped/network drive
             {
                 Console.Error.WriteLine();
                 Console.Error.WriteLine($"  Drive {driveLetter}: may be a mapped network drive.");
-                Console.Error.WriteLine("  Mapped drives are user-specific and may not be accessible in some contexts.");
-                Console.Error.WriteLine("  Try using the full UNC path instead (e.g., \\\\server\\share\\path\\file.mkv)");
+                Console.Error.WriteLine(
+                    "  Mapped drives are user-specific and may not be accessible in some contexts.");
+                Console.Error.WriteLine(
+                    "  Try using the full UNC path instead (e.g., \\\\server\\share\\path\\file.mkv)");
             }
         }
 
         var dir = Path.GetDirectoryName(inputFullPath);
         if (!string.IsNullOrEmpty(dir))
         {
-            bool dirExists = false;
-            try { dirExists = Directory.Exists(dir); } catch { }
+            var dirExists = false;
+            try
+            {
+                dirExists = Directory.Exists(dir);
+            }
+            catch
+            {
+            }
+
             Console.Error.WriteLine($"  Directory exists: {dirExists}");
         }
 
@@ -476,17 +516,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     // Determine JSON output path if needed
     if (outputAsJson && string.IsNullOrEmpty(jsonOutputPath))
-    {
         jsonOutputPath = Path.ChangeExtension(input.FullName, ".json");
-    }
 
     // Check if input is a JSON document - load and play it
     // Supports both .json and .ndjson (streaming JSON Lines format)
     if (input.Extension.Equals(".json", StringComparison.OrdinalIgnoreCase) ||
         input.Extension.Equals(".ndjson", StringComparison.OrdinalIgnoreCase))
-    {
         return await HandleJsonDocument(input.FullName, speed, loop, cancellationToken);
-    }
 
     // Check if input is an image file - handle directly without FFmpeg
     var imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -495,7 +531,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     };
 
     if (imageExtensions.Contains(input.Extension))
-    {
         return await HandleImageFile(
             input, width, height, maxWidth, maxHeight, charAspect, savedCalibration,
             parseResult.GetValue(colorBlocksOption), parseResult.GetValue(brailleOption),
@@ -505,7 +540,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             outputAsJson, jsonOutputPath,
             showStatus,
             cancellationToken);
-    }
 
     // Resolve FFmpeg path
     string? ffmpegExe = null;
@@ -550,7 +584,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             Console.WriteLine($"Cache location: {FFmpegProvider.CacheDirectory}");
             Console.WriteLine();
 
-            bool shouldDownload = autoConfirmDownload;
+            var shouldDownload = autoConfirmDownload;
 
             if (!shouldDownload && !noAutoDownload)
             {
@@ -607,19 +641,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         Console.WriteLine($"Frame Rate: {info.FrameRate:F2} fps");
         Console.WriteLine($"Total Frames: ~{info.TotalFrames}");
         Console.WriteLine($"Bitrate: {info.BitRate / 1000} kbps");
-        Console.WriteLine($"Hardware Accel: {(string.IsNullOrEmpty(ffmpeg.HardwareAccelerationType) ? "none" : ffmpeg.HardwareAccelerationType)}");
+        Console.WriteLine(
+            $"Hardware Accel: {(string.IsNullOrEmpty(ffmpeg.HardwareAccelerationType) ? "none" : ffmpeg.HardwareAccelerationType)}");
         return 0;
     }
 
     // Calculate end time from duration if specified (must be done before any output mode)
     if (duration.HasValue && start.HasValue)
-    {
         end = start.Value + duration.Value;
-    }
-    else if (duration.HasValue)
-    {
-        end = duration.Value;
-    }
+    else if (duration.HasValue) end = duration.Value;
 
     // Raw mode requires output file
     if (rawMode && outputGif == null)
@@ -642,19 +672,19 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // RAW MODE - extract actual video frames as GIF (no ASCII rendering)
         if (rawMode)
         {
-            int targetWidth = rawWidth ?? 320;
-            int targetHeight = rawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+            var targetWidth = rawWidth ?? 320;
+            var targetHeight = rawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
 
             // Calculate limits from existing flags
-            int maxFrames = gifFrames ?? 4; // Default to 4 frames for raw/keyframe extraction
-            double maxLength = gifLength ?? duration ?? 10.0; // Use -t or --gif-length or default 10s
-            double rawStartTime = start ?? 0;
-            double rawEndTime = end ?? rawStartTime + maxLength;
+            var maxFrames = gifFrames ?? 4; // Default to 4 frames for raw/keyframe extraction
+            var maxLength = gifLength ?? duration ?? 10.0; // Use -t or --gif-length or default 10s
+            var rawStartTime = start ?? 0;
+            var rawEndTime = end ?? rawStartTime + maxLength;
 
             // Smart keyframe mode - use scene detection
             if (smartKeyframes)
             {
-                Console.WriteLine($"Smart keyframe extraction (scene detection)...");
+                Console.WriteLine("Smart keyframe extraction (scene detection)...");
                 Console.WriteLine($"  Output: {outputGif.FullName}");
                 Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
                 Console.WriteLine($"  Target: {targetWidth}x{targetHeight}, max {maxFrames} keyframes");
@@ -676,11 +706,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 {
                     Console.WriteLine("No scene changes detected, using uniform sampling...");
                     keyframeTimes = new List<double>();
-                    double interval = (rawEndTime - rawStartTime) / (maxFrames - 1);
-                    for (int i = 0; i < maxFrames; i++)
-                    {
-                        keyframeTimes.Add(rawStartTime + i * interval);
-                    }
+                    var interval = (rawEndTime - rawStartTime) / (maxFrames - 1);
+                    for (var i = 0; i < maxFrames; i++) keyframeTimes.Add(rawStartTime + i * interval);
                 }
                 else
                 {
@@ -692,9 +719,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                     // Always include a frame near the end if not already
                     if (keyframeTimes.Count > 0 && rawEndTime - keyframeTimes.Last() > 1.0)
-                    {
                         keyframeTimes.Add(rawEndTime - 0.5);
-                    }
 
                     // Limit to maxFrames
                     if (keyframeTimes.Count > maxFrames)
@@ -713,17 +738,18 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     }
                 }
 
-                Console.WriteLine($"Extracting {keyframeTimes.Count} keyframes at: {string.Join(", ", keyframeTimes.Select(t => $"{t:F1}s"))}");
+                Console.WriteLine(
+                    $"Extracting {keyframeTimes.Count} keyframes at: {string.Join(", ", keyframeTimes.Select(t => $"{t:F1}s"))}");
 
                 // Calculate frame delay for GIF (spread evenly or use fps if specified)
-                double targetFps = fps ?? 2.0; // Default 2fps for keyframe GIF
-                int rawDelayMs = (int)(1000.0 / targetFps);
+                var targetFps = fps ?? 2.0; // Default 2fps for keyframe GIF
+                var rawDelayMs = (int)(1000.0 / targetFps);
 
                 using var rawGif = new Image<Rgba32>(targetWidth, targetHeight);
                 var gifMetaData = rawGif.Metadata.GetGifMetadata();
                 gifMetaData.RepeatCount = (ushort)(loop != 1 ? loop : 0);
 
-                int frameCount = 0;
+                var frameCount = 0;
                 foreach (var timestamp in keyframeTimes)
                 {
                     Console.Write($"\rExtracting frame at {timestamp:F1}s...");
@@ -748,9 +774,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                 // Save
                 Console.Write("Saving GIF...");
-                var encoder = new SixLabors.ImageSharp.Formats.Gif.GifEncoder
+                var encoder = new GifEncoder
                 {
-                    ColorTableMode = SixLabors.ImageSharp.Formats.Gif.GifColorTableMode.Local
+                    ColorTableMode = GifColorTableMode.Local
                 };
                 await rawGif.SaveAsGifAsync(outputGif.FullName, encoder, cancellationToken);
                 Console.WriteLine($" Saved to {outputGif.FullName}");
@@ -760,14 +786,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
             // Regular raw mode - uniform frame extraction using FFmpeg streaming
             // This is memory-efficient: only one frame in memory at a time
-            double uniformTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 10.0);
-            int uniformFpsInt = Math.Max(1, (int)uniformTargetFps);
+            var uniformTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 10.0);
+            var uniformFpsInt = Math.Max(1, (int)uniformTargetFps);
 
-            Console.WriteLine($"Extracting video frames to GIF (streaming mode)...");
+            Console.WriteLine("Extracting video frames to GIF (streaming mode)...");
             Console.WriteLine($"  Output: {outputGif.FullName}");
             Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
             Console.WriteLine($"  Target: {targetWidth}x{targetHeight} @ {uniformTargetFps:F1} fps, step {frameStep}");
-            Console.WriteLine($"  Memory: streaming (1 frame at a time)");
+            Console.WriteLine("  Memory: streaming (1 frame at a time)");
 
             // Use FFmpeg streaming GIF writer - only one frame in memory at a time
             await using var streamingGif = new FFmpegGifWriter(
@@ -782,11 +808,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
             await streamingGif.StartAsync(null, cancellationToken);
 
-            int uniformFrameCount = 0;
+            var uniformFrameCount = 0;
 
             await foreach (var frameImage in ffmpeg.StreamFramesAsync(
-                input.FullName, targetWidth, targetHeight,
-                rawStartTime, rawEndTime, frameStep, uniformTargetFps, cancellationToken))
+                               input.FullName, targetWidth, targetHeight,
+                               rawStartTime, rawEndTime, frameStep, uniformTargetFps, cancellationToken))
             {
                 if (streamingGif.ShouldStop)
                 {
@@ -810,29 +836,29 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
 
         // Determine render mode from flags
-        bool gifUseBlocks = parseResult.GetValue(colorBlocksOption);
-        bool gifUseBraille = parseResult.GetValue(brailleOption);
+        var gifUseBlocks = parseResult.GetValue(colorBlocksOption);
+        var gifUseBraille = parseResult.GetValue(brailleOption);
         var gifRenderMode = gifUseBraille ? RenderMode.Braille
             : gifUseBlocks ? RenderMode.ColorBlocks
             : RenderMode.Ascii;
 
         // Get effective aspect ratio
-        float gifEffectiveAspect = charAspect
-            ?? savedCalibration?.GetAspectRatio(gifRenderMode)
-            ?? 0.5f;
+        var gifEffectiveAspect = charAspect
+                                 ?? savedCalibration?.GetAspectRatio(gifRenderMode)
+                                 ?? 0.5f;
 
         // Calculate target FPS for GIF
-        double gifTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 15.0);
-        int frameDelayMs = (int)(1000.0 / gifTargetFps / speed);
+        var gifTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 15.0);
+        var frameDelayMs = (int)(1000.0 / gifTargetFps / speed);
 
-        Console.WriteLine($"Rendering video to animated GIF...");
+        Console.WriteLine("Rendering video to animated GIF...");
         Console.WriteLine($"  Output: {outputGif.FullName}");
         Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
         Console.WriteLine($"  Target: {gifTargetFps:F1} fps, frame step {frameStep}");
 
         // GIF loop: 0 = infinite, which is the default for GIFs
         // Only use explicit loop count if user specified it (loop != 1 which is the CLI default)
-        int gifLoopCount = loop != 1 ? loop : 0;
+        var gifLoopCount = loop != 1 ? loop : 0;
 
         var gifOptions = new GifWriterOptions
         {
@@ -845,8 +871,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         using var gifWriter = new GifWriter(gifOptions);
 
         // Create appropriate renderer
-        int renderedCount = 0;
-        double gifStartTime = start ?? 0;
+        var renderedCount = 0;
+        var gifStartTime = start ?? 0;
 
         // Use RenderOptions to calculate dimensions consistently with all other renderers
         // This ensures -w 150 or -h 80 respects aspect ratio in all modes
@@ -861,14 +887,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
         // Get character dimensions from shared calculation
         // pixelsPerCharWidth/Height varies by render mode
-        int pixelsPerCharWidth = gifUseBraille ? 2 : 1;
-        int pixelsPerCharHeight = gifUseBraille ? 4 : (gifUseBlocks ? 2 : 1);
+        var pixelsPerCharWidth = gifUseBraille ? 2 : 1;
+        var pixelsPerCharHeight = gifUseBraille ? 4 : gifUseBlocks ? 2 : 1;
         var (pixelWidth, pixelHeight) = tempOptions.CalculateVisualDimensions(
             videoInfo.Width, videoInfo.Height, pixelsPerCharWidth, pixelsPerCharHeight);
 
         // Calculate character dimensions from pixel dimensions
-        int charWidth = pixelWidth / pixelsPerCharWidth;
-        int charHeight = pixelHeight / pixelsPerCharHeight;
+        var charWidth = pixelWidth / pixelsPerCharWidth;
+        var charHeight = pixelHeight / pixelsPerCharHeight;
 
         Console.WriteLine($"  Output: {charWidth}x{charHeight} chars ({pixelWidth}x{pixelHeight} pixels)");
         Console.WriteLine();
@@ -898,14 +924,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         };
 
         // Estimate total frames for status display
-        double effectiveStart = gifStartTime;
-        double effectiveEnd = end ?? videoInfo.Duration;
-        double effectiveDuration = effectiveEnd - effectiveStart;
-        int estimatedTotalFrames = (int)(effectiveDuration * gifTargetFps / frameStep);
+        var effectiveStart = gifStartTime;
+        var effectiveEnd = end ?? videoInfo.Duration;
+        var effectiveDuration = effectiveEnd - effectiveStart;
+        var estimatedTotalFrames = (int)(effectiveDuration * gifTargetFps / frameStep);
 
         // Create status line renderer if enabled
-        StatusLine? statusRenderer = showStatus ? new StatusLine(charWidth, !noColor) : null;
-        string renderModeName = gifUseBraille ? "Braille" : (gifUseBlocks ? "Blocks" : "ASCII");
+        var statusRenderer = showStatus ? new StatusLine(charWidth, !noColor) : null;
+        var renderModeName = gifUseBraille ? "Braille" : gifUseBlocks ? "Blocks" : "ASCII";
 
         // Note: Status line in GIF output only supported for ASCII mode
         // Braille and ColorBlocks use pixel-based rendering that can't easily mix with text
@@ -916,14 +942,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
 
         await foreach (var frameImage in ffmpeg.StreamFramesAsync(
-            input.FullName,
-            pixelWidth,
-            pixelHeight,
-            gifStartTime > 0 ? gifStartTime : null,
-            end,
-            frameStep,
-            gifTargetFps,
-            cancellationToken))
+                           input.FullName,
+                           pixelWidth,
+                           pixelHeight,
+                           gifStartTime > 0 ? gifStartTime : null,
+                           end,
+                           frameStep,
+                           gifTargetFps,
+                           cancellationToken))
         {
             // Render frame based on mode using appropriate specialized renderer
             if (gifUseBraille)
@@ -944,7 +970,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 using var renderer = new AsciiRenderer(gifRenderOptions);
                 var asciiFrame = renderer.RenderImage(frameImage);
-                string content = asciiFrame.ToAnsiString();
+                var content = asciiFrame.ToAnsiString();
 
                 // Append status line if enabled (ASCII mode only)
                 if (statusRenderer != null)
@@ -959,7 +985,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         RenderMode = renderModeName,
                         CurrentFrame = renderedCount + 1,
                         TotalFrames = estimatedTotalFrames,
-                        CurrentTime = TimeSpan.FromSeconds(effectiveStart + (renderedCount * frameStep / gifTargetFps)),
+                        CurrentTime = TimeSpan.FromSeconds(effectiveStart + renderedCount * frameStep / gifTargetFps),
                         TotalDuration = TimeSpan.FromSeconds(effectiveDuration),
                         Fps = gifTargetFps
                     };
@@ -992,22 +1018,22 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
 
         // Determine render mode from flags
-        bool jsonUseBlocks = parseResult.GetValue(colorBlocksOption);
-        bool jsonUseBraille = parseResult.GetValue(brailleOption);
+        var jsonUseBlocks = parseResult.GetValue(colorBlocksOption);
+        var jsonUseBraille = parseResult.GetValue(brailleOption);
         var jsonRenderMode = jsonUseBraille ? RenderMode.Braille
             : jsonUseBlocks ? RenderMode.ColorBlocks
             : RenderMode.Ascii;
 
         // Get effective aspect ratio
-        float jsonEffectiveAspect = charAspect
-            ?? savedCalibration?.GetAspectRatio(jsonRenderMode)
-            ?? 0.5f;
+        var jsonEffectiveAspect = charAspect
+                                  ?? savedCalibration?.GetAspectRatio(jsonRenderMode)
+                                  ?? 0.5f;
 
         // Calculate target FPS for JSON
-        double jsonTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 30.0);
-        int frameDelayMs = (int)(1000.0 / jsonTargetFps / speed);
+        var jsonTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 30.0);
+        var frameDelayMs = (int)(1000.0 / jsonTargetFps / speed);
 
-        Console.WriteLine($"Streaming video to JSON document...");
+        Console.WriteLine("Streaming video to JSON document...");
         Console.WriteLine($"  Output: {jsonOutputPath}");
         Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
         Console.WriteLine($"  Target: {jsonTargetFps:F1} fps, frame step {frameStep}");
@@ -1024,13 +1050,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         };
 
         // Get pixel dimensions
-        int pixelsPerCharWidth = jsonUseBraille ? 2 : 1;
-        int pixelsPerCharHeight = jsonUseBraille ? 4 : (jsonUseBlocks ? 2 : 1);
+        var pixelsPerCharWidth = jsonUseBraille ? 2 : 1;
+        var pixelsPerCharHeight = jsonUseBraille ? 4 : jsonUseBlocks ? 2 : 1;
         var (pixelWidth, pixelHeight) = tempOptions.CalculateVisualDimensions(
             videoInfo.Width, videoInfo.Height, pixelsPerCharWidth, pixelsPerCharHeight);
 
-        int charWidth = pixelWidth / pixelsPerCharWidth;
-        int charHeight = pixelHeight / pixelsPerCharHeight;
+        var charWidth = pixelWidth / pixelsPerCharWidth;
+        var charHeight = pixelHeight / pixelsPerCharHeight;
 
         Console.WriteLine($"  Output: {charWidth}x{charHeight} chars");
         Console.WriteLine();
@@ -1058,7 +1084,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             LightTerminalBrightnessThreshold = lightCutoff
         };
 
-        string renderModeName = jsonUseBraille ? "Braille" : (jsonUseBlocks ? "ColorBlocks" : "ASCII");
+        var renderModeName = jsonUseBraille ? "Braille" : jsonUseBlocks ? "ColorBlocks" : "ASCII";
 
         // Create streaming document writer
         await using var docWriter = new StreamingDocumentWriter(
@@ -1069,20 +1095,20 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
         await docWriter.WriteHeaderAsync(cancellationToken);
 
-        int renderedCount = 0;
-        double jsonStartTime = start ?? 0;
+        var renderedCount = 0;
+        var jsonStartTime = start ?? 0;
 
         try
         {
             await foreach (var frameImage in ffmpeg.StreamFramesAsync(
-                input.FullName,
-                pixelWidth,
-                pixelHeight,
-                jsonStartTime > 0 ? jsonStartTime : null,
-                end,
-                frameStep,
-                jsonTargetFps,
-                cancellationToken))
+                               input.FullName,
+                               pixelWidth,
+                               pixelHeight,
+                               jsonStartTime > 0 ? jsonStartTime : null,
+                               end,
+                               frameStep,
+                               jsonTargetFps,
+                               cancellationToken))
             {
                 // Render frame based on mode
                 if (jsonUseBraille)
@@ -1115,23 +1141,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
 
         Console.Write("\rFinalizing JSON document...                    ");
-        await docWriter.FinalizeAsync(isComplete: !cancellationToken.IsCancellationRequested, cancellationToken);
+        await docWriter.FinalizeAsync(!cancellationToken.IsCancellationRequested, cancellationToken);
         Console.WriteLine($"\rSaved {renderedCount} frames to {jsonOutputPath}              ");
         return 0;
     }
 
     // Determine character set
-    string? characterSet = charset;
+    var characterSet = charset;
     if (string.IsNullOrEmpty(characterSet))
-    {
-        characterSet = (preset?.ToLowerInvariant()) switch
+        characterSet = preset?.ToLowerInvariant() switch
         {
             "simple" => CharacterMap.SimpleCharacterSet,
             "block" => CharacterMap.BlockCharacterSet,
             "classic" => CharacterMap.DefaultCharacterSet,
             _ => CharacterMap.ExtendedCharacterSet
         };
-    }
 
     // Determine render mode from flags
     var renderMode = useBraille ? VideoRenderMode.Braille
@@ -1145,12 +1169,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         VideoRenderMode.ColorBlocks => RenderMode.ColorBlocks,
         _ => RenderMode.Ascii
     };
-    float effectiveAspect = charAspect
-        ?? savedCalibration?.GetAspectRatio(coreRenderMode)
-        ?? 0.5f;
+    var effectiveAspect = charAspect
+                          ?? savedCalibration?.GetAspectRatio(coreRenderMode)
+                          ?? 0.5f;
 
     // Parse sampling strategy
-    var samplingStrategy = (sampling?.ToLowerInvariant()) switch
+    var samplingStrategy = sampling?.ToLowerInvariant() switch
     {
         "keyframe" or "key" => FrameSamplingStrategy.Keyframe,
         "scene" or "sceneaware" => FrameSamplingStrategy.SceneAware,
@@ -1238,14 +1262,11 @@ static async Task<int> HandleJsonDocument(string path, float speed, int loop, Ca
 
         // Display document info
         Console.Error.WriteLine($"Loaded: {doc.RenderMode} mode, {doc.FrameCount} frame(s)");
-        if (doc.IsAnimated)
-        {
-            Console.Error.WriteLine($"Duration: {doc.TotalDurationMs}ms");
-        }
+        if (doc.IsAnimated) Console.Error.WriteLine($"Duration: {doc.TotalDurationMs}ms");
 
         // Override settings if specified
-        float effectiveSpeed = speed != 1.0f ? speed : doc.Settings.AnimationSpeedMultiplier;
-        int effectiveLoop = loop != 1 ? loop : doc.Settings.LoopCount;
+        var effectiveSpeed = speed != 1.0f ? speed : doc.Settings.AnimationSpeedMultiplier;
+        var effectiveLoop = loop != 1 ? loop : doc.Settings.LoopCount;
 
         // Play the document
         using var player = new DocumentPlayer(doc, effectiveSpeed, effectiveLoop);
@@ -1299,9 +1320,9 @@ static async Task<int> HandleImageFile(
         : RenderMode.Ascii;
 
     // Get effective aspect ratio
-    float effectiveAspect = charAspect
-        ?? savedCalibration?.GetAspectRatio(renderMode)
-        ?? 0.5f;
+    var effectiveAspect = charAspect
+                          ?? savedCalibration?.GetAspectRatio(renderMode)
+                          ?? 0.5f;
 
     // Create render options
     var options = new RenderOptions
@@ -1321,13 +1342,13 @@ static async Task<int> HandleImageFile(
     };
 
     // Check if it's an animated GIF
-    bool isAnimatedGif = input.Extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
+    var isAnimatedGif = input.Extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
 
     if (outputGif != null)
     {
         // GIF output mode
         // GIF loop: 0 = infinite, which is the default for GIFs
-        int gifLoopCount = loop != 1 ? loop : 0;
+        var gifLoopCount = loop != 1 ? loop : 0;
 
         var gifOptions = new GifWriterOptions
         {
@@ -1341,22 +1362,18 @@ static async Task<int> HandleImageFile(
         if (isAnimatedGif)
         {
             // Render animated GIF frames
-            Console.WriteLine($"Rendering animated GIF...");
+            Console.WriteLine("Rendering animated GIF...");
             Console.WriteLine($"  Output: {outputGif.FullName}");
 
             // Status line in GIF output only supported for ASCII mode
-            string renderModeName = useBraille ? "Braille" : (useBlocks ? "Blocks" : "ASCII");
+            var renderModeName = useBraille ? "Braille" : useBlocks ? "Blocks" : "ASCII";
             StatusLine? statusRenderer = null;
             if (showStatus)
             {
                 if (useBraille || useBlocks)
-                {
                     Console.WriteLine("Note: Status line in GIF output is only supported for ASCII mode.");
-                }
                 else
-                {
                     statusRenderer = new StatusLine(maxWidth, !noColor);
-                }
             }
 
             if (useBraille)
@@ -1364,8 +1381,8 @@ static async Task<int> HandleImageFile(
                 using var renderer = new BrailleRenderer(options);
                 var frames = renderer.RenderGif(input.FullName);
                 var frameList = frames.ToList();
-                int totalFrames = frameList.Count;
-                int frameIndex = 0;
+                var totalFrames = frameList.Count;
+                var frameIndex = 0;
 
                 foreach (var frame in frameList)
                 {
@@ -1373,6 +1390,7 @@ static async Task<int> HandleImageFile(
                     frameIndex++;
                     Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
                 }
+
                 Console.WriteLine();
             }
             else if (useBlocks)
@@ -1380,8 +1398,8 @@ static async Task<int> HandleImageFile(
                 using var renderer = new ColorBlockRenderer(options);
                 var frames = renderer.RenderGif(input.FullName);
                 var frameList = frames.ToList();
-                int totalFrames = frameList.Count;
-                int frameIndex = 0;
+                var totalFrames = frameList.Count;
+                var frameIndex = 0;
 
                 foreach (var frame in frameList)
                 {
@@ -1389,6 +1407,7 @@ static async Task<int> HandleImageFile(
                     frameIndex++;
                     Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
                 }
+
                 Console.WriteLine();
             }
             else
@@ -1396,12 +1415,12 @@ static async Task<int> HandleImageFile(
                 using var renderer = new AsciiRenderer(options);
                 var frames = renderer.RenderGif(input.FullName);
                 var frameList = frames.ToList();
-                int totalFrames = frameList.Count;
-                int frameIndex = 0;
+                var totalFrames = frameList.Count;
+                var frameIndex = 0;
 
                 foreach (var frame in frameList)
                 {
-                    string content = frame.ToAnsiString();
+                    var content = frame.ToAnsiString();
                     if (statusRenderer != null)
                     {
                         var statusInfo = new StatusLine.StatusInfo
@@ -1413,10 +1432,12 @@ static async Task<int> HandleImageFile(
                         };
                         content += "\n" + statusRenderer.Render(statusInfo);
                     }
+
                     gifWriter.AddFrame(content, frame.DelayMs);
                     frameIndex++;
                     Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
                 }
+
                 Console.WriteLine();
             }
         }
@@ -1476,8 +1497,8 @@ static async Task<int> HandleImageFile(
         {
             using var renderer = new AsciiRenderer(options);
             // Wrap AsciiFrame in AsciiFrameAdapter since AsciiFrame doesn't implement IAnimationFrame
-            float? darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
-            float? lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
+            var darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
+            var lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
             frames = renderer.RenderGif(input.FullName)
                 .Select(f => (IAnimationFrame)new AsciiFrameAdapter(f, options.UseColor, darkThreshold, lightThreshold))
                 .ToList();
@@ -1545,15 +1566,15 @@ static async Task PlayFramesAsync(List<IAnimationFrame> frames, int loopCount, f
 
     // Get initial frame dimensions for cursor positioning
     var firstContent = frames[0].Content;
-    int frameHeight = firstContent.Split('\n').Length;
+    var frameHeight = firstContent.Split('\n').Length;
 
     // Enter alternate screen buffer
     Console.Write("\x1b[?1049h"); // Enter alt screen
-    Console.Write("\x1b[?25l");   // Hide cursor
+    Console.Write("\x1b[?25l"); // Hide cursor
 
     try
     {
-        int loops = 0;
+        var loops = 0;
         while (!ct.IsCancellationRequested && (loopCount == 0 || loops < loopCount))
         {
             foreach (var frame in frames)
@@ -1565,16 +1586,19 @@ static async Task PlayFramesAsync(List<IAnimationFrame> frames, int loopCount, f
                 Console.Write(frame.Content);
 
                 // Wait for frame delay
-                int delayMs = Math.Max(1, (int)(frame.DelayMs / speed));
+                var delayMs = Math.Max(1, (int)(frame.DelayMs / speed));
                 await Task.Delay(delayMs, ct);
             }
+
             loops++;
         }
     }
-    catch (OperationCanceledException) { }
+    catch (OperationCanceledException)
+    {
+    }
     finally
     {
-        Console.Write("\x1b[?25h");   // Show cursor
+        Console.Write("\x1b[?25h"); // Show cursor
         Console.Write("\x1b[?1049l"); // Exit alt screen
     }
 }

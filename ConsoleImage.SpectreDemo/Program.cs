@@ -33,22 +33,18 @@ var mode = AnimationMode.Ascii;
 var files = new List<FileInfo>();
 
 foreach (var arg in args)
-{
     if (arg == "--ascii") mode = AnimationMode.Ascii;
     else if (arg == "--blocks") mode = AnimationMode.ColorBlock;
     else if (arg == "--braille") mode = AnimationMode.Braille;
     else if (arg == "--matrix") mode = AnimationMode.Matrix;
     else files.Add(new FileInfo(arg));
-}
 
 foreach (var f in files)
-{
     if (!f.Exists)
     {
         AnsiConsole.MarkupLine($"[red]Error:[/] File not found: {f.FullName}");
         return;
     }
-}
 
 var options = new RenderOptions
 {
@@ -58,28 +54,20 @@ var options = new RenderOptions
     ContrastPower = 2.5f
 };
 
-bool hasGifs = files.Any(f => f.Extension.Equals(".gif", StringComparison.OrdinalIgnoreCase));
+var hasGifs = files.Any(f => f.Extension.Equals(".gif", StringComparison.OrdinalIgnoreCase));
 
 if (hasGifs && files.Count > 1)
-{
     // Side-by-side animation demo
     await PlaySideBySideAnimations(files, mode, options);
-}
 else if (hasGifs)
-{
     // Single GIF animation
     await PlaySingleAnimation(files[0], mode, options);
-}
 else if (files.Count > 1)
-{
     // Multiple static images side by side
     DisplaySideBySide(files, mode, options);
-}
 else
-{
     // Single static image
     DisplaySingle(files[0], mode, options);
-}
 
 static void DisplaySingle(FileInfo file, AnimationMode mode, RenderOptions options)
 {
@@ -130,7 +118,11 @@ static async Task PlaySingleAnimation(FileInfo file, AnimationMode mode, RenderO
     var animation = new AnimatedImage(file.FullName, mode, options);
 
     using var cts = new CancellationTokenSource();
-    Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+    Console.CancelKeyPress += (s, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
 
     await animation.PlayAsync(cts.Token);
 }
@@ -144,13 +136,17 @@ static async Task PlaySideBySideAnimations(List<FileInfo> files, AnimationMode m
     var animations = files.Select(f => new AnimatedImage(f.FullName, mode, options)).ToList();
 
     using var cts = new CancellationTokenSource();
-    Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+    Console.CancelKeyPress += (s, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
 
     // Create initial layout
     IRenderable CreateLayout()
     {
         var panels = new List<Panel>();
-        for (int i = 0; i < animations.Count; i++)
+        for (var i = 0; i < animations.Count; i++)
         {
             var header = animations[i].FrameCount > 1
                 ? $"[cyan]{files[i].Name}[/] [dim]{animations[i].CurrentFrame + 1}/{animations[i].FrameCount}[/]"
@@ -162,6 +158,7 @@ static async Task PlaySideBySideAnimations(List<FileInfo> files, AnimationMode m
                 .Expand();
             panels.Add(panel);
         }
+
         return new Columns(panels);
     }
 
@@ -182,7 +179,10 @@ static async Task PlaySideBySideAnimations(List<FileInfo> files, AnimationMode m
                 {
                     await Task.Delay(16, cts.Token); // ~60fps
                 }
-                catch (OperationCanceledException) { break; }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         });
 }

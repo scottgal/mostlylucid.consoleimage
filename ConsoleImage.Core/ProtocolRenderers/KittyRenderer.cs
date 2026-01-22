@@ -1,32 +1,38 @@
+using System.Text;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Formats.Png;
 
 namespace ConsoleImage.Core.ProtocolRenderers;
 
 /// <summary>
-/// Renders images using the Kitty Graphics Protocol.
-/// Supported by Kitty terminal and increasingly other terminals.
-///
-/// Protocol: APC G [key=value pairs] ; [payload] ST
-/// Where APC is \x1b_G and ST is \x1b\\
+///     Renders images using the Kitty Graphics Protocol.
+///     Supported by Kitty terminal and increasingly other terminals.
+///     Protocol: APC G [key=value pairs] ; [payload] ST
+///     Where APC is \x1b_G and ST is \x1b\\
 /// </summary>
 public class KittyRenderer : IDisposable
 {
-    private readonly RenderOptions _options;
-    private bool _disposed;
-
     // Maximum chunk size for base64 data (4096 bytes of base64 = 3072 raw bytes)
     private const int MaxChunkSize = 4096;
+    private readonly RenderOptions _options;
+    private bool _disposed;
 
     public KittyRenderer(RenderOptions? options = null)
     {
         _options = options ?? RenderOptions.Default;
     }
 
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
     /// <summary>
-    /// Render an image file using Kitty protocol.
+    ///     Render an image file using Kitty protocol.
     /// </summary>
     public string RenderFile(string path)
     {
@@ -35,7 +41,7 @@ public class KittyRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render an image stream using Kitty protocol.
+    ///     Render an image stream using Kitty protocol.
     /// </summary>
     public string RenderStream(Stream stream)
     {
@@ -44,7 +50,7 @@ public class KittyRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render an image using Kitty protocol.
+    ///     Render an image using Kitty protocol.
     /// </summary>
     public string RenderImage(Image<Rgba32> image)
     {
@@ -70,7 +76,7 @@ public class KittyRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render image and write directly to console.
+    ///     Render image and write directly to console.
     /// </summary>
     public void RenderToConsole(Image<Rgba32> image)
     {
@@ -80,23 +86,23 @@ public class KittyRenderer : IDisposable
 
     private Image<Rgba32> ResizeIfNeeded(Image<Rgba32> image)
     {
-        int maxWidth = _options.Width ?? _options.MaxWidth;
-        int maxHeight = _options.Height ?? _options.MaxHeight;
+        var maxWidth = _options.Width ?? _options.MaxWidth;
+        var maxHeight = _options.Height ?? _options.MaxHeight;
 
         // Kitty uses terminal cells, assume ~8x16 pixels per cell
-        int termWidthPixels = maxWidth * 8;
-        int termHeightPixels = maxHeight * 16;
+        var termWidthPixels = maxWidth * 8;
+        var termHeightPixels = maxHeight * 16;
 
         if (image.Width <= termWidthPixels && image.Height <= termHeightPixels)
             return image;
 
-        float scale = Math.Min(
+        var scale = Math.Min(
             (float)termWidthPixels / image.Width,
             (float)termHeightPixels / image.Height
         );
 
-        int newWidth = Math.Max(1, (int)(image.Width * scale));
-        int newHeight = Math.Max(1, (int)(image.Height * scale));
+        var newWidth = Math.Max(1, (int)(image.Width * scale));
+        var newHeight = Math.Max(1, (int)(image.Height * scale));
 
         return image.Clone(ctx => ctx.Resize(newWidth, newHeight));
     }
@@ -104,7 +110,7 @@ public class KittyRenderer : IDisposable
     private static string BuildKittySequence(byte[] imageBytes)
     {
         var base64 = Convert.ToBase64String(imageBytes);
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
 
         if (base64.Length <= MaxChunkSize)
         {
@@ -117,15 +123,15 @@ public class KittyRenderer : IDisposable
         else
         {
             // Multiple chunks needed
-            int offset = 0;
-            bool first = true;
+            var offset = 0;
+            var first = true;
 
             while (offset < base64.Length)
             {
-                int remaining = base64.Length - offset;
-                int chunkSize = Math.Min(MaxChunkSize, remaining);
-                string chunk = base64.Substring(offset, chunkSize);
-                bool isLast = offset + chunkSize >= base64.Length;
+                var remaining = base64.Length - offset;
+                var chunkSize = Math.Min(MaxChunkSize, remaining);
+                var chunk = base64.Substring(offset, chunkSize);
+                var isLast = offset + chunkSize >= base64.Length;
 
                 if (first)
                 {
@@ -147,14 +153,10 @@ public class KittyRenderer : IDisposable
     }
 
     /// <summary>
-    /// Check if Kitty protocol is supported in the current terminal.
+    ///     Check if Kitty protocol is supported in the current terminal.
     /// </summary>
-    public static bool IsSupported() => TerminalCapabilities.SupportsKitty();
-
-    public void Dispose()
+    public static bool IsSupported()
     {
-        if (_disposed) return;
-        _disposed = true;
-        GC.SuppressFinalize(this);
+        return TerminalCapabilities.SupportsKitty();
     }
 }

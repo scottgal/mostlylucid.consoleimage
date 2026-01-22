@@ -1,5 +1,3 @@
-using ConsoleImage.Core;
-
 namespace ConsoleImage.Core.Tests;
 
 public class CalibrationHelperTests
@@ -54,24 +52,18 @@ public class CalibrationHelperTests
 
         // Verify other modes remain unchanged (accounting for shared properties)
         // Matrix and Ascii share the same underlying property (AsciiCharacterAspectRatio)
-        foreach (RenderMode otherMode in Enum.GetValues<RenderMode>())
-        {
+        foreach (var otherMode in Enum.GetValues<RenderMode>())
             if (otherMode != mode)
             {
                 // Matrix and Ascii share the same property, so both change together
-                bool sharesProperty = (mode == RenderMode.Ascii && otherMode == RenderMode.Matrix) ||
+                var sharesProperty = (mode == RenderMode.Ascii && otherMode == RenderMode.Matrix) ||
                                      (mode == RenderMode.Matrix && otherMode == RenderMode.Ascii);
 
                 if (sharesProperty)
-                {
                     Assert.Equal(newValue, updated.GetAspectRatio(otherMode));
-                }
                 else
-                {
                     Assert.Equal(0.5f, updated.GetAspectRatio(otherMode));
-                }
             }
-        }
 
         // Verify original is unchanged (immutability)
         Assert.Equal(0.5f, original.GetAspectRatio(mode));
@@ -154,7 +146,7 @@ public class CalibrationHelperTests
     [Fact]
     public void RenderCalibrationPattern_ColoredOutput_ContainsAnsiCodes()
     {
-        var output = CalibrationHelper.RenderCalibrationPattern(RenderMode.ColorBlocks, 0.5f, useColor: true);
+        var output = CalibrationHelper.RenderCalibrationPattern(RenderMode.ColorBlocks, 0.5f);
 
         // ANSI escape codes start with ESC (0x1b)
         Assert.Contains("\x1b[", output);
@@ -163,7 +155,7 @@ public class CalibrationHelperTests
     [Fact]
     public void RenderCalibrationPattern_NonColoredAscii_NoAnsiCodes()
     {
-        var output = CalibrationHelper.RenderCalibrationPattern(RenderMode.Ascii, 0.5f, useColor: false);
+        var output = CalibrationHelper.RenderCalibrationPattern(RenderMode.Ascii, 0.5f, false);
 
         // Should not contain ANSI escape codes
         Assert.DoesNotContain("\x1b[", output);

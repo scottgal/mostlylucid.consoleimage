@@ -1,21 +1,20 @@
+using ConsoleImage.Core.ProtocolRenderers;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using ConsoleImage.Core.ProtocolRenderers;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Unified image renderer that can automatically select the best protocol
-/// for the current terminal, or use a specific protocol if requested.
+///     Unified image renderer that can automatically select the best protocol
+///     for the current terminal, or use a specific protocol if requested.
 /// </summary>
 public class UnifiedRenderer : IDisposable
 {
     private readonly RenderOptions _options;
-    private readonly TerminalProtocol _protocol;
     private bool _disposed;
 
     /// <summary>
-    /// Create a renderer that automatically detects the best protocol.
+    ///     Create a renderer that automatically detects the best protocol.
     /// </summary>
     public UnifiedRenderer(RenderOptions? options = null)
         : this(TerminalCapabilities.DetectBestProtocol(), options)
@@ -23,21 +22,28 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Create a renderer using a specific protocol.
+    ///     Create a renderer using a specific protocol.
     /// </summary>
     public UnifiedRenderer(TerminalProtocol protocol, RenderOptions? options = null)
     {
-        _protocol = protocol;
+        Protocol = protocol;
         _options = options ?? RenderOptions.Default;
     }
 
     /// <summary>
-    /// The protocol being used for rendering.
+    ///     The protocol being used for rendering.
     /// </summary>
-    public TerminalProtocol Protocol => _protocol;
+    public TerminalProtocol Protocol { get; }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
 
     /// <summary>
-    /// Render an image file.
+    ///     Render an image file.
     /// </summary>
     public string RenderFile(string path)
     {
@@ -46,7 +52,7 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render an image from a stream.
+    ///     Render an image from a stream.
     /// </summary>
     public string RenderStream(Stream stream)
     {
@@ -55,11 +61,11 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render an image using the configured protocol.
+    ///     Render an image using the configured protocol.
     /// </summary>
     public string RenderImage(Image<Rgba32> image)
     {
-        return _protocol switch
+        return Protocol switch
         {
             TerminalProtocol.Kitty => RenderWithKitty(image),
             TerminalProtocol.ITerm2 => RenderWithITerm2(image),
@@ -71,7 +77,7 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render a local file or remote URL.
+    ///     Render a local file or remote URL.
     /// </summary>
     public string RenderAny(string pathOrUrl)
     {
@@ -80,11 +86,12 @@ public class UnifiedRenderer : IDisposable
             using var stream = UrlHelper.Download(pathOrUrl);
             return RenderStream(stream);
         }
+
         return RenderFile(pathOrUrl);
     }
 
     /// <summary>
-    /// Render a local file or remote URL asynchronously.
+    ///     Render a local file or remote URL asynchronously.
     /// </summary>
     public async Task<string> RenderAnyAsync(
         string pathOrUrl,
@@ -96,6 +103,7 @@ public class UnifiedRenderer : IDisposable
             using var stream = await UrlHelper.DownloadAsync(pathOrUrl, progress, cancellationToken);
             return RenderStream(stream);
         }
+
         return RenderFile(pathOrUrl);
     }
 
@@ -137,7 +145,7 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Get a list of all available protocols with their support status.
+    ///     Get a list of all available protocols with their support status.
     /// </summary>
     public static IReadOnlyList<ProtocolInfo> ListProtocols()
     {
@@ -151,7 +159,7 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Get a formatted string listing all protocols and their status.
+    ///     Get a formatted string listing all protocols and their status.
     /// </summary>
     public static string GetProtocolList()
     {
@@ -195,17 +203,10 @@ public class UnifiedRenderer : IDisposable
             _ => "Unknown protocol."
         };
     }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        GC.SuppressFinalize(this);
-    }
 }
 
 /// <summary>
-/// Information about a rendering protocol.
+///     Information about a rendering protocol.
 /// </summary>
 public record ProtocolInfo(
     TerminalProtocol Protocol,

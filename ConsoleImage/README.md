@@ -20,13 +20,14 @@ High-quality ASCII art renderer for images and animated GIFs.
 
 ### Example Output
 
-| ASCII Mode | ColorBlocks Mode | Braille Mode |
-|------------|------------------|--------------|
+| ASCII Mode                                                                                                                        | ColorBlocks Mode                                                                                                                         | Braille Mode                                                                                                                          |
+|-----------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="200" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="200" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="200" alt="Braille Mode"> |
 
 **Three rendering modes** using shape-matched ASCII, Unicode half-blocks, or braille patterns.
 
-> **Note:** These images are rendered using the tool's GIF output with a consistent monospace font. Actual terminal display varies by terminal emulator, font, and color support.
+> **Note:** These images are rendered using the tool's GIF output with a consistent monospace font. Actual terminal
+> display varies by terminal emulator, font, and color support.
 
 ## Installation
 
@@ -34,12 +35,12 @@ High-quality ASCII art renderer for images and animated GIFs.
 
 Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
 
-| Platform | Download |
-|----------|----------|
-| Windows x64 | `consoleimage-win-x64.zip` |
-| Linux x64 | `consoleimage-linux-x64.tar.gz` |
+| Platform    | Download                          |
+|-------------|-----------------------------------|
+| Windows x64 | `consoleimage-win-x64.zip`        |
+| Linux x64   | `consoleimage-linux-x64.tar.gz`   |
 | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` |
-| macOS ARM64 | `consoleimage-osx-arm64.tar.gz` |
+| macOS ARM64 | `consoleimage-osx-arm64.tar.gz`   |
 
 ### .NET Tool
 
@@ -226,55 +227,55 @@ consoleimage animation.gif -S
 
 ### CLI Options Reference
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-w, --width` | Output width in characters | Auto |
-| `-h, --height` | Output height in characters | Auto |
-| `--max-width` | Maximum width constraint | Console width |
-| `--max-height` | Maximum height constraint | Console height |
-| `-b, --blocks` | Use Unicode half-blocks | OFF |
-| `-B, --braille` | Use braille characters | OFF |
-| `--matrix` | Matrix digital rain effect | OFF |
-| `-m, --mode` | Render mode (ascii, blocks, braille, iterm2, kitty, sixel) | ascii |
-| `-o, --output` | Output: file, `gif:file.gif`, `json:file.json` | Console |
-| `-s, --speed` | Animation speed multiplier | 1.0 |
-| `-l, --loop` | Loop count (0 = infinite) | 0 |
-| `-f, --frame-sample` | Skip frames (2 = every 2nd) | 1 |
-| `-S, --status` | Show status line | OFF |
-| `--no-color` | Disable color output | Color ON |
-| `--no-animate` | Show first frame only | Animate ON |
-| `--contrast` | Contrast power (1.0-4.0) | 2.5 |
-| `--gamma` | Gamma correction | 0.85 |
-| `-a, --aspect-ratio` | Character aspect ratio | 0.5 |
-| `-p, --preset` | Character preset | extended |
-| `-e, --edge` | Enable edge detection | OFF |
-| `--no-dither` | Disable dithering | Dither ON |
-| `--calibrate` | Show calibration pattern | OFF |
-| `--save` | Save calibration | - |
+| Option               | Description                                                | Default        |
+|----------------------|------------------------------------------------------------|----------------|
+| `-w, --width`        | Output width in characters                                 | Auto           |
+| `-h, --height`       | Output height in characters                                | Auto           |
+| `--max-width`        | Maximum width constraint                                   | Console width  |
+| `--max-height`       | Maximum height constraint                                  | Console height |
+| `-b, --blocks`       | Use Unicode half-blocks                                    | OFF            |
+| `-B, --braille`      | Use braille characters                                     | OFF            |
+| `--matrix`           | Matrix digital rain effect                                 | OFF            |
+| `-m, --mode`         | Render mode (ascii, blocks, braille, iterm2, kitty, sixel) | ascii          |
+| `-o, --output`       | Output: file, `gif:file.gif`, `json:file.json`             | Console        |
+| `-s, --speed`        | Animation speed multiplier                                 | 1.0            |
+| `-l, --loop`         | Loop count (0 = infinite)                                  | 0              |
+| `-f, --frame-sample` | Skip frames (2 = every 2nd)                                | 1              |
+| `-S, --status`       | Show status line                                           | OFF            |
+| `--no-color`         | Disable color output                                       | Color ON       |
+| `--no-animate`       | Show first frame only                                      | Animate ON     |
+| `--contrast`         | Contrast power (1.0-4.0)                                   | 2.5            |
+| `--gamma`            | Gamma correction                                           | 0.85           |
+| `-a, --aspect-ratio` | Character aspect ratio                                     | 0.5            |
+| `-p, --preset`       | Character preset                                           | extended       |
+| `-e, --edge`         | Enable edge detection                                      | OFF            |
+| `--no-dither`        | Disable dithering                                          | Dither ON      |
+| `--calibrate`        | Show calibration pattern                                   | OFF            |
+| `--save`             | Save calibration                                           | -              |
 
 ### GIF Output Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--gif-font-size` | Font size in pixels | 10 |
-| `--gif-scale` | Output scale factor | 1.0 |
-| `--gif-colors` | Palette size (16-256) | 64 |
-| `--gif-fps` | Framerate | 10 |
-| `--gif-length` | Max length in seconds | - |
-| `--gif-frames` | Max frame count | - |
+| Option            | Description           | Default |
+|-------------------|-----------------------|---------|
+| `--gif-font-size` | Font size in pixels   | 10      |
+| `--gif-scale`     | Output scale factor   | 1.0     |
+| `--gif-colors`    | Palette size (16-256) | 64      |
+| `--gif-fps`       | Framerate             | 10      |
+| `--gif-length`    | Max length in seconds | -       |
+| `--gif-frames`    | Max frame count       | -       |
 
 ### Matrix Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--matrix-color` | Color: green, red, blue, amber, purple | green |
-| `--matrix-fullcolor` | Use source image colors | OFF |
-| `--matrix-ascii` | ASCII only (no katakana) | OFF |
-| `--matrix-alphabet` | Custom character set | - |
-| `--matrix-density` | Rain density (0.1-2.0) | 0.5 |
-| `--matrix-speed` | Animation speed | 1.0 |
-| `--matrix-edge-detect` | Enable edge detection reveal | OFF |
-| `--matrix-bright-persist` | Brightness persistence | OFF |
+| Option                    | Description                            | Default |
+|---------------------------|----------------------------------------|---------|
+| `--matrix-color`          | Color: green, red, blue, amber, purple | green   |
+| `--matrix-fullcolor`      | Use source image colors                | OFF     |
+| `--matrix-ascii`          | ASCII only (no katakana)               | OFF     |
+| `--matrix-alphabet`       | Custom character set                   | -       |
+| `--matrix-density`        | Rain density (0.1-2.0)                 | 0.5     |
+| `--matrix-speed`          | Animation speed                        | 1.0     |
+| `--matrix-edge-detect`    | Enable edge detection reveal           | OFF     |
+| `--matrix-bright-persist` | Brightness persistence                 | OFF     |
 
 ## Examples
 
@@ -307,11 +308,13 @@ consoleimage saved.json
 
 ## For Video Support
 
-Use [consolevideo](https://github.com/scottgal/mostlylucid.consoleimage/tree/master/ConsoleImage.Video) for video file playback with FFmpeg.
+Use [consolevideo](https://github.com/scottgal/mostlylucid.consoleimage/tree/master/ConsoleImage.Video) for video file
+playback with FFmpeg.
 
 ## Library Usage
 
-For programmatic usage, see [mostlylucid.consoleimage](https://www.nuget.org/packages/mostlylucid.consoleimage/) NuGet package.
+For programmatic usage, see [mostlylucid.consoleimage](https://www.nuget.org/packages/mostlylucid.consoleimage/) NuGet
+package.
 
 ```csharp
 using ConsoleImage.Core;

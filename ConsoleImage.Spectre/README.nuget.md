@@ -9,8 +9,8 @@ Spectre.Console integration for ConsoleImage - display ASCII art within Spectre 
 
 ## Render Modes
 
-| ASCII | ColorBlocks | Braille | Matrix |
-|:-----:|:-----------:|:-------:|:------:|
+|                                              ASCII                                               |                                            ColorBlocks                                             |                                               Braille                                                |                                                   Matrix                                                    |
+|:------------------------------------------------------------------------------------------------:|:--------------------------------------------------------------------------------------------------:|:----------------------------------------------------------------------------------------------------:|:-----------------------------------------------------------------------------------------------------------:|
 | ![ASCII](https://raw.githubusercontent.com/scottgal/ConsoleImage/master/samples/earth_ascii.gif) | ![Blocks](https://raw.githubusercontent.com/scottgal/ConsoleImage/master/samples/earth_blocks.gif) | ![Braille](https://raw.githubusercontent.com/scottgal/ConsoleImage/master/samples/earth_braille.gif) | ![Matrix](https://raw.githubusercontent.com/scottgal/ConsoleImage/master/samples/matrix_portrait_final.gif) |
 
 ## Features
@@ -36,6 +36,7 @@ AnsiConsole.Write(new MatrixImage("photo.jpg"));
 ## Renderable Classes
 
 ### AsciiImage
+
 Shape-matched ASCII characters with optional color.
 
 ```csharp
@@ -53,6 +54,7 @@ AnsiConsole.Write(new AsciiImage(frame));
 ```
 
 ### ColorBlockImage
+
 Unicode half-blocks for 2x vertical resolution.
 
 ```csharp
@@ -61,6 +63,7 @@ AnsiConsole.Write(image);
 ```
 
 ### BrailleImage
+
 2x4 dot patterns for highest resolution.
 
 ```csharp
@@ -69,6 +72,7 @@ AnsiConsole.Write(image);
 ```
 
 ### MatrixImage
+
 Digital rain effect overlay.
 
 ```csharp
@@ -84,6 +88,7 @@ AnsiConsole.Write(image);
 ## Animated GIFs
 
 ### AnimatedImage
+
 Plays GIFs with Spectre's Live display.
 
 ```csharp
@@ -110,6 +115,7 @@ await AnsiConsole.Live(animation)
 ```
 
 ### AnimatedMatrixImage
+
 Continuous Matrix rain animation.
 
 ```csharp

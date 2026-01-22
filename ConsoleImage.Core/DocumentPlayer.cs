@@ -1,15 +1,17 @@
 // DocumentPlayer - Plays back ConsoleImageDocument frames to the console
 
+using System.Text;
+
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Plays ConsoleImageDocument frames to the console with animation support.
+///     Plays ConsoleImageDocument frames to the console with animation support.
 /// </summary>
 public class DocumentPlayer : IDisposable
 {
     private readonly ConsoleImageDocument _document;
-    private readonly float _speedMultiplier;
     private readonly int _loopCount;
+    private readonly float _speedMultiplier;
     private bool _disposed;
 
     public DocumentPlayer(
@@ -22,8 +24,15 @@ public class DocumentPlayer : IDisposable
         _loopCount = loopCount ?? document.Settings.LoopCount;
     }
 
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
     /// <summary>
-    /// Play the document to the console
+    ///     Play the document to the console
     /// </summary>
     public async Task PlayAsync(CancellationToken ct = default)
     {
@@ -38,26 +47,24 @@ public class DocumentPlayer : IDisposable
         }
 
         // Calculate max height for cursor positioning
-        int maxHeight = _document.Frames.Max(f => f.Height);
+        var maxHeight = _document.Frames.Max(f => f.Height);
 
         // Hide cursor during animation
         Console.Write("\x1b[?25l");
 
         try
         {
-            int loopsRemaining = _loopCount == 0 ? int.MaxValue : _loopCount;
+            var loopsRemaining = _loopCount == 0 ? int.MaxValue : _loopCount;
 
             while (loopsRemaining > 0 && !ct.IsCancellationRequested)
             {
-                for (int i = 0; i < _document.Frames.Count && !ct.IsCancellationRequested; i++)
+                for (var i = 0; i < _document.Frames.Count && !ct.IsCancellationRequested; i++)
                 {
                     var frame = _document.Frames[i];
 
                     // Move cursor to start position (except for first frame of first loop)
                     if (i > 0 || loopsRemaining < (_loopCount == 0 ? int.MaxValue : _loopCount))
-                    {
                         Console.Write($"\x1b[{maxHeight}A\r");
-                    }
 
                     // Use synchronized output if supported
                     Console.Write("\x1b[?2026h");
@@ -68,7 +75,7 @@ public class DocumentPlayer : IDisposable
                     // Wait for frame delay
                     if (frame.DelayMs > 0)
                     {
-                        int delay = (int)(frame.DelayMs / _speedMultiplier);
+                        var delay = (int)(frame.DelayMs / _speedMultiplier);
                         await Task.Delay(delay, ct);
                     }
                 }
@@ -90,7 +97,7 @@ public class DocumentPlayer : IDisposable
     }
 
     /// <summary>
-    /// Display the document without animation (first frame only or all frames sequentially)
+    ///     Display the document without animation (first frame only or all frames sequentially)
     /// </summary>
     public void Display(bool showAllFrames = false)
     {
@@ -112,11 +119,11 @@ public class DocumentPlayer : IDisposable
     }
 
     /// <summary>
-    /// Get document info as a string
+    ///     Get document info as a string
     /// </summary>
     public string GetInfo()
     {
-        var info = new System.Text.StringBuilder();
+        var info = new StringBuilder();
         info.AppendLine($"Type: {_document.Type}");
         info.AppendLine($"Version: {_document.Version}");
         info.AppendLine($"Created: {_document.Created:O}");
@@ -128,20 +135,15 @@ public class DocumentPlayer : IDisposable
         {
             info.AppendLine($"Duration: {_document.TotalDurationMs}ms");
             info.AppendLine($"Speed: {_document.Settings.AnimationSpeedMultiplier}x");
-            info.AppendLine($"Loop Count: {(_document.Settings.LoopCount == 0 ? "infinite" : _document.Settings.LoopCount.ToString())}");
+            info.AppendLine(
+                $"Loop Count: {(_document.Settings.LoopCount == 0 ? "infinite" : _document.Settings.LoopCount.ToString())}");
         }
+
         info.AppendLine($"Size: {_document.Settings.MaxWidth}x{_document.Settings.MaxHeight}");
         info.AppendLine($"Color: {(_document.Settings.UseColor ? "yes" : "no")}");
         info.AppendLine($"Gamma: {_document.Settings.Gamma}");
         info.AppendLine($"Contrast: {_document.Settings.ContrastPower}");
 
         return info.ToString();
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        GC.SuppressFinalize(this);
     }
 }

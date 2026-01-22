@@ -1,35 +1,40 @@
+using System.Text;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using System.Text;
 
 namespace ConsoleImage.Core.ProtocolRenderers;
 
 /// <summary>
-/// Renders images using the Sixel graphics protocol.
-/// Sixel is an older protocol but still supported by many terminals.
-///
-/// Protocol: DCS P1;P2;P3 q [sixel data] ST
-/// Where DCS is \x1bP and ST is \x1b\\
+///     Renders images using the Sixel graphics protocol.
+///     Sixel is an older protocol but still supported by many terminals.
+///     Protocol: DCS P1;P2;P3 q [sixel data] ST
+///     Where DCS is \x1bP and ST is \x1b\\
 /// </summary>
 public class SixelRenderer : IDisposable
 {
-    private readonly RenderOptions _options;
-    private bool _disposed;
-
     // Sixel uses 6 vertical pixels per row (hence "sixel")
     private const int SixelHeight = 6;
 
     // Default palette size (256 colors for VT340+ compatibility)
     private const int PaletteSize = 256;
+    private readonly RenderOptions _options;
+    private bool _disposed;
 
     public SixelRenderer(RenderOptions? options = null)
     {
         _options = options ?? RenderOptions.Default;
     }
 
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
     /// <summary>
-    /// Render an image file using Sixel protocol.
+    ///     Render an image file using Sixel protocol.
     /// </summary>
     public string RenderFile(string path)
     {
@@ -38,7 +43,7 @@ public class SixelRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render an image stream using Sixel protocol.
+    ///     Render an image stream using Sixel protocol.
     /// </summary>
     public string RenderStream(Stream stream)
     {
@@ -47,7 +52,7 @@ public class SixelRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render an image using Sixel protocol.
+    ///     Render an image using Sixel protocol.
     /// </summary>
     public string RenderImage(Image<Rgba32> image)
     {
@@ -67,7 +72,7 @@ public class SixelRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render image and write directly to console.
+    ///     Render image and write directly to console.
     /// </summary>
     public void RenderToConsole(Image<Rgba32> image)
     {
@@ -77,28 +82,28 @@ public class SixelRenderer : IDisposable
 
     private (Image<Rgba32> image, Rgba32[] palette) ProcessImage(Image<Rgba32> image)
     {
-        int maxWidth = _options.Width ?? _options.MaxWidth;
-        int maxHeight = _options.Height ?? _options.MaxHeight;
+        var maxWidth = _options.Width ?? _options.MaxWidth;
+        var maxHeight = _options.Height ?? _options.MaxHeight;
 
         // Sixel pixels are roughly 2x the size of character cells
-        int targetWidth = maxWidth * 2;
-        int targetHeight = maxHeight * 4;
+        var targetWidth = maxWidth * 2;
+        var targetHeight = maxHeight * 4;
 
         // Ensure height is multiple of 6 for sixel rows
-        targetHeight = (targetHeight / SixelHeight) * SixelHeight;
+        targetHeight = targetHeight / SixelHeight * SixelHeight;
         if (targetHeight == 0) targetHeight = SixelHeight;
 
         // Scale image to fit
-        float scale = Math.Min(
+        var scale = Math.Min(
             (float)targetWidth / image.Width,
             (float)targetHeight / image.Height
         );
 
-        int newWidth = Math.Max(1, (int)(image.Width * scale));
-        int newHeight = Math.Max(1, (int)(image.Height * scale));
+        var newWidth = Math.Max(1, (int)(image.Width * scale));
+        var newHeight = Math.Max(1, (int)(image.Height * scale));
 
         // Round height to multiple of 6
-        newHeight = ((newHeight + SixelHeight - 1) / SixelHeight) * SixelHeight;
+        newHeight = (newHeight + SixelHeight - 1) / SixelHeight * SixelHeight;
 
         var resized = image.Clone(ctx => ctx.Resize(newWidth, newHeight));
 
@@ -115,7 +120,7 @@ public class SixelRenderer : IDisposable
 
         image.ProcessPixelRows(accessor =>
         {
-            for (int y = 0; y < accessor.Height; y++)
+            for (var y = 0; y < accessor.Height; y++)
             {
                 var row = accessor.GetRowSpan(y);
                 foreach (var pixel in row)
@@ -123,9 +128,9 @@ public class SixelRenderer : IDisposable
                     if (colors.Count >= maxColors * 2) break;
 
                     // Reduce color precision for better quantization
-                    int r = (pixel.R >> 4) << 4;
-                    int g = (pixel.G >> 4) << 4;
-                    int b = (pixel.B >> 4) << 4;
+                    var r = (pixel.R >> 4) << 4;
+                    var g = (pixel.G >> 4) << 4;
+                    var b = (pixel.B >> 4) << 4;
                     colors.Add((r << 16) | (g << 8) | b);
                 }
             }
@@ -139,15 +144,15 @@ public class SixelRenderer : IDisposable
 
     private int FindNearestPaletteIndex(Rgba32 pixel, Rgba32[] palette)
     {
-        int bestIndex = 0;
-        int bestDistance = int.MaxValue;
+        var bestIndex = 0;
+        var bestDistance = int.MaxValue;
 
-        for (int i = 0; i < palette.Length; i++)
+        for (var i = 0; i < palette.Length; i++)
         {
-            int dr = pixel.R - palette[i].R;
-            int dg = pixel.G - palette[i].G;
-            int db = pixel.B - palette[i].B;
-            int distance = dr * dr + dg * dg + db * db;
+            var dr = pixel.R - palette[i].R;
+            var dg = pixel.G - palette[i].G;
+            var db = pixel.B - palette[i].B;
+            var distance = dr * dr + dg * dg + db * db;
 
             if (distance < bestDistance)
             {
@@ -170,53 +175,47 @@ public class SixelRenderer : IDisposable
 
         // Define palette
         // Format: #Pc;Pu;Px;Py;Pz where Pc=color number, Pu=2 for RGB, Px/Py/Pz are 0-100
-        for (int i = 0; i < palette.Length; i++)
+        for (var i = 0; i < palette.Length; i++)
         {
-            int r = (palette[i].R * 100) / 255;
-            int g = (palette[i].G * 100) / 255;
-            int b = (palette[i].B * 100) / 255;
+            var r = palette[i].R * 100 / 255;
+            var g = palette[i].G * 100 / 255;
+            var b = palette[i].B * 100 / 255;
             sb.Append($"#{i};2;{r};{g};{b}");
         }
 
         // Create indexed image
-        int[,] indexed = new int[image.Height, image.Width];
+        var indexed = new int[image.Height, image.Width];
         image.ProcessPixelRows(accessor =>
         {
-            for (int y = 0; y < accessor.Height; y++)
+            for (var y = 0; y < accessor.Height; y++)
             {
                 var row = accessor.GetRowSpan(y);
-                for (int x = 0; x < row.Length; x++)
-                {
-                    indexed[y, x] = FindNearestPaletteIndex(row[x], palette);
-                }
+                for (var x = 0; x < row.Length; x++) indexed[y, x] = FindNearestPaletteIndex(row[x], palette);
             }
         });
 
         // Generate sixel data
         // Each sixel row represents 6 vertical pixels
-        for (int sixelRow = 0; sixelRow < image.Height / SixelHeight; sixelRow++)
+        for (var sixelRow = 0; sixelRow < image.Height / SixelHeight; sixelRow++)
         {
-            int y0 = sixelRow * SixelHeight;
+            var y0 = sixelRow * SixelHeight;
 
             // For each color in the palette that appears in this row
-            for (int colorIndex = 0; colorIndex < palette.Length; colorIndex++)
+            for (var colorIndex = 0; colorIndex < palette.Length; colorIndex++)
             {
                 var rowData = new StringBuilder();
-                bool hasColor = false;
-                int repeatCount = 0;
-                int lastSixelValue = -1;
+                var hasColor = false;
+                var repeatCount = 0;
+                var lastSixelValue = -1;
 
-                for (int x = 0; x < image.Width; x++)
+                for (var x = 0; x < image.Width; x++)
                 {
                     // Build sixel value (6 bits, one per vertical pixel)
-                    int sixelValue = 0;
-                    for (int dy = 0; dy < SixelHeight; dy++)
+                    var sixelValue = 0;
+                    for (var dy = 0; dy < SixelHeight; dy++)
                     {
-                        int y = y0 + dy;
-                        if (y < image.Height && indexed[y, x] == colorIndex)
-                        {
-                            sixelValue |= (1 << dy);
-                        }
+                        var y = y0 + dy;
+                        if (y < image.Height && indexed[y, x] == colorIndex) sixelValue |= 1 << dy;
                     }
 
                     if (sixelValue > 0)
@@ -229,20 +228,14 @@ public class SixelRenderer : IDisposable
                     }
                     else
                     {
-                        if (lastSixelValue >= 0)
-                        {
-                            AppendSixelData(rowData, lastSixelValue, repeatCount);
-                        }
+                        if (lastSixelValue >= 0) AppendSixelData(rowData, lastSixelValue, repeatCount);
                         lastSixelValue = sixelValue;
                         repeatCount = 1;
                     }
                 }
 
                 // Flush last run
-                if (lastSixelValue >= 0)
-                {
-                    AppendSixelData(rowData, lastSixelValue, repeatCount);
-                }
+                if (lastSixelValue >= 0) AppendSixelData(rowData, lastSixelValue, repeatCount);
 
                 // Only output if this color appears in the row
                 if (hasColor)
@@ -264,29 +257,21 @@ public class SixelRenderer : IDisposable
 
     private static void AppendSixelData(StringBuilder sb, int sixelValue, int count)
     {
-        char sixelChar = (char)(sixelValue + 63); // Sixel data is ASCII 63-126
+        var sixelChar = (char)(sixelValue + 63); // Sixel data is ASCII 63-126
 
         if (count <= 3)
-        {
             // Just repeat the character
             sb.Append(new string(sixelChar, count));
-        }
         else
-        {
             // Use repeat introducer: !count;char
             sb.Append($"!{count}{sixelChar}");
-        }
     }
 
     /// <summary>
-    /// Check if Sixel protocol is supported in the current terminal.
+    ///     Check if Sixel protocol is supported in the current terminal.
     /// </summary>
-    public static bool IsSupported() => TerminalCapabilities.SupportsSixel();
-
-    public void Dispose()
+    public static bool IsSupported()
     {
-        if (_disposed) return;
-        _disposed = true;
-        GC.SuppressFinalize(this);
+        return TerminalCapabilities.SupportsSixel();
     }
 }

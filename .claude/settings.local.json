@@ -69,7 +69,21 @@
       "WebFetch(domain:carlnewton.github.io)",
       "Bash(dotnet:*)",
       "Bash(gh workflow view:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(./ConsoleImage/bin/Release/net10.0/consoleimage.exe:*)",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "Bash(git restore:*)",
+      "mcp__consoleimage__render_image",
+      "mcp__consoleimage__list_render_modes",
+      "mcp__consoleimage__get_gif_info",
+      "Bash(powershell -ExecutionPolicy Bypass -Command \"& ''E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Mcp\\\\build-aot.ps1''\")",
+      "mcp__consoleimage__get_video_info"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "consoleimage"
+  ]
 }

@@ -7,16 +7,17 @@
 
 ### Animation
 
-| ASCII Mode | ColorBlocks Mode | Braille Mode |
-|------------|------------------|--------------|
+| ASCII Mode                                                                                                                   | ColorBlocks Mode                                                                                                               | Braille Mode                                                                                                                     |
+|------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="200" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="200" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="200" alt="Braille"> |
 
-> **Note:** These images are rendered using the tool's GIF output with a consistent monospace font. Actual terminal display varies by terminal emulator, font, and color support.
+> **Note:** These images are rendered using the tool's GIF output with a consistent monospace font. Actual terminal
+> display varies by terminal emulator, font, and color support.
 
 ### Still Images
 
-| Landscape | Portrait |
-|-----------|----------|
+| Landscape                                                                                                                               | Portrait                                                                                                                                |
+|-----------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_mountain_blocks.gif" width="280" alt="Mountain"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_blocks.gif" width="200" alt="Portrait"> |
 
 ## Quick Start
@@ -86,7 +87,8 @@ dithering (`EnableDithering = false`) for sharper edges.
 
 <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_portrait_final.gif" width="300" alt="Matrix Mode">
 
-The iconic Matrix digital rain effect with authentic color scheme - white glowing heads fading through bright green to dark green trails. Works on both static images and animations.
+The iconic Matrix digital rain effect with authentic color scheme - white glowing heads fading through bright green to
+dark green trails. Works on both static images and animations.
 
 ```csharp
 var options = new RenderOptions { MaxWidth = 80 };
@@ -111,6 +113,7 @@ var frames = renderer.RenderGif("animation.gif");
 ```
 
 **Color Presets:**
+
 ```csharp
 MatrixOptions.ClassicGreen  // Default authentic green
 MatrixOptions.RedPill       // Red tint
@@ -120,6 +123,7 @@ MatrixOptions.FullColor     // Uses source image colors
 ```
 
 **Custom Alphabets:**
+
 - Default: Half-width katakana + numbers + symbols (authentic Matrix style)
 - `UseAsciiOnly = true`: ASCII letters + numbers + symbols
 - `CustomAlphabet = "01"`: Binary rain
@@ -156,6 +160,7 @@ var frame = renderer.RenderFile("photo.jpg");
 ```
 
 Edge detection is particularly effective for:
+
 - Images with complex backgrounds
 - Line art and diagrams
 - Photos where subject separation is important
@@ -174,12 +179,12 @@ var options = new RenderOptions
 };
 ```
 
-| Value | Effect |
-|-------|--------|
-| 1.0 | No enhancement |
-| 2.0 | Moderate contrast |
-| 2.5 | Default - good balance |
-| 3.0+ | High contrast, dramatic |
+| Value | Effect                  |
+|-------|-------------------------|
+| 1.0   | No enhancement          |
+| 2.0   | Moderate contrast       |
+| 2.5   | Default - good balance  |
+| 3.0+  | High contrast, dramatic |
 
 ### Floyd-Steinberg Dithering
 
@@ -193,6 +198,7 @@ var options = new RenderOptions
 ```
 
 Dithering is particularly effective for:
+
 - Photographs with subtle gradients
 - Skin tones and natural imagery
 - ColorBlocks mode for maximum quality
@@ -344,20 +350,20 @@ ConsoleHelper.EnableAnsiSupport();
 
 ## Character Set Presets
 
-| Preset | Characters | Description |
-|--------|------------|-------------|
-| `extended` | 91 chars | Default - maximum detail |
-| `simple` | ` .:-=+*#%@` | Fast, minimal |
-| `block` | ` ░▒▓█` | Unicode density blocks |
-| `classic` | 71 chars | Original algorithm set |
+| Preset     | Characters   | Description              |
+|------------|--------------|--------------------------|
+| `extended` | 91 chars     | Default - maximum detail |
+| `simple`   | ` .:-=+*#%@` | Fast, minimal            |
+| `block`    | ` ░▒▓█`      | Unicode density blocks   |
+| `classic`  | 71 chars     | Original algorithm set   |
 
 ## Terminal Protocol Support
 
-| Protocol | Terminals | Detection |
-|----------|-----------|-----------|
-| Sixel | xterm, mlterm, foot, WezTerm | `TERM` + query |
-| iTerm2 | iTerm2, WezTerm, Mintty | `ITERM_SESSION_ID` |
-| Kitty | Kitty | `KITTY_WINDOW_ID` |
+| Protocol | Terminals                    | Detection          |
+|----------|------------------------------|--------------------|
+| Sixel    | xterm, mlterm, foot, WezTerm | `TERM` + query     |
+| iTerm2   | iTerm2, WezTerm, Mintty      | `ITERM_SESSION_ID` |
+| Kitty    | Kitty                        | `KITTY_WINDOW_ID`  |
 
 ```csharp
 // Check what's supported
@@ -377,8 +383,10 @@ bool hasITerm = TerminalCapabilities.SupportsITerm2();
 
 ## Related Packages
 
-- [mostlylucid.consoleimage.video](https://www.nuget.org/packages/mostlylucid.consoleimage.video/) - FFmpeg video playback
-- [mostlylucid.consoleimage.spectre](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/) - Spectre.Console integration
+- [mostlylucid.consoleimage.video](https://www.nuget.org/packages/mostlylucid.consoleimage.video/) - FFmpeg video
+  playback
+- [mostlylucid.consoleimage.spectre](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/) - Spectre.Console
+  integration
 
 ## Attribution
 

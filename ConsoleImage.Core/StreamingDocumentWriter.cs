@@ -1,13 +1,15 @@
 // StreamingDocumentWriter - Write JSON-LD frames incrementally for long videos
 // Uses JSON Lines (NDJSON) format so document is always valid and can be stopped at any point
 
+using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// JSON source generator for streaming document types (AOT compatible)
+///     JSON source generator for streaming document types (AOT compatible)
 /// </summary>
 [JsonSourceGenerationOptions(
     WriteIndented = false,
@@ -20,15 +22,13 @@ public partial class StreamingDocumentJsonContext : JsonSerializerContext
 }
 
 /// <summary>
-/// Header record for streaming document (first line of NDJSON)
+///     Header record for streaming document (first line of NDJSON)
 /// </summary>
 public class StreamingDocumentHeader
 {
-    [JsonPropertyName("@context")]
-    public string Context { get; set; } = "https://schema.org/";
+    [JsonPropertyName("@context")] public string Context { get; set; } = "https://schema.org/";
 
-    [JsonPropertyName("@type")]
-    public string Type { get; set; } = "ConsoleImageDocumentHeader";
+    [JsonPropertyName("@type")] public string Type { get; set; } = "ConsoleImageDocumentHeader";
 
     public string Version { get; set; } = "2.0";
     public DateTime Created { get; set; } = DateTime.UtcNow;
@@ -38,12 +38,11 @@ public class StreamingDocumentHeader
 }
 
 /// <summary>
-/// Frame record for streaming document (each frame line of NDJSON)
+///     Frame record for streaming document (each frame line of NDJSON)
 /// </summary>
 public class StreamingDocumentFrame
 {
-    [JsonPropertyName("@type")]
-    public string Type { get; set; } = "Frame";
+    [JsonPropertyName("@type")] public string Type { get; set; } = "Frame";
 
     public int Index { get; set; }
     public string Content { get; set; } = string.Empty;
@@ -53,12 +52,11 @@ public class StreamingDocumentFrame
 }
 
 /// <summary>
-/// Footer record for streaming document (last line of NDJSON, written on finalize)
+///     Footer record for streaming document (last line of NDJSON, written on finalize)
 /// </summary>
 public class StreamingDocumentFooter
 {
-    [JsonPropertyName("@type")]
-    public string Type { get; set; } = "ConsoleImageDocumentFooter";
+    [JsonPropertyName("@type")] public string Type { get; set; } = "ConsoleImageDocumentFooter";
 
     public int FrameCount { get; set; }
     public int TotalDurationMs { get; set; }
@@ -67,27 +65,24 @@ public class StreamingDocumentFooter
 }
 
 /// <summary>
-/// Writes a ConsoleImageDocument incrementally using JSON Lines (NDJSON) format.
-/// Each line is valid JSON, so the document can be stopped at any point.
-///
-/// Format:
-/// Line 1: Header with metadata and settings
-/// Lines 2-N: Individual frames
-/// Last line: Footer with summary (written on dispose/finalize)
+///     Writes a ConsoleImageDocument incrementally using JSON Lines (NDJSON) format.
+///     Each line is valid JSON, so the document can be stopped at any point.
+///     Format:
+///     Line 1: Header with metadata and settings
+///     Lines 2-N: Individual frames
+///     Last line: Footer with summary (written on dispose/finalize)
 /// </summary>
 public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
 {
-    private readonly StreamWriter _writer;
-    private readonly string _path;
     private readonly StreamingDocumentHeader _header;
-    private int _frameCount;
-    private int _totalDurationMs;
+    private readonly string _path;
+    private readonly StreamWriter _writer;
     private bool _disposed;
-    private bool _headerWritten;
     private bool _finalized;
+    private bool _headerWritten;
 
     /// <summary>
-    /// Create a new streaming document writer
+    ///     Create a new streaming document writer
     /// </summary>
     public StreamingDocumentWriter(
         string path,
@@ -96,7 +91,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
         string? sourceFile = null)
     {
         _path = path;
-        _writer = new StreamWriter(path, append: false, encoding: System.Text.Encoding.UTF8);
+        _writer = new StreamWriter(path, false, Encoding.UTF8);
         _header = new StreamingDocumentHeader
         {
             RenderMode = renderMode,
@@ -106,17 +101,39 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Number of frames written so far
+    ///     Number of frames written so far
     /// </summary>
-    public int FrameCount => _frameCount;
+    public int FrameCount { get; private set; }
 
     /// <summary>
-    /// Total duration of all frames in milliseconds
+    ///     Total duration of all frames in milliseconds
     /// </summary>
-    public int TotalDurationMs => _totalDurationMs;
+    public int TotalDurationMs { get; private set; }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+
+        // Auto-finalize on dispose if not already done
+        if (_headerWritten && !_finalized) await FinalizeAsync(false);
+
+        await _writer.DisposeAsync();
+        _disposed = true;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+
+        // Auto-finalize on dispose if not already done
+        if (_headerWritten && !_finalized) Finalize(false);
+
+        _writer.Dispose();
+        _disposed = true;
+    }
 
     /// <summary>
-    /// Write the header (called automatically on first frame if not called explicitly)
+    ///     Write the header (called automatically on first frame if not called explicitly)
     /// </summary>
     public void WriteHeader()
     {
@@ -128,7 +145,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Write the header asynchronously
+    ///     Write the header asynchronously
     /// </summary>
     public async Task WriteHeaderAsync(CancellationToken ct = default)
     {
@@ -140,7 +157,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Write a frame to the document
+    ///     Write a frame to the document
     /// </summary>
     public void WriteFrame(string content, int delayMs, int width = 0, int height = 0)
     {
@@ -150,24 +167,25 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
         var lines = content.Split('\n');
         var frame = new StreamingDocumentFrame
         {
-            Index = _frameCount,
+            Index = FrameCount,
             Content = content,
             DelayMs = delayMs,
-            Width = width > 0 ? width : (lines.Length > 0 ? lines[0].Length : 0),
+            Width = width > 0 ? width : lines.Length > 0 ? lines[0].Length : 0,
             Height = height > 0 ? height : lines.Length
         };
 
         var json = JsonSerializer.Serialize(frame, StreamingDocumentJsonContext.Default.StreamingDocumentFrame);
         _writer.WriteLine(json);
 
-        _frameCount++;
-        _totalDurationMs += delayMs;
+        FrameCount++;
+        TotalDurationMs += delayMs;
     }
 
     /// <summary>
-    /// Write a frame asynchronously
+    ///     Write a frame asynchronously
     /// </summary>
-    public async Task WriteFrameAsync(string content, int delayMs, int width = 0, int height = 0, CancellationToken ct = default)
+    public async Task WriteFrameAsync(string content, int delayMs, int width = 0, int height = 0,
+        CancellationToken ct = default)
     {
         EnsureNotDisposed();
         if (!_headerWritten) await WriteHeaderAsync(ct);
@@ -175,44 +193,44 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
         var lines = content.Split('\n');
         var frame = new StreamingDocumentFrame
         {
-            Index = _frameCount,
+            Index = FrameCount,
             Content = content,
             DelayMs = delayMs,
-            Width = width > 0 ? width : (lines.Length > 0 ? lines[0].Length : 0),
+            Width = width > 0 ? width : lines.Length > 0 ? lines[0].Length : 0,
             Height = height > 0 ? height : lines.Length
         };
 
         var json = JsonSerializer.Serialize(frame, StreamingDocumentJsonContext.Default.StreamingDocumentFrame);
         await _writer.WriteLineAsync(json.AsMemory(), ct);
 
-        _frameCount++;
-        _totalDurationMs += delayMs;
+        FrameCount++;
+        TotalDurationMs += delayMs;
     }
 
     /// <summary>
-    /// Write an AsciiFrame to the document
+    ///     Write an AsciiFrame to the document
     /// </summary>
     public void WriteFrame(AsciiFrame frame, RenderOptions options)
     {
-        float? darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
-        float? lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
+        var darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
+        var lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
         var content = options.UseColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString();
         WriteFrame(content, frame.DelayMs, frame.Width, frame.Height);
     }
 
     /// <summary>
-    /// Write an AsciiFrame asynchronously
+    ///     Write an AsciiFrame asynchronously
     /// </summary>
     public Task WriteFrameAsync(AsciiFrame frame, RenderOptions options, CancellationToken ct = default)
     {
-        float? darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
-        float? lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
+        var darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
+        var lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
         var content = options.UseColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString();
         return WriteFrameAsync(content, frame.DelayMs, frame.Width, frame.Height, ct);
     }
 
     /// <summary>
-    /// Write a ColorBlockFrame to the document
+    ///     Write a ColorBlockFrame to the document
     /// </summary>
     public void WriteFrame(ColorBlockFrame frame)
     {
@@ -220,7 +238,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Write a ColorBlockFrame asynchronously
+    ///     Write a ColorBlockFrame asynchronously
     /// </summary>
     public Task WriteFrameAsync(ColorBlockFrame frame, CancellationToken ct = default)
     {
@@ -228,7 +246,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Write a BrailleFrame to the document
+    ///     Write a BrailleFrame to the document
     /// </summary>
     public void WriteFrame(BrailleFrame frame)
     {
@@ -236,7 +254,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Write a BrailleFrame asynchronously
+    ///     Write a BrailleFrame asynchronously
     /// </summary>
     public Task WriteFrameAsync(BrailleFrame frame, CancellationToken ct = default)
     {
@@ -244,7 +262,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Finalize the document by writing the footer
+    ///     Finalize the document by writing the footer
     /// </summary>
     public void Finalize(bool isComplete = true)
     {
@@ -253,8 +271,8 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
 
         var footer = new StreamingDocumentFooter
         {
-            FrameCount = _frameCount,
-            TotalDurationMs = _totalDurationMs,
+            FrameCount = FrameCount,
+            TotalDurationMs = TotalDurationMs,
             IsComplete = isComplete
         };
 
@@ -265,7 +283,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Finalize the document asynchronously
+    ///     Finalize the document asynchronously
     /// </summary>
     public async Task FinalizeAsync(bool isComplete = true, CancellationToken ct = default)
     {
@@ -274,8 +292,8 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
 
         var footer = new StreamingDocumentFooter
         {
-            FrameCount = _frameCount,
-            TotalDurationMs = _totalDurationMs,
+            FrameCount = FrameCount,
+            TotalDurationMs = TotalDurationMs,
             IsComplete = isComplete
         };
 
@@ -289,43 +307,15 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(StreamingDocumentWriter));
     }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-
-        // Auto-finalize on dispose if not already done
-        if (_headerWritten && !_finalized)
-        {
-            Finalize(isComplete: false);
-        }
-
-        _writer.Dispose();
-        _disposed = true;
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed) return;
-
-        // Auto-finalize on dispose if not already done
-        if (_headerWritten && !_finalized)
-        {
-            await FinalizeAsync(isComplete: false);
-        }
-
-        await _writer.DisposeAsync();
-        _disposed = true;
-    }
 }
 
 /// <summary>
-/// Reads a streaming document (NDJSON format) created by StreamingDocumentWriter
+///     Reads a streaming document (NDJSON format) created by StreamingDocumentWriter
 /// </summary>
 public static class StreamingDocumentReader
 {
     /// <summary>
-    /// Load a streaming document and convert to ConsoleImageDocument for playback
+    ///     Load a streaming document and convert to ConsoleImageDocument for playback
     /// </summary>
     public static async Task<ConsoleImageDocument> LoadAsync(string path, CancellationToken ct = default)
     {
@@ -339,7 +329,8 @@ public static class StreamingDocumentReader
             if (line.Contains("\"@type\":\"ConsoleImageDocumentHeader\"") ||
                 line.Contains("\"@type\": \"ConsoleImageDocumentHeader\""))
             {
-                var header = JsonSerializer.Deserialize(line, StreamingDocumentJsonContext.Default.StreamingDocumentHeader);
+                var header =
+                    JsonSerializer.Deserialize(line, StreamingDocumentJsonContext.Default.StreamingDocumentHeader);
                 if (header != null)
                 {
                     doc.SourceFile = header.SourceFile;
@@ -351,9 +342,9 @@ public static class StreamingDocumentReader
             else if (line.Contains("\"@type\":\"Frame\"") ||
                      line.Contains("\"@type\": \"Frame\""))
             {
-                var frame = JsonSerializer.Deserialize(line, StreamingDocumentJsonContext.Default.StreamingDocumentFrame);
+                var frame = JsonSerializer.Deserialize(line,
+                    StreamingDocumentJsonContext.Default.StreamingDocumentFrame);
                 if (frame != null)
-                {
                     doc.Frames.Add(new DocumentFrame
                     {
                         Content = frame.Content,
@@ -361,7 +352,6 @@ public static class StreamingDocumentReader
                         Width = frame.Width,
                         Height = frame.Height
                     });
-                }
             }
             // Footer is informational, we don't need to process it
         }
@@ -370,10 +360,11 @@ public static class StreamingDocumentReader
     }
 
     /// <summary>
-    /// Stream frames from a document without loading everything into memory
+    ///     Stream frames from a document without loading everything into memory
     /// </summary>
-    public static async IAsyncEnumerable<(StreamingDocumentHeader? Header, StreamingDocumentFrame? Frame, StreamingDocumentFooter? Footer)>
-        StreamAsync(string path, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    public static async IAsyncEnumerable<(StreamingDocumentHeader? Header, StreamingDocumentFrame? Frame,
+            StreamingDocumentFooter? Footer)>
+        StreamAsync(string path, [EnumeratorCancellation] CancellationToken ct = default)
     {
         await foreach (var line in ReadLinesAsync(path, ct))
         {
@@ -382,19 +373,22 @@ public static class StreamingDocumentReader
             if (line.Contains("\"@type\":\"ConsoleImageDocumentHeader\"") ||
                 line.Contains("\"@type\": \"ConsoleImageDocumentHeader\""))
             {
-                var header = JsonSerializer.Deserialize(line, StreamingDocumentJsonContext.Default.StreamingDocumentHeader);
+                var header =
+                    JsonSerializer.Deserialize(line, StreamingDocumentJsonContext.Default.StreamingDocumentHeader);
                 yield return (header, null, null);
             }
             else if (line.Contains("\"@type\":\"Frame\"") ||
                      line.Contains("\"@type\": \"Frame\""))
             {
-                var frame = JsonSerializer.Deserialize(line, StreamingDocumentJsonContext.Default.StreamingDocumentFrame);
+                var frame = JsonSerializer.Deserialize(line,
+                    StreamingDocumentJsonContext.Default.StreamingDocumentFrame);
                 yield return (null, frame, null);
             }
             else if (line.Contains("\"@type\":\"ConsoleImageDocumentFooter\"") ||
                      line.Contains("\"@type\": \"ConsoleImageDocumentFooter\""))
             {
-                var footer = JsonSerializer.Deserialize(line, StreamingDocumentJsonContext.Default.StreamingDocumentFooter);
+                var footer =
+                    JsonSerializer.Deserialize(line, StreamingDocumentJsonContext.Default.StreamingDocumentFooter);
                 yield return (null, null, footer);
             }
         }
@@ -402,22 +396,19 @@ public static class StreamingDocumentReader
 
     private static async IAsyncEnumerable<string> ReadLinesAsync(
         string path,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
-        using var reader = new StreamReader(path, System.Text.Encoding.UTF8);
+        using var reader = new StreamReader(path, Encoding.UTF8);
         string? line;
-        while (!ct.IsCancellationRequested && (line = await reader.ReadLineAsync(ct)) != null)
-        {
-            yield return line;
-        }
+        while (!ct.IsCancellationRequested && (line = await reader.ReadLineAsync(ct)) != null) yield return line;
     }
 
     /// <summary>
-    /// Check if a file is a streaming document (NDJSON format) vs regular JSON
+    ///     Check if a file is a streaming document (NDJSON format) vs regular JSON
     /// </summary>
     public static async Task<bool> IsStreamingDocumentAsync(string path, CancellationToken ct = default)
     {
-        using var reader = new StreamReader(path, System.Text.Encoding.UTF8);
+        using var reader = new StreamReader(path, Encoding.UTF8);
         var firstLine = await reader.ReadLineAsync(ct);
         if (string.IsNullOrWhiteSpace(firstLine)) return false;
 

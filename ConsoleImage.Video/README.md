@@ -21,8 +21,8 @@ Real-time video to ASCII art renderer using FFmpeg for .NET 10.
 
 ### Example Output
 
-| ASCII Mode | ColorBlocks Mode | Braille Mode |
-|------------|------------------|--------------|
+| ASCII Mode                                                                                                                           | ColorBlocks Mode                                                                                                                            | Braille Mode                                                                                                                             |
+|--------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif" width="200" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_blocks.gif" width="200" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_braille.gif" width="200" alt="Braille Mode"> |
 
 **Real-time video rendering** in three modes with hardware-accelerated FFmpeg decoding
@@ -59,17 +59,19 @@ consolevideo video.mp4 --ffmpeg-path "C:\tools\ffmpeg\bin"
 
 FFmpeg is downloaded from trusted sources:
 
-| Platform | Source |
-|----------|--------|
-| Windows | [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) (GitHub) |
-| Linux | [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) (GitHub) |
-| macOS | [evermeet.cx/ffmpeg](https://evermeet.cx/ffmpeg/) (Official macOS builds) |
+| Platform | Source                                                                        |
+|----------|-------------------------------------------------------------------------------|
+| Windows  | [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) (GitHub) |
+| Linux    | [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) (GitHub) |
+| macOS    | [evermeet.cx/ffmpeg](https://evermeet.cx/ffmpeg/) (Official macOS builds)     |
 
 Downloads are cached to:
+
 - **Windows**: `%LOCALAPPDATA%\consoleimage\ffmpeg`
 - **Linux/macOS**: `~/.local/share/consoleimage/ffmpeg`
 
-To disable auto-download and require manual installation, set `FFmpeg.Path` in appsettings.json to any value (even empty string prevents download attempts).
+To disable auto-download and require manual installation, set `FFmpeg.Path` in appsettings.json to any value (even empty
+string prevents download attempts).
 
 ### Manual Installation (Optional)
 
@@ -134,40 +136,40 @@ consolevideo video.mp4 --aspect-ratio 0.45
 
 ### Render Modes
 
-| Mode | Description |
-|------|-------------|
-| `ascii` | Shape-matched ASCII characters (default) |
-| `blocks` | Unicode half-blocks (▀▄) - 2x vertical resolution |
-| `braille` | Braille patterns - 2×4 dots per cell |
-| `iterm2` | iTerm2 inline image protocol |
-| `kitty` | Kitty graphics protocol |
-| `sixel` | DEC Sixel graphics |
+| Mode      | Description                                       |
+|-----------|---------------------------------------------------|
+| `ascii`   | Shape-matched ASCII characters (default)          |
+| `blocks`  | Unicode half-blocks (▀▄) - 2x vertical resolution |
+| `braille` | Braille patterns - 2×4 dots per cell              |
+| `iterm2`  | iTerm2 inline image protocol                      |
+| `kitty`   | Kitty graphics protocol                           |
+| `sixel`   | DEC Sixel graphics                                |
 
 Use `--mode list` to see all available modes.
 
 ### CLI Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-w, --width` | Output width in characters | Console width |
-| `-h, --height` | Output height in characters | Console height |
-| `-m, --mode` | Render mode (see below) | ascii |
-| `-a, --aspect-ratio` | Character aspect ratio | 0.5 |
-| `--start` | Start time in seconds | 0 |
-| `--end` | End time in seconds | Video end |
-| `-s, --speed` | Playback speed multiplier | 1.0 |
-| `-l, --loop` | Loop count (0 = infinite) | 1 |
-| `-f, --fps` | Target framerate | Video native |
-| `--frame-step` | Skip frames (1 = all, 2 = every 2nd) | 1 |
-| `--buffer` | Frame buffer size | 5 |
-| `--no-hw` | Disable hardware acceleration | HW enabled |
-| `--no-alt-screen` | Keep in scrollback | Alt screen |
-| `--ffmpeg-path` | Path to FFmpeg (file or directory) | Auto-detect/download |
-| `--calibrate` | Show calibration pattern | OFF |
-| `--save` | Save calibration | - |
-| `-o, --output` | Output file (gif:path.gif or json:path.json) | - |
-| `--raw` | Extract raw frames as GIF | - |
-| `--smart-keyframes` | Use scene detection for keyframe extraction | - |
+| Option               | Description                                  | Default              |
+|----------------------|----------------------------------------------|----------------------|
+| `-w, --width`        | Output width in characters                   | Console width        |
+| `-h, --height`       | Output height in characters                  | Console height       |
+| `-m, --mode`         | Render mode (see below)                      | ascii                |
+| `-a, --aspect-ratio` | Character aspect ratio                       | 0.5                  |
+| `--start`            | Start time in seconds                        | 0                    |
+| `--end`              | End time in seconds                          | Video end            |
+| `-s, --speed`        | Playback speed multiplier                    | 1.0                  |
+| `-l, --loop`         | Loop count (0 = infinite)                    | 1                    |
+| `-f, --fps`          | Target framerate                             | Video native         |
+| `--frame-step`       | Skip frames (1 = all, 2 = every 2nd)         | 1                    |
+| `--buffer`           | Frame buffer size                            | 5                    |
+| `--no-hw`            | Disable hardware acceleration                | HW enabled           |
+| `--no-alt-screen`    | Keep in scrollback                           | Alt screen           |
+| `--ffmpeg-path`      | Path to FFmpeg (file or directory)           | Auto-detect/download |
+| `--calibrate`        | Show calibration pattern                     | OFF                  |
+| `--save`             | Save calibration                             | -                    |
+| `-o, --output`       | Output file (gif:path.gif or json:path.json) | -                    |
+| `--raw`              | Extract raw frames as GIF                    | -                    |
+| `--smart-keyframes`  | Use scene detection for keyframe extraction  | -                    |
 
 ### GIF Output
 
@@ -194,14 +196,14 @@ consolevideo video.mp4 -o gif:output.gif -ss 30 -t 10 --blocks
 
 ### GIF Output Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--gif-fps` | GIF framerate | 10 |
-| `--gif-colors` | Palette size (16-256) | 64 |
-| `--gif-font-size` | Font size in pixels | 10 |
-| `--gif-scale` | Scale factor | 1.0 |
-| `--gif-length` | Max length in seconds | - |
-| `--gif-frames` | Max frame count | - |
+| Option            | Description           | Default |
+|-------------------|-----------------------|---------|
+| `--gif-fps`       | GIF framerate         | 10      |
+| `--gif-colors`    | Palette size (16-256) | 64      |
+| `--gif-font-size` | Font size in pixels   | 10      |
+| `--gif-scale`     | Scale factor          | 1.0     |
+| `--gif-length`    | Max length in seconds | -       |
+| `--gif-frames`    | Max frame count       | -       |
 
 ### Raw Frame Extraction
 
@@ -218,7 +220,9 @@ consolevideo video.mp4 --raw --smart-keyframes -o gif:keyframes.gif --gif-frames
 consolevideo video.mp4 --raw --smart-keyframes -o gif:keyframes.gif -ss 60 -t 60 --gif-frames 10
 ```
 
-**Scene Detection**: The `--smart-keyframes` option uses histogram-based scene detection to identify visual changes and extract representative frames. This is useful for:
+**Scene Detection**: The `--smart-keyframes` option uses histogram-based scene detection to identify visual changes and
+extract representative frames. This is useful for:
+
 - Creating video thumbnails
 - Extracting key moments from long videos
 - Building preview animations
@@ -281,6 +285,7 @@ await VideoPlayer.PlayAsync("https://example.com/video.mp4");
 ### Hardware Acceleration
 
 Hardware acceleration is enabled by default and auto-detects:
+
 - **Windows**: DXVA2, CUDA (NVIDIA)
 - **macOS**: VideoToolbox
 - **Linux**: VAAPI, CUDA
@@ -328,12 +333,12 @@ var options = VideoRenderOptions.ForTimeRange(30, 60);
 
 ### Frame Sampling Strategies
 
-| Strategy | Description |
-|----------|-------------|
-| `Uniform` | Even frame distribution (default) |
-| `Keyframe` | Prefer I-frames/keyframes |
-| `SceneAware` | Sample around scene changes |
-| `Adaptive` | Vary sampling based on motion |
+| Strategy     | Description                       |
+|--------------|-----------------------------------|
+| `Uniform`    | Even frame distribution (default) |
+| `Keyframe`   | Prefer I-frames/keyframes         |
+| `SceneAware` | Sample around scene changes       |
+| `Adaptive`   | Vary sampling based on motion     |
 
 ## Calibration
 
@@ -392,19 +397,23 @@ Place `appsettings.json` next to the executable to configure defaults:
 ## Troubleshooting
 
 ### FFmpeg Download Issues
+
 - If auto-download fails, manually download FFmpeg and use `--ffmpeg-path`
 - Or set the path in `appsettings.json`
 
 ### Choppy playback
+
 - Try `--no-hw` to disable hardware acceleration
 - Reduce dimensions with `-w 80 -h 40`
 - Skip frames with `--frame-step 2`
 
 ### Colors look wrong
+
 - Ensure your terminal supports 24-bit color
 - Try `--mode blocks` for best color support
 
 ### Video stretched or squashed
+
 Run calibration and save: `--calibrate --aspect-ratio X --save`
 
 ## Dependencies

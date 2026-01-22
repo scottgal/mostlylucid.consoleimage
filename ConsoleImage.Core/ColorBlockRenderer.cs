@@ -2,36 +2,42 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 // Color block renderer for high-fidelity colored terminal output
 
+using System.Text;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using System.Text;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Renders images as colored blocks using Unicode half-block characters.
-/// Each character cell displays two pixels vertically using upper/lower half-blocks
-/// with separate foreground and background colors, effectively doubling resolution.
+///     Renders images as colored blocks using Unicode half-block characters.
+///     Each character cell displays two pixels vertically using upper/lower half-blocks
+///     with separate foreground and background colors, effectively doubling resolution.
 /// </summary>
 public class ColorBlockRenderer : IDisposable
 {
+    // Unicode half-block characters
+    private const char UpperHalfBlock = '▀'; // Upper half solid
+    private const char LowerHalfBlock = '▄'; // Lower half solid
+    private const char FullBlock = '█'; // Full block
+    private const char Space = ' '; // Empty
     private readonly RenderOptions _options;
     private bool _disposed;
-
-    // Unicode half-block characters
-    private const char UpperHalfBlock = '▀';  // Upper half solid
-    private const char LowerHalfBlock = '▄';  // Lower half solid
-    private const char FullBlock = '█';       // Full block
-    private const char Space = ' ';           // Empty
 
     public ColorBlockRenderer(RenderOptions? options = null)
     {
         _options = options ?? RenderOptions.Default;
     }
 
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
     /// <summary>
-    /// Render image file to colored block output
+    ///     Render image file to colored block output
     /// </summary>
     public string RenderFile(string path)
     {
@@ -40,7 +46,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render image stream to colored block output
+    ///     Render image stream to colored block output
     /// </summary>
     public string RenderStream(Stream stream)
     {
@@ -49,7 +55,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render image to colored block output
+    ///     Render image to colored block output
     /// </summary>
     public string RenderImage(Image<Rgba32> image)
     {
@@ -75,8 +81,8 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Calculate output dimensions in PIXELS for half-block rendering.
-    /// Uses the shared CalculateVisualDimensions method from RenderOptions.
+    ///     Calculate output dimensions in PIXELS for half-block rendering.
+    ///     Uses the shared CalculateVisualDimensions method from RenderOptions.
     /// </summary>
     private (int width, int height) CalculatePixelDimensions(int imageWidth, int imageHeight)
     {
@@ -91,15 +97,15 @@ public class ColorBlockRenderer : IDisposable
 
     private string RenderPixels(Image<Rgba32> image)
     {
-        int charRows = image.Height / 2;
+        var charRows = image.Height / 2;
 
         // Get brightness thresholds based on terminal mode
-        float? darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
-        float? lightThreshold = !_options.Invert ? _options.LightTerminalBrightnessThreshold : null;
+        var darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
+        var lightThreshold = !_options.Invert ? _options.LightTerminalBrightnessThreshold : null;
 
         // Gamma correction
-        float gamma = _options.Gamma;
-        bool applyGamma = gamma != 1.0f;
+        var gamma = _options.Gamma;
+        var applyGamma = gamma != 1.0f;
 
         // Parallel row rendering for performance
         if (_options.UseParallelProcessing && charRows > 4)
@@ -109,10 +115,10 @@ public class ColorBlockRenderer : IDisposable
             Parallel.For(0, charRows, row =>
             {
                 var rowSb = new StringBuilder(image.Width * 30); // Pre-size for ANSI codes
-                int y1 = row * 2;       // Upper pixel row
-                int y2 = row * 2 + 1;   // Lower pixel row
+                var y1 = row * 2; // Upper pixel row
+                var y2 = row * 2 + 1; // Lower pixel row
 
-                for (int x = 0; x < image.Width; x++)
+                for (var x = 0; x < image.Width; x++)
                 {
                     var upper = image[x, y1];
                     var lower = image[x, y2];
@@ -136,12 +142,12 @@ public class ColorBlockRenderer : IDisposable
 
         // Sequential fallback
         var sb = new StringBuilder();
-        for (int row = 0; row < charRows; row++)
+        for (var row = 0; row < charRows; row++)
         {
-            int y1 = row * 2;       // Upper pixel row
-            int y2 = row * 2 + 1;   // Lower pixel row
+            var y1 = row * 2; // Upper pixel row
+            var y2 = row * 2 + 1; // Lower pixel row
 
-            for (int x = 0; x < image.Width; x++)
+            for (var x = 0; x < image.Width; x++)
             {
                 var upper = image[x, y1];
                 var lower = image[x, y2];
@@ -174,15 +180,18 @@ public class ColorBlockRenderer : IDisposable
         );
     }
 
-    private static void AppendColoredBlock(StringBuilder sb, Rgba32 upper, Rgba32 lower, float? darkThreshold, float? lightThreshold)
+    private static void AppendColoredBlock(StringBuilder sb, Rgba32 upper, Rgba32 lower, float? darkThreshold,
+        float? lightThreshold)
     {
         // Calculate brightness
-        float upperBrightness = BrightnessHelper.GetBrightness(upper);
-        float lowerBrightness = BrightnessHelper.GetBrightness(lower);
+        var upperBrightness = BrightnessHelper.GetBrightness(upper);
+        var lowerBrightness = BrightnessHelper.GetBrightness(lower);
 
         // Check if pixels should be skipped (blend with terminal background)
-        bool upperSkip = upper.A < 128 || BrightnessHelper.ShouldSkipColor(upperBrightness, darkThreshold, lightThreshold);
-        bool lowerSkip = lower.A < 128 || BrightnessHelper.ShouldSkipColor(lowerBrightness, darkThreshold, lightThreshold);
+        var upperSkip = upper.A < 128 ||
+                        BrightnessHelper.ShouldSkipColor(upperBrightness, darkThreshold, lightThreshold);
+        var lowerSkip = lower.A < 128 ||
+                        BrightnessHelper.ShouldSkipColor(lowerBrightness, darkThreshold, lightThreshold);
 
         if (upperSkip && lowerSkip)
         {
@@ -214,7 +223,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render a file to a ColorBlockFrame.
+    ///     Render a file to a ColorBlockFrame.
     /// </summary>
     public ColorBlockFrame RenderFileToFrame(string path)
     {
@@ -222,7 +231,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render a stream to a ColorBlockFrame.
+    ///     Render a stream to a ColorBlockFrame.
     /// </summary>
     public ColorBlockFrame RenderStreamToFrame(Stream stream)
     {
@@ -230,7 +239,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render animated GIF to list of colored block frames
+    ///     Render animated GIF to list of colored block frames
     /// </summary>
     public IReadOnlyList<ColorBlockFrame> RenderGif(string path)
     {
@@ -239,7 +248,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render animated GIF stream to list of colored block frames
+    ///     Render animated GIF stream to list of colored block frames
     /// </summary>
     public IReadOnlyList<ColorBlockFrame> RenderGifStream(Stream stream)
     {
@@ -248,7 +257,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render animated GIF to list of colored block frames (for GIF output).
+    ///     Render animated GIF to list of colored block frames (for GIF output).
     /// </summary>
     public List<ColorBlockFrame> RenderGifFrames(string path)
     {
@@ -257,7 +266,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render animated GIF stream to list of colored block frames (for GIF output).
+    ///     Render animated GIF stream to list of colored block frames (for GIF output).
     /// </summary>
     public List<ColorBlockFrame> RenderGifFrames(Stream stream)
     {
@@ -270,50 +279,43 @@ public class ColorBlockRenderer : IDisposable
         var frames = new List<ColorBlockFrame>();
 
         // Determine frame step for sampling (skip frames for efficiency)
-        int frameStep = Math.Max(1, _options.FrameSampleRate);
+        var frameStep = Math.Max(1, _options.FrameSampleRate);
 
-        for (int i = 0; i < image.Frames.Count; i += frameStep)
+        for (var i = 0; i < image.Frames.Count; i += frameStep)
         {
             using var frameImage = image.Frames.CloneFrame(i);
 
             var metadata = image.Frames[i].Metadata.GetGifMetadata();
 
-            int delayMs = 100;
-            if (metadata.FrameDelay > 0)
-            {
-                delayMs = metadata.FrameDelay * 10;
-            }
+            var delayMs = 100;
+            if (metadata.FrameDelay > 0) delayMs = metadata.FrameDelay * 10;
             // Adjust delay to account for skipped frames
-            delayMs = (int)((delayMs * frameStep) / _options.AnimationSpeedMultiplier);
+            delayMs = (int)(delayMs * frameStep / _options.AnimationSpeedMultiplier);
 
-            string content = RenderImage(frameImage);
+            var content = RenderImage(frameImage);
             frames.Add(new ColorBlockFrame(content, delayMs));
         }
 
         return frames;
     }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        GC.SuppressFinalize(this);
-    }
 }
 
 /// <summary>
-/// A single frame of colored block output
+///     A single frame of colored block output
 /// </summary>
 public class ColorBlockFrame : IAnimationFrame
 {
-    public string Content { get; }
-    public int DelayMs { get; }
-
     public ColorBlockFrame(string content, int delayMs)
     {
         Content = content;
         DelayMs = delayMs;
     }
 
-    public override string ToString() => Content;
+    public string Content { get; }
+    public int DelayMs { get; }
+
+    public override string ToString()
+    {
+        return Content;
+    }
 }

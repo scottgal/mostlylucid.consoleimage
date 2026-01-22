@@ -1,4 +1,3 @@
-using ConsoleImage.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -6,18 +5,14 @@ namespace ConsoleImage.Core.Tests;
 
 public class BrailleRendererTests : IDisposable
 {
-    private readonly List<Image<Rgba32>> _disposableImages = new();
-
     // Braille character range: U+2800 to U+28FF
     private const char BrailleBase = '\u2800';
     private const char BrailleMax = '\u28FF';
+    private readonly List<Image<Rgba32>> _disposableImages = new();
 
     public void Dispose()
     {
-        foreach (var image in _disposableImages)
-        {
-            image.Dispose();
-        }
+        foreach (var image in _disposableImages) image.Dispose();
     }
 
     private Image<Rgba32> CreateTestImage(int width, int height, Rgba32 color)
@@ -202,7 +197,7 @@ public class BrailleRendererTests : IDisposable
             MaxWidth = 10,
             MaxHeight = 5,
             UseColor = false,
-            Invert = true  // Dark terminal: bright pixels = dots
+            Invert = true // Dark terminal: bright pixels = dots
         });
 
         var image = CreateTestImage(20, 20, Color.White);
@@ -222,7 +217,7 @@ public class BrailleRendererTests : IDisposable
             MaxWidth = 10,
             MaxHeight = 5,
             UseColor = false,
-            Invert = true  // Dark terminal: dark pixels = no dots
+            Invert = true // Dark terminal: dark pixels = no dots
         });
 
         var image = CreateTestImage(20, 20, Color.Black);
@@ -239,7 +234,7 @@ public class BrailleRendererTests : IDisposable
     {
         using var renderer = new BrailleRenderer(new RenderOptions
         {
-            MaxWidth = 25,  // Not divisible by 2
+            MaxWidth = 25, // Not divisible by 2
             MaxHeight = 13, // Not divisible by 4
             CharacterAspectRatio = 0.5f,
             UseColor = false

@@ -19,31 +19,31 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-    - uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: '10.0.x'
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
 
-    - name: Create version tag for MinVer (workflow_dispatch)
-      if: github.event_name == 'workflow_dispatch'
-      run: git tag "consoleimage-v${{ github.event.inputs.version }}"
+      - name: Create version tag for MinVer (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: git tag "consoleimage-v${{ github.event.inputs.version }}"
 
-    - name: Build & Pack
-      run: |
-        dotnet restore ConsoleImage.Core/ConsoleImage.Core.csproj
-        dotnet pack ConsoleImage.Core/ConsoleImage.Core.csproj -c Release -o ./artifacts
+      - name: Build & Pack
+        run: |
+          dotnet restore ConsoleImage.Core/ConsoleImage.Core.csproj
+          dotnet pack ConsoleImage.Core/ConsoleImage.Core.csproj -c Release -o ./artifacts
 
-    - name: NuGet Login (OIDC)
-      id: nuget
-      uses: NuGet/login@v1
-      with:
-        user: 'mostlylucid'
+      - name: NuGet Login (OIDC)
+        id: nuget
+        uses: NuGet/login@v1
+        with:
+          user: 'mostlylucid'
 
-    - name: Publish to NuGet.org
-      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Publish to NuGet.org
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
-    - name: Publish to GitHub Packages
-      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
+      - name: Publish to GitHub Packages
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate

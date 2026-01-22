@@ -1,9 +1,10 @@
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Detects terminal capabilities for choosing the best image display protocol.
+///     Detects terminal capabilities for choosing the best image display protocol.
 /// </summary>
 public static class TerminalCapabilities
 {
@@ -11,7 +12,7 @@ public static class TerminalCapabilities
     private static bool? _cachedSupportsColor;
 
     /// <summary>
-    /// Detect the best available protocol for the current terminal.
+    ///     Detect the best available protocol for the current terminal.
     /// </summary>
     /// <param name="forceRefresh">Force re-detection instead of using cached value</param>
     /// <returns>The best available terminal protocol</returns>
@@ -25,7 +26,7 @@ public static class TerminalCapabilities
     }
 
     /// <summary>
-    /// Check if a specific protocol is supported.
+    ///     Check if a specific protocol is supported.
     /// </summary>
     public static bool SupportsProtocol(TerminalProtocol protocol)
     {
@@ -42,7 +43,7 @@ public static class TerminalCapabilities
     }
 
     /// <summary>
-    /// Check if terminal supports ANSI color codes.
+    ///     Check if terminal supports ANSI color codes.
     /// </summary>
     public static bool SupportsColor()
     {
@@ -54,7 +55,7 @@ public static class TerminalCapabilities
     }
 
     /// <summary>
-    /// Check if terminal supports Unicode characters.
+    ///     Check if terminal supports Unicode characters.
     /// </summary>
     public static bool SupportsUnicode()
     {
@@ -64,13 +65,10 @@ public static class TerminalCapabilities
 
         if (lang.Contains("UTF-8", StringComparison.OrdinalIgnoreCase) ||
             lcAll.Contains("UTF-8", StringComparison.OrdinalIgnoreCase))
-        {
             return true;
-        }
 
         // On Windows, check console output code page
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
             try
             {
                 return Console.OutputEncoding.WebName.Contains("utf", StringComparison.OrdinalIgnoreCase);
@@ -79,14 +77,13 @@ public static class TerminalCapabilities
             {
                 return false;
             }
-        }
 
         // Most modern terminals support Unicode
         return true;
     }
 
     /// <summary>
-    /// Check if running in iTerm2 or compatible terminal.
+    ///     Check if running in iTerm2 or compatible terminal.
     /// </summary>
     public static bool SupportsITerm2()
     {
@@ -113,7 +110,7 @@ public static class TerminalCapabilities
     }
 
     /// <summary>
-    /// Check if running in Kitty terminal or compatible.
+    ///     Check if running in Kitty terminal or compatible.
     /// </summary>
     public static bool SupportsKitty()
     {
@@ -136,8 +133,8 @@ public static class TerminalCapabilities
     }
 
     /// <summary>
-    /// Check if terminal supports Sixel graphics.
-    /// This is a heuristic check; actual support may vary.
+    ///     Check if terminal supports Sixel graphics.
+    ///     This is a heuristic check; actual support may vary.
     /// </summary>
     public static bool SupportsSixel()
     {
@@ -159,11 +156,8 @@ public static class TerminalCapabilities
         if (!string.IsNullOrEmpty(xtermVersion))
         {
             // Format is "XTerm(nnn)" where nnn is version
-            var match = System.Text.RegularExpressions.Regex.Match(xtermVersion, @"\((\d+)\)");
-            if (match.Success && int.TryParse(match.Groups[1].Value, out int version))
-            {
-                return version >= 330;
-            }
+            var match = Regex.Match(xtermVersion, @"\((\d+)\)");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var version)) return version >= 330;
         }
 
         return false;
@@ -212,22 +206,17 @@ public static class TerminalCapabilities
             term.Contains("screen") || term.Contains("tmux") ||
             term.Contains("vt100") || term.Contains("linux") ||
             term.Contains("ansi") || term.Contains("cygwin"))
-        {
             return true;
-        }
 
         // On Windows, check if ANSI is enabled
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return ConsoleHelper.EnableAnsiSupport();
-        }
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return ConsoleHelper.EnableAnsiSupport();
 
         // Default to true for Unix-like systems
         return !RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     }
 
     /// <summary>
-    /// Get a human-readable description of the terminal capabilities.
+    ///     Get a human-readable description of the terminal capabilities.
     /// </summary>
     public static string GetCapabilitiesReport()
     {
@@ -235,16 +224,16 @@ public static class TerminalCapabilities
             .Select(p => $"  {p}: {(SupportsProtocol(p) ? "Supported" : "Not supported")}");
 
         return $"""
-            Terminal Capabilities Report
-            ============================
-            TERM: {Environment.GetEnvironmentVariable("TERM") ?? "(not set)"}
-            TERM_PROGRAM: {Environment.GetEnvironmentVariable("TERM_PROGRAM") ?? "(not set)"}
-            COLORTERM: {Environment.GetEnvironmentVariable("COLORTERM") ?? "(not set)"}
+                Terminal Capabilities Report
+                ============================
+                TERM: {Environment.GetEnvironmentVariable("TERM") ?? "(not set)"}
+                TERM_PROGRAM: {Environment.GetEnvironmentVariable("TERM_PROGRAM") ?? "(not set)"}
+                COLORTERM: {Environment.GetEnvironmentVariable("COLORTERM") ?? "(not set)"}
 
-            Protocol Support:
-            {string.Join(Environment.NewLine, protocols)}
+                Protocol Support:
+                {string.Join(Environment.NewLine, protocols)}
 
-            Best Protocol: {DetectBestProtocol()}
-            """;
+                Best Protocol: {DetectBestProtocol()}
+                """;
     }
 }

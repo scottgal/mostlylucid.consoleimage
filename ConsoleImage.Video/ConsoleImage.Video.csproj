@@ -31,16 +31,16 @@
 
     <!-- Local development: use ProjectReference -->
     <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
-        <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj" />
+        <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj"/>
     </ItemGroup>
 
     <!-- CI/Release: use NuGet packages -->
     <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
-        <PackageReference Include="mostlylucid.consoleimage.video" Version="$(VideoPackageVersion)" />
+        <PackageReference Include="mostlylucid.consoleimage.video" Version="$(VideoPackageVersion)"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="System.CommandLine" Version="2.0.2" />
+        <PackageReference Include="System.CommandLine" Version="2.0.2"/>
     </ItemGroup>
 
     <ItemGroup>

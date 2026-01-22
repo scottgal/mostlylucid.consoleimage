@@ -1,5 +1,4 @@
 using ConsoleImage.Core;
-using Spectre.Console;
 using Spectre.Console.Rendering;
 using SpectreRenderOptions = Spectre.Console.Rendering.RenderOptions;
 using CoreRenderOptions = ConsoleImage.Core.RenderOptions;
@@ -7,18 +6,18 @@ using CoreRenderOptions = ConsoleImage.Core.RenderOptions;
 namespace ConsoleImage.Spectre;
 
 /// <summary>
-/// A Spectre.Console renderable that displays an image using colored Unicode blocks.
-/// Provides higher fidelity than ASCII by using half-block characters with separate
-/// foreground and background colors (2 pixels per character cell).
+///     A Spectre.Console renderable that displays an image using colored Unicode blocks.
+///     Provides higher fidelity than ASCII by using half-block characters with separate
+///     foreground and background colors (2 pixels per character cell).
 /// </summary>
 public class ColorBlockImage : IRenderable
 {
     private readonly string _content;
-    private readonly int _width;
     private readonly int _height;
+    private readonly int _width;
 
     /// <summary>
-    /// Create a color block image from a file path.
+    ///     Create a color block image from a file path.
     /// </summary>
     public ColorBlockImage(string filePath, CoreRenderOptions? options = null)
     {
@@ -33,7 +32,7 @@ public class ColorBlockImage : IRenderable
     }
 
     /// <summary>
-    /// Create a color block image from pre-rendered content.
+    ///     Create a color block image from pre-rendered content.
     /// </summary>
     public ColorBlockImage(string content, int width, int height)
     {
@@ -43,7 +42,7 @@ public class ColorBlockImage : IRenderable
     }
 
     /// <summary>
-    /// Create a color block image from a ColorBlockFrame.
+    ///     Create a color block image from a ColorBlockFrame.
     /// </summary>
     public ColorBlockImage(ColorBlockFrame frame)
     {
@@ -71,10 +70,9 @@ public class ColorBlockImage : IRenderable
     private static int GetVisibleWidth(string line)
     {
         // Strip ANSI escape sequences to get visible character count
-        int width = 0;
-        bool inEscape = false;
-        foreach (char c in line)
-        {
+        var width = 0;
+        var inEscape = false;
+        foreach (var c in line)
             if (c == '\x1b')
             {
                 inEscape = true;
@@ -88,7 +86,7 @@ public class ColorBlockImage : IRenderable
             {
                 width++;
             }
-        }
+
         return width;
     }
 }

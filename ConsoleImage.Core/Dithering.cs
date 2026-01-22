@@ -2,56 +2,53 @@
 // Floyd-Steinberg dithering implementation
 // Reference: https://en.wikipedia.org/wiki/Floyd–Steinberg_dithering
 
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Floyd-Steinberg dithering for smoother gradient rendering in ASCII art.
-/// Spreads quantization error to neighboring pixels for perceptually better output.
+///     Floyd-Steinberg dithering for smoother gradient rendering in ASCII art.
+///     Spreads quantization error to neighboring pixels for perceptually better output.
 /// </summary>
 public static class Dithering
 {
     /// <summary>
-    /// Apply Floyd-Steinberg dithering to a grayscale values array.
-    /// The dithering spreads quantization error to produce smoother gradients.
+    ///     Apply Floyd-Steinberg dithering to a grayscale values array.
+    ///     The dithering spreads quantization error to produce smoother gradients.
     /// </summary>
     /// <param name="values">2D array of grayscale values (0-1 range)</param>
     /// <param name="levels">Number of quantization levels (e.g., number of characters)</param>
     /// <returns>Quantized values array with dithering applied</returns>
     public static float[,] ApplyFloydSteinberg(float[,] values, int levels)
     {
-        int height = values.GetLength(0);
-        int width = values.GetLength(1);
+        var height = values.GetLength(0);
+        var width = values.GetLength(1);
 
         // Work on a copy to avoid modifying input
         var result = new float[height, width];
         Array.Copy(values, result, values.Length);
 
-        float step = 1.0f / (levels - 1);
+        var step = 1.0f / (levels - 1);
 
         // Process with serpentine scanning (alternating direction each row)
-        for (int y = 0; y < height; y++)
+        for (var y = 0; y < height; y++)
         {
-            bool leftToRight = (y % 2) == 0;
+            var leftToRight = y % 2 == 0;
 
-            int xStart = leftToRight ? 0 : width - 1;
-            int xEnd = leftToRight ? width : -1;
-            int xStep = leftToRight ? 1 : -1;
+            var xStart = leftToRight ? 0 : width - 1;
+            var xEnd = leftToRight ? width : -1;
+            var xStep = leftToRight ? 1 : -1;
 
-            for (int x = xStart; x != xEnd; x += xStep)
+            for (var x = xStart; x != xEnd; x += xStep)
             {
-                float oldValue = result[y, x];
+                var oldValue = result[y, x];
 
                 // Quantize to nearest level
-                float newValue = MathF.Round(oldValue / step) * step;
+                var newValue = MathF.Round(oldValue / step) * step;
                 newValue = Math.Clamp(newValue, 0, 1);
 
                 result[y, x] = newValue;
 
                 // Calculate quantization error
-                float error = oldValue - newValue;
+                var error = oldValue - newValue;
 
                 // Distribute error to neighbors using Floyd-Steinberg coefficients
                 // Standard pattern (when going left-to-right):
@@ -102,49 +99,37 @@ public static class Dithering
     }
 
     /// <summary>
-    /// Apply Floyd-Steinberg dithering to shape vectors.
-    /// Each component of the 6D vector is dithered independently.
+    ///     Apply Floyd-Steinberg dithering to shape vectors.
+    ///     Each component of the 6D vector is dithered independently.
     /// </summary>
     public static ShapeVector[,] ApplyToShapeVectors(ShapeVector[,] vectors, int levels)
     {
-        int height = vectors.GetLength(0);
-        int width = vectors.GetLength(1);
+        var height = vectors.GetLength(0);
+        var width = vectors.GetLength(1);
 
         // Extract each component into a separate 2D array
         var components = new float[6][,];
-        for (int c = 0; c < 6; c++)
+        for (var c = 0; c < 6; c++)
         {
             components[c] = new float[height, width];
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    components[c][y, x] = vectors[y, x][c];
-                }
-            }
+            for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+                components[c][y, x] = vectors[y, x][c];
         }
 
         // Apply dithering to each component
         var ditheredComponents = new float[6][,];
-        for (int c = 0; c < 6; c++)
-        {
-            ditheredComponents[c] = ApplyFloydSteinberg(components[c], levels);
-        }
+        for (var c = 0; c < 6; c++) ditheredComponents[c] = ApplyFloydSteinberg(components[c], levels);
 
         // Reconstruct shape vectors
         var result = new ShapeVector[height, width];
         Span<float> vals = stackalloc float[6];
 
-        for (int y = 0; y < height; y++)
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
         {
-            for (int x = 0; x < width; x++)
-            {
-                for (int c = 0; c < 6; c++)
-                {
-                    vals[c] = Math.Clamp(ditheredComponents[c][y, x], 0, 1);
-                }
-                result[y, x] = new ShapeVector(vals);
-            }
+            for (var c = 0; c < 6; c++) vals[c] = Math.Clamp(ditheredComponents[c][y, x], 0, 1);
+            result[y, x] = new ShapeVector(vals);
         }
 
         return result;

@@ -1,23 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Spectre.Console" Version="0.54.0" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Spectre.Console" Version="0.54.0"/>
+    </ItemGroup>
 
-  <!-- Use ProjectReference for local dev, PackageReference for NuGet publishing -->
-  <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
-    <ProjectReference Include="..\ConsoleImage.Spectre\ConsoleImage.Spectre.csproj" />
-  </ItemGroup>
+    <!-- Use ProjectReference for local dev, PackageReference for NuGet publishing -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
+        <ProjectReference Include="..\ConsoleImage.Spectre\ConsoleImage.Spectre.csproj"/>
+    </ItemGroup>
 
-  <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
-    <PackageReference Include="mostlylucid.consoleimage.spectre" Version="$(SpectrePackageVersion)" />
-  </ItemGroup>
+    <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
+        <PackageReference Include="mostlylucid.consoleimage.spectre" Version="$(SpectrePackageVersion)"/>
+    </ItemGroup>
 
 </Project>

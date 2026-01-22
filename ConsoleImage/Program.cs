@@ -2,6 +2,7 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 
 using System.CommandLine;
+using System.Globalization;
 using ConsoleImage.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -26,15 +27,17 @@ var inputArg = new Argument<string?>("input")
 var widthOption = new Option<int?>("--width") { Description = "Output width in characters" };
 widthOption.Aliases.Add("-w");
 
-var heightOption = new Option<int?>("--height") { Description = "Output height in characters (auto-calculated from width by default)" };
+var heightOption = new Option<int?>("--height")
+    { Description = "Output height in characters (auto-calculated from width by default)" };
 heightOption.Aliases.Add("-h");
 
-var aspectRatioOption = new Option<float?>("--aspect-ratio") { Description = "Character aspect ratio (default: 0.5, meaning chars are 2x taller than wide)" };
+var aspectRatioOption = new Option<float?>("--aspect-ratio")
+    { Description = "Character aspect ratio (default: 0.5, meaning chars are 2x taller than wide)" };
 aspectRatioOption.Aliases.Add("-a");
 
 // Detect console window size for defaults (with fallbacks)
-int defaultMaxWidth = 120;
-int defaultMaxHeight = 40;
+var defaultMaxWidth = 120;
+var defaultMaxHeight = 40;
 try
 {
     if (Console.WindowWidth > 0)
@@ -76,12 +79,15 @@ var gammaOption = new Option<float>("--gamma")
 };
 gammaOption.Aliases.Add("-g");
 
-var charsetOption = new Option<string?>("--charset") { Description = "Custom character set (ordered from light to dark)" };
+var charsetOption = new Option<string?>("--charset")
+    { Description = "Custom character set (ordered from light to dark)" };
 
-var presetOption = new Option<string?>("--preset") { Description = "Character set preset: extended (default), simple, block, classic" };
+var presetOption = new Option<string?>("--preset")
+    { Description = "Character set preset: extended (default), simple, block, classic" };
 presetOption.Aliases.Add("-p");
 
-var outputOption = new Option<string?>("--output") { Description = "Output: file path, 'gif:path.gif' for animated GIF, or just 'gif' (uses input name)" };
+var outputOption = new Option<string?>("--output")
+    { Description = "Output: file path, 'gif:path.gif' for animated GIF, or just 'gif' (uses input name)" };
 outputOption.Aliases.Add("-o");
 
 var noAnimateOption = new Option<bool>("--no-animate") { Description = "Don't animate GIFs - just show first frame" };
@@ -100,7 +106,8 @@ var loopOption = new Option<int>("--loop")
 };
 loopOption.Aliases.Add("-l");
 
-var framerateOption = new Option<float?>("--framerate") { Description = "Fixed framerate in FPS (overrides GIF timing)" };
+var framerateOption = new Option<float?>("--framerate")
+    { Description = "Fixed framerate in FPS (overrides GIF timing)" };
 framerateOption.Aliases.Add("-r");
 
 var frameSampleOption = new Option<int>("--frame-sample")
@@ -113,34 +120,50 @@ frameSampleOption.Aliases.Add("-f");
 var edgeOption = new Option<bool>("--edge") { Description = "Enable edge detection to enhance foreground visibility" };
 edgeOption.Aliases.Add("-e");
 
-var bgThresholdOption = new Option<float?>("--bg-threshold") { Description = "Background suppression threshold (0.0-1.0). Pixels above this brightness are suppressed." };
+var bgThresholdOption = new Option<float?>("--bg-threshold")
+    { Description = "Background suppression threshold (0.0-1.0). Pixels above this brightness are suppressed." };
 
-var darkBgThresholdOption = new Option<float?>("--dark-bg-threshold") { Description = "Dark background suppression threshold (0.0-1.0). Pixels below this brightness are suppressed." };
+var darkBgThresholdOption = new Option<float?>("--dark-bg-threshold")
+    { Description = "Dark background suppression threshold (0.0-1.0). Pixels below this brightness are suppressed." };
 
 var autoBgOption = new Option<bool>("--auto-bg") { Description = "Automatically detect and suppress background" };
 
-var colorBlocksOption = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks for high-fidelity output (requires 24-bit color terminal)" };
+var colorBlocksOption = new Option<bool>("--blocks")
+    { Description = "Use colored Unicode blocks for high-fidelity output (requires 24-bit color terminal)" };
 colorBlocksOption.Aliases.Add("-b");
 
-var brailleOption = new Option<bool>("--braille") { Description = "Use braille characters for ultra-high resolution (2x4 dots per cell)" };
+var brailleOption = new Option<bool>("--braille")
+    { Description = "Use braille characters for ultra-high resolution (2x4 dots per cell)" };
 brailleOption.Aliases.Add("-B");
 
-var matrixOption = new Option<bool>("--matrix") { Description = "Use Matrix digital rain effect (falling characters with glow)" };
+var matrixOption = new Option<bool>("--matrix")
+    { Description = "Use Matrix digital rain effect (falling characters with glow)" };
 matrixOption.Aliases.Add("-M");
 
-var matrixColorOption = new Option<string?>("--matrix-color") { Description = "Matrix color: green (default), red, blue, amber, cyan, purple, or hex (#RRGGBB)" };
-var matrixFullColorOption = new Option<bool>("--matrix-fullcolor") { Description = "Use source image colors with Matrix lighting effect" };
-var matrixDensityOption = new Option<float>("--matrix-density") { Description = "Matrix rain density (0.1-2.0, default 0.5)", DefaultValueFactory = _ => 0.5f };
-var matrixSpeedOption = new Option<float>("--matrix-speed") { Description = "Matrix rain speed multiplier (0.5-3.0, default 1.0)", DefaultValueFactory = _ => 1.0f };
-var matrixAsciiOption = new Option<bool>("--matrix-ascii") { Description = "Use ASCII characters only (no katakana) - better font compatibility" };
-var matrixFpsOption = new Option<int>("--matrix-fps") { Description = "Matrix animation FPS (5-60, default 20)", DefaultValueFactory = _ => 20 };
-var matrixAlphabetOption = new Option<string?>("--matrix-alphabet") { Description = "Custom character set for Matrix rain (e.g., 'HELLO' or '01')" };
-var matrixEdgeDetectOption = new Option<bool>("--matrix-edge-detect") { Description = "Enable edge detection - rain collects on horizontal edges (shoulders, ledges)" };
+var matrixColorOption = new Option<string?>("--matrix-color")
+    { Description = "Matrix color: green (default), red, blue, amber, cyan, purple, or hex (#RRGGBB)" };
+var matrixFullColorOption = new Option<bool>("--matrix-fullcolor")
+    { Description = "Use source image colors with Matrix lighting effect" };
+var matrixDensityOption = new Option<float>("--matrix-density")
+    { Description = "Matrix rain density (0.1-2.0, default 0.5)", DefaultValueFactory = _ => 0.5f };
+var matrixSpeedOption = new Option<float>("--matrix-speed")
+    { Description = "Matrix rain speed multiplier (0.5-3.0, default 1.0)", DefaultValueFactory = _ => 1.0f };
+var matrixAsciiOption = new Option<bool>("--matrix-ascii")
+    { Description = "Use ASCII characters only (no katakana) - better font compatibility" };
+var matrixFpsOption = new Option<int>("--matrix-fps")
+    { Description = "Matrix animation FPS (5-60, default 20)", DefaultValueFactory = _ => 20 };
+var matrixAlphabetOption = new Option<string?>("--matrix-alphabet")
+    { Description = "Custom character set for Matrix rain (e.g., 'HELLO' or '01')" };
+var matrixEdgeDetectOption = new Option<bool>("--matrix-edge-detect")
+    { Description = "Enable edge detection - rain collects on horizontal edges (shoulders, ledges)" };
 matrixEdgeDetectOption.Aliases.Add("--matrix-reveal");
-var matrixEdgePersistOption = new Option<float>("--matrix-edge-persist") { Description = "Edge persistence strength (0.0-1.0, default 0.7)", DefaultValueFactory = _ => 0.7f };
-var matrixBrightPersistOption = new Option<bool>("--matrix-bright-persist") { Description = "Enable brightness persistence - brighter areas glow longer" };
+var matrixEdgePersistOption = new Option<float>("--matrix-edge-persist")
+    { Description = "Edge persistence strength (0.0-1.0, default 0.7)", DefaultValueFactory = _ => 0.7f };
+var matrixBrightPersistOption = new Option<bool>("--matrix-bright-persist")
+    { Description = "Enable brightness persistence - brighter areas glow longer" };
 
-var noAltScreenOption = new Option<bool>("--no-alt-screen") { Description = "Disable alternate screen buffer for animations (keeps output in scrollback)" };
+var noAltScreenOption = new Option<bool>("--no-alt-screen")
+    { Description = "Disable alternate screen buffer for animations (keeps output in scrollback)" };
 
 var noParallelOption = new Option<bool>("--no-parallel") { Description = "Disable parallel processing" };
 
@@ -148,35 +171,53 @@ var noDitherOption = new Option<bool>("--no-dither") { Description = "Disable Fl
 
 var noEdgeDirOption = new Option<bool>("--no-edge-chars") { Description = "Disable directional characters (/ \\ | -)" };
 
-var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (for LLM tool calls and programmatic use)" };
+var jsonOption = new Option<bool>("--json")
+    { Description = "Output as JSON (for LLM tool calls and programmatic use)" };
 jsonOption.Aliases.Add("-j");
 
-var darkCutoffOption = new Option<float?>("--dark-cutoff") { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0). Disabled by default." };
-var lightCutoffOption = new Option<float?>("--light-cutoff") { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0). Disabled by default." };
+var darkCutoffOption = new Option<float?>("--dark-cutoff")
+    { Description = "Dark terminal optimization: skip colors below this brightness (0.0-1.0). Disabled by default." };
+var lightCutoffOption = new Option<float?>("--light-cutoff")
+    { Description = "Light terminal optimization: skip colors above this brightness (0.0-1.0). Disabled by default." };
 
 // Calibration options
-var calibrateOption = new Option<bool>("--calibrate") { Description = "Display aspect ratio calibration pattern (should show a circle)" };
-var saveCalibrationOption = new Option<bool>("--save") { Description = "Save current aspect ratio to calibration.json (use with --calibrate)" };
+var calibrateOption = new Option<bool>("--calibrate")
+    { Description = "Display aspect ratio calibration pattern (should show a circle)" };
+var saveCalibrationOption = new Option<bool>("--save")
+    { Description = "Save current aspect ratio to calibration.json (use with --calibrate)" };
 
 // Status line option - shows file info, resolution, progress below the image
-var statusOption = new Option<bool>("--status") { Description = "Show status line below output with file info, resolution, progress" };
+var statusOption = new Option<bool>("--status")
+    { Description = "Show status line below output with file info, resolution, progress" };
 statusOption.Aliases.Add("-S");
 
 // Mode selection option (supports: ascii, blocks, braille, matrix, sixel, iterm2, kitty, auto, list)
-var modeOption = new Option<string?>("--mode") { Description = "Rendering mode: ascii, blocks, braille, matrix, sixel, iterm2, kitty, auto, list (shows available modes)" };
+var modeOption = new Option<string?>("--mode")
+{
+    Description =
+        "Rendering mode: ascii, blocks, braille, matrix, sixel, iterm2, kitty, auto, list (shows available modes)"
+};
 modeOption.Aliases.Add("-m");
 
 // GIF output options - save rendered output as animated GIF
-var outputGifOption = new Option<FileInfo?>("--output-gif") { Description = "Save rendered output as animated GIF (emulated console)" };
+var outputGifOption = new Option<FileInfo?>("--output-gif")
+    { Description = "Save rendered output as animated GIF (emulated console)" };
 
-var gifLengthOption = new Option<double?>("--gif-length") { Description = "Length of GIF output in seconds (for videos/long animations)" };
+var gifLengthOption = new Option<double?>("--gif-length")
+    { Description = "Length of GIF output in seconds (for videos/long animations)" };
 var gifFramesOption = new Option<int?>("--gif-frames") { Description = "Number of frames for GIF output" };
-var gifFontSizeOption = new Option<int>("--gif-font-size") { Description = "Font size for GIF output (smaller = smaller file)", DefaultValueFactory = _ => 10 };
-var gifScaleOption = new Option<float>("--gif-scale") { Description = "Scale factor for GIF output (0.5 = half size)", DefaultValueFactory = _ => 1.0f };
-var gifFpsOption = new Option<int>("--gif-fps") { Description = "Target FPS for GIF output (lower = smaller file)", DefaultValueFactory = _ => 10 };
-var gifColorsOption = new Option<int>("--gif-colors") { Description = "Max colors in GIF palette (16-256, lower = smaller file)", DefaultValueFactory = _ => 64 };
-var gifWidthOption = new Option<int?>("--gif-width") { Description = "GIF output width in characters (preserves aspect ratio if height not set)" };
-var gifHeightOption = new Option<int?>("--gif-height") { Description = "GIF output height in characters (preserves aspect ratio if width not set)" };
+var gifFontSizeOption = new Option<int>("--gif-font-size")
+    { Description = "Font size for GIF output (smaller = smaller file)", DefaultValueFactory = _ => 10 };
+var gifScaleOption = new Option<float>("--gif-scale")
+    { Description = "Scale factor for GIF output (0.5 = half size)", DefaultValueFactory = _ => 1.0f };
+var gifFpsOption = new Option<int>("--gif-fps")
+    { Description = "Target FPS for GIF output (lower = smaller file)", DefaultValueFactory = _ => 10 };
+var gifColorsOption = new Option<int>("--gif-colors")
+    { Description = "Max colors in GIF palette (16-256, lower = smaller file)", DefaultValueFactory = _ => 64 };
+var gifWidthOption = new Option<int?>("--gif-width")
+    { Description = "GIF output width in characters (preserves aspect ratio if height not set)" };
+var gifHeightOption = new Option<int?>("--gif-height")
+    { Description = "GIF output height in characters (preserves aspect ratio if width not set)" };
 
 // Add options to root command
 rootCommand.Arguments.Add(inputArg);
@@ -294,9 +335,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     // Parse output option: can be "path.txt", "gif", "gif:path.gif", "json", "json:path.json"
     string? outputFile = null;
-    bool outputAsGif = false;
+    var outputAsGif = false;
     string? gifOutputPath = null;
-    bool outputAsJson = false;
+    var outputAsJson = false;
     string? jsonOutputPath = null;
 
     if (!string.IsNullOrEmpty(output))
@@ -344,8 +385,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     {
         // --gif-length 0 means unlimited (null)
         double? effectiveLength = gifLength.HasValue
-            ? (gifLength.Value <= 0 ? null : gifLength.Value)  // 0 or negative = unlimited
-            : (isAnimatedSource ? 10.0 : null);                // Default 10s for animations
+            ? gifLength.Value <= 0 ? null : gifLength.Value // 0 or negative = unlimited
+            : isAnimatedSource
+                ? 10.0
+                : null; // Default 10s for animations
 
         return new GifWriterOptions
         {
@@ -370,8 +413,16 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 
     // JSON mode helper - manual serialization for AOT compatibility
-    void OutputJson(string json) => Console.WriteLine(json);
-    string JsonEscape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t").Replace("\x1b", "\\u001b");
+    void OutputJson(string json)
+    {
+        Console.WriteLine(json);
+    }
+
+    string JsonEscape(string s)
+    {
+        return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r")
+            .Replace("\t", "\\t").Replace("\x1b", "\\u001b");
+    }
 
     // Mode list - show all available rendering modes
     if (mode?.Equals("list", StringComparison.OrdinalIgnoreCase) == true)
@@ -393,11 +444,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             : RenderMode.Ascii;
 
         // Get effective aspect ratio: explicit > saved for mode > default
-        float calibrationAspect = aspectRatio
-            ?? savedCalibration?.GetAspectRatio(calibrationMode)
-            ?? 0.5f;
+        var calibrationAspect = aspectRatio
+                                ?? savedCalibration?.GetAspectRatio(calibrationMode)
+                                ?? 0.5f;
 
-        string modeName = calibrationMode switch
+        var modeName = calibrationMode switch
         {
             RenderMode.Braille => "Braille",
             RenderMode.ColorBlocks => "Blocks",
@@ -423,9 +474,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         var calOutput = CalibrationHelper.RenderCalibrationPattern(
             calibrationMode,
             calibrationAspect,
-            useColor: !noColor,
-            width: 40,
-            height: 20);
+            !noColor);
 
         Console.WriteLine(calOutput);
         Console.WriteLine();
@@ -445,7 +494,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             Console.WriteLine();
             Console.WriteLine("Once the circle looks correct, run with --save to remember this setting:");
-            string modeFlag = calibrationMode switch
+            var modeFlag = calibrationMode switch
             {
                 RenderMode.Braille => " --braille",
                 RenderMode.ColorBlocks => " --blocks",
@@ -460,13 +509,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     if (string.IsNullOrWhiteSpace(input))
     {
-        Console.Error.WriteLine("Error: No input file or URL specified. Use --calibrate for aspect ratio testing without a file.");
+        Console.Error.WriteLine(
+            "Error: No input file or URL specified. Use --calibrate for aspect ratio testing without a file.");
         Console.Error.WriteLine("       Use --mode list to see available rendering modes.");
         return 1;
     }
 
     // Check if input is a URL
-    bool isUrl = UrlHelper.IsUrl(input);
+    var isUrl = UrlHelper.IsUrl(input);
 
     // Validate file exists (for local files)
     if (!isUrl && !File.Exists(input))
@@ -476,6 +526,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             OutputJson($"{{\"success\":false,\"error\":\"File not found: {JsonEscape(input)}\"}}");
             return 1;
         }
+
         Console.Error.WriteLine($"Error: File not found: {input}");
         return 1;
     }
@@ -484,7 +535,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     if (outputAsGif && string.IsNullOrEmpty(gifOutputPath))
     {
         // Generate output path from input filename
-        string baseName = isUrl
+        var baseName = isUrl
             ? Path.GetFileNameWithoutExtension(new Uri(input).AbsolutePath)
             : Path.GetFileNameWithoutExtension(input);
         if (string.IsNullOrEmpty(baseName)) baseName = "output";
@@ -494,7 +545,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     // Determine JSON output path if needed
     if (outputAsJson && string.IsNullOrEmpty(jsonOutputPath))
     {
-        string baseName = isUrl
+        var baseName = isUrl
             ? Path.GetFileNameWithoutExtension(new Uri(input).AbsolutePath)
             : Path.GetFileNameWithoutExtension(input);
         if (string.IsNullOrEmpty(baseName)) baseName = "output";
@@ -505,12 +556,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     // Supports both .json and .ndjson (streaming JSON Lines format)
     if (!isUrl && (input.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
                    input.EndsWith(".ndjson", StringComparison.OrdinalIgnoreCase)))
-    {
         return await HandleJsonDocument(input, speed, loop, cancellationToken);
-    }
 
     // Show download progress for URLs
-    string inputPath = input;
+    var inputPath = input;
     MemoryStream? downloadedStream = null;
     if (isUrl)
     {
@@ -520,7 +569,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             if (total > 0)
             {
-                long percent = (downloaded * 100) / total;
+                var percent = downloaded * 100 / total;
                 if (percent != lastPercent)
                 {
                     Console.Error.Write($"\rDownloading... {percent}%");
@@ -536,25 +585,23 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 
     // Determine character set
-    string? characterSet = charset;
+    var characterSet = charset;
     if (string.IsNullOrEmpty(characterSet))
-    {
-        characterSet = (preset?.ToLowerInvariant()) switch
+        characterSet = preset?.ToLowerInvariant() switch
         {
             "simple" => CharacterMap.SimpleCharacterSet,
             "block" => CharacterMap.BlockCharacterSet,
             "classic" => CharacterMap.DefaultCharacterSet,
-            _ => CharacterMap.ExtendedCharacterSet  // Extended is the default (better quality)
+            _ => CharacterMap.ExtendedCharacterSet // Extended is the default (better quality)
         };
-    }
 
     // Determine render mode and get effective aspect ratio from saved calibration
     var renderMode = braille ? RenderMode.Braille
         : colorBlocks ? RenderMode.ColorBlocks
         : RenderMode.Ascii;
-    float effectiveAspect = aspectRatio
-        ?? savedCalibration?.GetAspectRatio(renderMode)
-        ?? 0.5f;
+    var effectiveAspect = aspectRatio
+                          ?? savedCalibration?.GetAspectRatio(renderMode)
+                          ?? 0.5f;
 
     var options = new RenderOptions
     {
@@ -587,21 +634,20 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     try
     {
         // Determine file extension (for format detection)
-        string extension = isUrl
+        var extension = isUrl
             ? "." + (UrlHelper.GetExtension(input) ?? "jpg")
             : Path.GetExtension(input);
 
         // Check if it's a GIF
-        bool isGif = extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
+        var isGif = extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
 
         // Parse mode option - override --blocks and --braille flags
-        bool useBlocks = colorBlocks;
-        bool useBraille = braille;
-        bool useMatrix = matrix;
+        var useBlocks = colorBlocks;
+        var useBraille = braille;
+        var useMatrix = matrix;
         TerminalProtocol? explicitProtocol = null;
 
         if (!string.IsNullOrEmpty(mode))
-        {
             switch (mode.ToLowerInvariant())
             {
                 case "ascii":
@@ -645,7 +691,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     explicitProtocol = TerminalCapabilities.DetectBestProtocol();
                     break;
             }
-        }
 
         // Helper to create MatrixOptions from CLI parameters
         MatrixOptions CreateMatrixOptions()
@@ -664,35 +709,31 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             opts.EnableBrightnessPersistence = matrixBrightPersist;
 
             if (!matrixFullColor && !string.IsNullOrEmpty(matrixColor))
-            {
                 opts.BaseColor = matrixColor.ToLowerInvariant() switch
                 {
-                    "green" => new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 65, 255), // #00FF41 authentic Matrix
-                    "red" => new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 50, 50, 255),
-                    "blue" => new SixLabors.ImageSharp.PixelFormats.Rgba32(50, 100, 255, 255),
-                    "amber" or "orange" => new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 176, 0, 255),
-                    "cyan" => new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 255, 255),
-                    "purple" or "magenta" => new SixLabors.ImageSharp.PixelFormats.Rgba32(180, 0, 255, 255),
-                    "white" => new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 255, 255, 255),
-                    "pink" => new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 100, 200, 255),
+                    "green" => new Rgba32(0, 255, 65, 255), // #00FF41 authentic Matrix
+                    "red" => new Rgba32(255, 50, 50, 255),
+                    "blue" => new Rgba32(50, 100, 255, 255),
+                    "amber" or "orange" => new Rgba32(255, 176, 0, 255),
+                    "cyan" => new Rgba32(0, 255, 255, 255),
+                    "purple" or "magenta" => new Rgba32(180, 0, 255, 255),
+                    "white" => new Rgba32(255, 255, 255, 255),
+                    "pink" => new Rgba32(255, 100, 200, 255),
                     _ when matrixColor.StartsWith('#') => ParseHexColor(matrixColor),
-                    _ => new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 65, 255) // Default authentic Matrix green
+                    _ => new Rgba32(0, 255, 65, 255) // Default authentic Matrix green
                 };
-            }
             return opts;
         }
 
-        SixLabors.ImageSharp.PixelFormats.Rgba32 ParseHexColor(string hex)
+        Rgba32 ParseHexColor(string hex)
         {
             hex = hex.TrimStart('#');
             if (hex.Length == 6 &&
-                byte.TryParse(hex[0..2], System.Globalization.NumberStyles.HexNumber, null, out byte r) &&
-                byte.TryParse(hex[2..4], System.Globalization.NumberStyles.HexNumber, null, out byte g) &&
-                byte.TryParse(hex[4..6], System.Globalization.NumberStyles.HexNumber, null, out byte b))
-            {
-                return new SixLabors.ImageSharp.PixelFormats.Rgba32(r, g, b, 255);
-            }
-            return new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 0, 255); // Default green
+                byte.TryParse(hex[..2], NumberStyles.HexNumber, null, out var r) &&
+                byte.TryParse(hex[2..4], NumberStyles.HexNumber, null, out var g) &&
+                byte.TryParse(hex[4..6], NumberStyles.HexNumber, null, out var b))
+                return new Rgba32(r, g, b, 255);
+            return new Rgba32(0, 255, 0, 255); // Default green
         }
 
         // GIF output mode - render and save as animated GIF
@@ -700,7 +741,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             Console.WriteLine($"Rendering to GIF: {gifOutputPath}");
             // Pass isGif to apply default 10s limit for animated sources
-            var gifOptions = CreateGifOptions(isAnimatedSource: isGif);
+            var gifOptions = CreateGifOptions(isGif);
             using var gifWriter = new GifWriter(gifOptions);
             double totalElapsedMs = 0;
 
@@ -741,12 +782,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         ? matrixFrames.Where((f, i) => i % frameSample == 0).ToList()
                         : matrixFrames.ToList();
 
-                    int frameIndex = 0;
-                    int totalFrames = sampledFrames.Count;
+                    var frameIndex = 0;
+                    var totalFrames = sampledFrames.Count;
                     foreach (var frame in sampledFrames)
                     {
                         if (ShouldStopAddingFrames(gifWriter, gifOptions, totalElapsedMs)) break;
-                        int delayMs = frame.DelayMs * frameSample;
+                        var delayMs = frame.DelayMs * frameSample;
                         gifWriter.AddMatrixFrame(frame, delayMs, matrixOpts.UseBlockMode);
                         totalElapsedMs += delayMs;
                         frameIndex++;
@@ -761,12 +802,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         ? brailleFrames.Where((f, i) => i % frameSample == 0).ToList()
                         : brailleFrames.ToList();
 
-                    int frameIndex = 0;
-                    int totalFrames = sampledFrames.Count;
+                    var frameIndex = 0;
+                    var totalFrames = sampledFrames.Count;
                     foreach (var frame in sampledFrames)
                     {
                         if (ShouldStopAddingFrames(gifWriter, gifOptions, totalElapsedMs)) break;
-                        int delayMs = frame.DelayMs * frameSample;
+                        var delayMs = frame.DelayMs * frameSample;
                         gifWriter.AddBrailleFrame(frame, delayMs);
                         totalElapsedMs += delayMs;
                         frameIndex++;
@@ -783,12 +824,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         ? blockFrames.Where((f, i) => i % frameSample == 0).ToList()
                         : blockFrames.ToList();
 
-                    int frameIndex = 0;
-                    int totalFrames = sampledFrames.Count;
+                    var frameIndex = 0;
+                    var totalFrames = sampledFrames.Count;
                     foreach (var frame in sampledFrames)
                     {
                         if (ShouldStopAddingFrames(gifWriter, gifOptions, totalElapsedMs)) break;
-                        int delayMs = frame.DelayMs * frameSample;
+                        var delayMs = frame.DelayMs * frameSample;
                         gifWriter.AddColorBlockFrame(frame, delayMs);
                         totalElapsedMs += delayMs;
                         frameIndex++;
@@ -805,21 +846,24 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         ? asciiFrames.Where((f, i) => i % frameSample == 0).ToList()
                         : asciiFrames.ToList();
 
-                    int frameIndex = 0;
-                    int totalFrames = sampledFrames.Count;
+                    var frameIndex = 0;
+                    var totalFrames = sampledFrames.Count;
                     foreach (var frame in sampledFrames)
                     {
                         if (ShouldStopAddingFrames(gifWriter, gifOptions, totalElapsedMs)) break;
-                        int delayMs = frame.DelayMs * frameSample;
+                        var delayMs = frame.DelayMs * frameSample;
                         gifWriter.AddFrame(frame, delayMs);
                         totalElapsedMs += delayMs;
                         frameIndex++;
                         Console.Write($"\rProcessing frame {frameIndex}/{totalFrames}...");
                     }
                 }
+
                 Console.WriteLine(" Done!");
-                if (gifOptions.MaxLengthSeconds.HasValue && totalElapsedMs / 1000.0 >= gifOptions.MaxLengthSeconds.Value)
-                    Console.WriteLine($"(Limited to {gifOptions.MaxLengthSeconds.Value}s - use --gif-length 0 for unlimited)");
+                if (gifOptions.MaxLengthSeconds.HasValue &&
+                    totalElapsedMs / 1000.0 >= gifOptions.MaxLengthSeconds.Value)
+                    Console.WriteLine(
+                        $"(Limited to {gifOptions.MaxLengthSeconds.Value}s - use --gif-length 0 for unlimited)");
             }
             else
             {
@@ -835,17 +879,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                     // Calculate frame count from existing options:
                     // --gif-frames takes priority, then --gif-length, then default 3 seconds
-                    int targetFps = matrixOpts.TargetFps;
-                    int totalFrames = gifFrames
-                        ?? (gifLength.HasValue ? (int)(gifLength.Value * targetFps) : targetFps * 3);
+                    var targetFps = matrixOpts.TargetFps;
+                    var totalFrames = gifFrames
+                                      ?? (gifLength.HasValue ? (int)(gifLength.Value * targetFps) : targetFps * 3);
 
                     var matrixFrames = new List<MatrixFrame>();
-                    for (int f = 0; f < totalFrames; f++)
-                    {
-                        matrixFrames.Add(renderer.RenderImage(img));
-                    }
+                    for (var f = 0; f < totalFrames; f++) matrixFrames.Add(renderer.RenderImage(img));
 
-                    int frameIndex = 0;
+                    var frameIndex = 0;
                     foreach (var frame in matrixFrames)
                     {
                         gifWriter.AddMatrixFrame(frame, frame.DelayMs, matrixOpts.UseBlockMode);
@@ -905,7 +946,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             if (outputFile != null)
             {
                 // Native protocols don't write well to files, warn user
-                Console.Error.WriteLine("Warning: Native image protocols (sixel, iterm2, kitty) are designed for terminal display.");
+                Console.Error.WriteLine(
+                    "Warning: Native image protocols (sixel, iterm2, kitty) are designed for terminal display.");
                 File.WriteAllText(outputFile, result);
                 Console.WriteLine($"Written to {outputFile}");
             }
@@ -913,6 +955,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 Console.Write(result);
             }
+
             downloadedStream?.Dispose();
             return 0;
         }
@@ -932,7 +975,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 };
 
                 var player = new ResizableAnimationPlayer(
-                    renderFrames: (maxW, maxH) =>
+                    (maxW, maxH) =>
                     {
                         var renderOptions = options.Clone();
                         renderOptions.MaxWidth = maxW;
@@ -943,16 +986,17 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                             var ms = new MemoryStream(downloadedStream.ToArray());
                             return renderer.RenderGifStream(ms);
                         }
+
                         return renderer.RenderGif(input);
                     },
-                    explicitWidth: width,
-                    explicitHeight: height,
-                    loopCount: loop,
-                    useAltScreen: !noAltScreen,
-                    targetFps: framerate,
-                    showStatus: showStatus,
-                    fileName: input,
-                    renderMode: "Matrix"
+                    width,
+                    height,
+                    loop,
+                    !noAltScreen,
+                    framerate,
+                    showStatus,
+                    input,
+                    "Matrix"
                 );
 
                 await player.PlayAsync(cts.Token);
@@ -997,7 +1041,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                     try
                     {
-                        int frameCount = 0;
+                        var frameCount = 0;
                         while (!cts.Token.IsCancellationRequested && (loop == 0 || frameCount < loop * 100))
                         {
                             var matrixFrame = renderer.RenderImage(img);
@@ -1019,7 +1063,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                             frameCount++;
                         }
                     }
-                    catch (OperationCanceledException) { }
+                    catch (OperationCanceledException)
+                    {
+                    }
                     finally
                     {
                         if (!noAltScreen)
@@ -1042,7 +1088,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 };
 
                 var player = new ResizableAnimationPlayer(
-                    renderFrames: (maxW, maxH) =>
+                    (maxW, maxH) =>
                     {
                         var renderOptions = options.Clone();
                         renderOptions.MaxWidth = maxW;
@@ -1053,16 +1099,17 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                             var ms = new MemoryStream(downloadedStream.ToArray());
                             return renderer.RenderGifStream(ms);
                         }
+
                         return renderer.RenderGif(input);
                     },
-                    explicitWidth: width,
-                    explicitHeight: height,
-                    loopCount: loop,
-                    useAltScreen: !noAltScreen,
-                    targetFps: framerate,
-                    showStatus: showStatus,
-                    fileName: input,
-                    renderMode: "Blocks"
+                    width,
+                    height,
+                    loop,
+                    !noAltScreen,
+                    framerate,
+                    showStatus,
+                    input,
+                    "Blocks"
                 );
 
                 await player.PlayAsync(cts.Token);
@@ -1081,6 +1128,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 {
                     frame = blockRenderer.RenderFileToFrame(input);
                 }
+
                 if (outputFile != null)
                 {
                     File.WriteAllText(outputFile, frame.Content);
@@ -1121,7 +1169,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 };
 
                 var player = new ResizableAnimationPlayer(
-                    renderFrames: (maxW, maxH) =>
+                    (maxW, maxH) =>
                     {
                         var renderOptions = options.Clone();
                         renderOptions.MaxWidth = maxW;
@@ -1130,19 +1178,20 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         if (downloadedStream != null)
                         {
                             var ms = new MemoryStream(downloadedStream.ToArray());
-                            using var img = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(ms);
+                            using var img = Image.Load<Rgba32>(ms);
                             return renderer.RenderGif(input); // BrailleRenderer doesn't have RenderGifStream yet
                         }
+
                         return renderer.RenderGif(input);
                     },
-                    explicitWidth: width,
-                    explicitHeight: height,
-                    loopCount: loop,
-                    useAltScreen: !noAltScreen,
-                    targetFps: framerate,
-                    showStatus: showStatus,
-                    fileName: input,
-                    renderMode: "Braille"
+                    width,
+                    height,
+                    loop,
+                    !noAltScreen,
+                    framerate,
+                    showStatus,
+                    input,
+                    "Braille"
                 );
 
                 await player.PlayAsync(cts.Token);
@@ -1154,13 +1203,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 if (downloadedStream != null)
                 {
                     downloadedStream.Position = 0;
-                    using var img = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(downloadedStream);
+                    using var img = Image.Load<Rgba32>(downloadedStream);
                     frame = brailleRenderer.RenderImageToFrame(img);
                 }
                 else
                 {
                     frame = brailleRenderer.RenderFileToFrame(input);
                 }
+
                 if (outputFile != null)
                 {
                     File.WriteAllText(outputFile, frame.Content);
@@ -1201,11 +1251,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 };
 
                 // Determine brightness thresholds based on terminal mode (Invert)
-                float? effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
-                float? effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
+                var effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
+                var effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
 
                 var player = new ResizableAnimationPlayer(
-                    renderFrames: (maxW, maxH) =>
+                    (maxW, maxH) =>
                     {
                         var renderOptions = options.Clone();
                         renderOptions.MaxWidth = maxW;
@@ -1221,17 +1271,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         {
                             asciiFrames = renderer.RenderGif(input);
                         }
+
                         // Convert AsciiFrames to IAnimationFrame using adapter
-                        return asciiFrames.Select(f => new AsciiFrameAdapter(f, !noColor, effectiveDarkThreshold, effectiveLightThreshold)).ToList<IAnimationFrame>();
+                        return asciiFrames
+                            .Select(f =>
+                                new AsciiFrameAdapter(f, !noColor, effectiveDarkThreshold, effectiveLightThreshold))
+                            .ToList<IAnimationFrame>();
                     },
-                    explicitWidth: width,
-                    explicitHeight: height,
-                    loopCount: loop,
-                    useAltScreen: !noAltScreen,
-                    targetFps: framerate,
-                    showStatus: showStatus,
-                    fileName: input,
-                    renderMode: "ASCII"
+                    width,
+                    height,
+                    loop,
+                    !noAltScreen,
+                    framerate,
+                    showStatus,
+                    input,
+                    "ASCII"
                 );
 
                 await player.PlayAsync(cts.Token);
@@ -1255,7 +1309,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 {
                     // Write all frames to file
                     using var writer = new StreamWriter(outputFile);
-                    for (int i = 0; i < frames.Count; i++)
+                    for (var i = 0; i < frames.Count; i++)
                     {
                         if (i > 0)
                         {
@@ -1263,8 +1317,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                             writer.WriteLine($"--- Frame {i + 1}/{frames.Count} (delay: {frames[i].DelayMs}ms) ---");
                             writer.WriteLine();
                         }
+
                         writer.WriteLine(frames[i].ToString());
                     }
+
                     Console.WriteLine($"Wrote {frames.Count} frames to {outputFile}");
                 }
                 else
@@ -1272,9 +1328,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     // Output first frame only
                     OutputFrame(frames[0], !noColor, null, options);
                     if (frames.Count > 1)
-                    {
                         Console.WriteLine($"\n(GIF has {frames.Count} frames - use --animate to play)");
-                    }
                 }
             }
             else
@@ -1291,9 +1345,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 {
                     frame = renderer.RenderFile(input);
                 }
+
                 // Determine brightness thresholds based on terminal mode (Invert)
-                float? effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
-                float? effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
+                var effectiveDarkThreshold = !noInvert ? options.DarkTerminalBrightnessThreshold : null;
+                var effectiveLightThreshold = noInvert ? options.LightTerminalBrightnessThreshold : null;
 
                 if (jsonOutput)
                 {
@@ -1310,9 +1365,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 {
                     OutputFrame(frame, !noColor, outputFile, options);
                     if (showStatus && outputFile == null)
-                    {
                         DisplayStatusLine(input, null, null, frame.Width, frame.Height, "ASCII", !noColor);
-                    }
                 }
 
                 // Save as JSON document if requested
@@ -1324,6 +1377,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 }
             }
         }
+
         downloadedStream?.Dispose();
         return 0;
     }
@@ -1335,6 +1389,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             OutputJson($"{{\"success\":false,\"error\":\"{JsonEscape(ex.Message)}\"}}");
             return 1;
         }
+
         Console.Error.WriteLine($"Error: {ex.Message}");
         return 1;
     }
@@ -1345,10 +1400,10 @@ return await rootCommand.Parse(args).InvokeAsync();
 static void OutputFrame(AsciiFrame frame, bool useColor, string? outputPath, RenderOptions options)
 {
     // Determine brightness thresholds based on terminal mode (Invert)
-    float? darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
-    float? lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
+    var darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
+    var lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
 
-    string result = useColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString();
+    var result = useColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString();
 
     if (outputPath != null)
     {
@@ -1373,14 +1428,11 @@ static async Task<int> HandleJsonDocument(string path, float speed, int loop, Ca
 
         // Display document info
         Console.Error.WriteLine($"Loaded: {doc.RenderMode} mode, {doc.FrameCount} frame(s)");
-        if (doc.IsAnimated)
-        {
-            Console.Error.WriteLine($"Duration: {doc.TotalDurationMs}ms");
-        }
+        if (doc.IsAnimated) Console.Error.WriteLine($"Duration: {doc.TotalDurationMs}ms");
 
         // Override settings if specified
-        float effectiveSpeed = speed != 1.0f ? speed : doc.Settings.AnimationSpeedMultiplier;
-        int effectiveLoop = loop != 0 ? loop : doc.Settings.LoopCount;
+        var effectiveSpeed = speed != 1.0f ? speed : doc.Settings.AnimationSpeedMultiplier;
+        var effectiveLoop = loop != 0 ? loop : doc.Settings.LoopCount;
 
         // Play the document
         using var player = new DocumentPlayer(doc, effectiveSpeed, effectiveLoop);
@@ -1422,8 +1474,14 @@ static void DisplayStatusLine(
     int? currentFrame = null,
     int? totalFrames = null)
 {
-    int statusWidth = 120;
-    try { statusWidth = Console.WindowWidth - 1; } catch { }
+    var statusWidth = 120;
+    try
+    {
+        statusWidth = Console.WindowWidth - 1;
+    }
+    catch
+    {
+    }
 
     var statusLine = new StatusLine(statusWidth, useColor);
     var info = new StatusLine.StatusInfo
@@ -1446,11 +1504,10 @@ static void DisplayStatusLine(
 /// </summary>
 static int GetVisibleLength(string line)
 {
-    int len = 0;
-    bool inEscape = false;
+    var len = 0;
+    var inEscape = false;
 
-    foreach (char c in line)
-    {
+    foreach (var c in line)
         if (c == '\x1b')
         {
             inEscape = true;
@@ -1463,7 +1520,6 @@ static int GetVisibleLength(string line)
         {
             len++;
         }
-    }
 
     return len;
 }

@@ -3,7 +3,7 @@ name: Release CLI Binaries
 on:
   # Trigger after Core NuGet is published
   workflow_run:
-    workflows: ["Publish NuGet"]
+    workflows: [ "Publish NuGet" ]
     types:
       - completed
 
@@ -145,7 +145,7 @@ jobs:
           path: archive/${{ matrix.artifact }}-mcp.*
 
   release:
-    needs: [build]
+    needs: [ build ]
     runs-on: ubuntu-latest
 
     permissions:

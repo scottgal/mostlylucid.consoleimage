@@ -1,5 +1,4 @@
 using ConsoleImage.Core;
-using ConsoleImage.Video.Core;
 
 namespace ConsoleImage.Video.Core.Tests;
 
@@ -128,9 +127,9 @@ public class VideoRenderOptionsTests
     }
 
     [Theory]
-    [InlineData(0)]    // Infinite
-    [InlineData(1)]    // Single play
-    [InlineData(5)]    // Multiple loops
+    [InlineData(0)] // Infinite
+    [InlineData(1)] // Single play
+    [InlineData(5)] // Multiple loops
     public void LoopCount_CanBeSet(int loops)
     {
         var options = new VideoRenderOptions { LoopCount = loops };

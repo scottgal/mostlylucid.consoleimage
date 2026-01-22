@@ -22,23 +22,23 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Spectre.Console" Version="0.54.0" />
-        <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all" />
+        <PackageReference Include="Spectre.Console" Version="0.54.0"/>
+        <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all"/>
     </ItemGroup>
 
     <!-- Use ProjectReference for local dev, PackageReference for NuGet publishing -->
     <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
-        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj"/>
     </ItemGroup>
 
     <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
-        <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)" />
+        <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)"/>
     </ItemGroup>
 
     <ItemGroup>
         <!-- Use NuGet-specific README with proper image URLs -->
-        <None Include="README.nuget.md" Pack="true" PackagePath="README.md" />
-        <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')" />
+        <None Include="README.nuget.md" Pack="true" PackagePath="README.md"/>
+        <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')"/>
     </ItemGroup>
 
 </Project>

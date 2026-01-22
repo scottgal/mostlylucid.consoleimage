@@ -2,28 +2,16 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 // Animation player for displaying animated GIFs in the console
 
-using System.Linq;
+using System.Text;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Plays ASCII art animations in the console.
-/// Uses DECSET 2026 synchronized output for flicker-free rendering on supported terminals.
+///     Plays ASCII art animations in the console.
+///     Uses DECSET 2026 synchronized output for flicker-free rendering on supported terminals.
 /// </summary>
 public class AsciiAnimationPlayer : IDisposable
 {
-    private readonly IReadOnlyList<AsciiFrame> _frames;
-    private readonly bool _useColor;
-    private readonly int _loopCount;
-    private readonly bool _useDiffRendering;
-    private readonly bool _useAltScreen;
-    private readonly float? _targetFps;
-    private readonly float? _darkThreshold;
-    private readonly float? _lightThreshold;
-    private CancellationTokenSource? _cts;
-    private Task? _playTask;
-    private bool _disposed;
-
     // DECSET 2026 - Synchronized Output (supported by WezTerm, Windows Terminal, Ghostty, Alacritty, etc.)
     // Batches all output until reset, then renders atomically - eliminates flicker
     private const string SyncStart = "\x1b[?2026h";
@@ -35,33 +23,21 @@ public class AsciiAnimationPlayer : IDisposable
     private const string CursorHome = "\x1b[H";
     private const string CursorHide = "\x1b[?25l";
     private const string CursorShow = "\x1b[?25h";
+    private readonly float? _darkThreshold;
+    private readonly IReadOnlyList<AsciiFrame> _frames;
+    private readonly float? _lightThreshold;
+    private readonly int _loopCount;
+    private readonly float? _targetFps;
+    private readonly bool _useAltScreen;
+    private readonly bool _useColor;
+    private readonly bool _useDiffRendering;
+    private CancellationTokenSource? _cts;
+    private bool _disposed;
+    private Task? _playTask;
 
-    /// <summary>
-    /// Event raised when a frame is rendered
-    /// </summary>
-    public event EventHandler<FrameRenderedEventArgs>? FrameRendered;
-
-    /// <summary>
-    /// Event raised when animation completes
-    /// </summary>
-    public event EventHandler? AnimationCompleted;
-
-    /// <summary>
-    /// Current frame index
-    /// </summary>
-    public int CurrentFrame { get; private set; }
-
-    /// <summary>
-    /// Total number of frames
-    /// </summary>
-    public int FrameCount => _frames.Count;
-
-    /// <summary>
-    /// Whether the animation is currently playing
-    /// </summary>
-    public bool IsPlaying => _playTask != null && !_playTask.IsCompleted;
-
-    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0, bool useDiffRendering = true, bool useAltScreen = true, float? targetFps = null, float? darkThreshold = null, float? lightThreshold = null)
+    public AsciiAnimationPlayer(IReadOnlyList<AsciiFrame> frames, bool useColor = false, int loopCount = 0,
+        bool useDiffRendering = true, bool useAltScreen = true, float? targetFps = null, float? darkThreshold = null,
+        float? lightThreshold = null)
     {
         _frames = frames ?? throw new ArgumentNullException(nameof(frames));
         _useColor = useColor;
@@ -74,7 +50,42 @@ public class AsciiAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Play the animation in the console
+    ///     Current frame index
+    /// </summary>
+    public int CurrentFrame { get; private set; }
+
+    /// <summary>
+    ///     Total number of frames
+    /// </summary>
+    public int FrameCount => _frames.Count;
+
+    /// <summary>
+    ///     Whether the animation is currently playing
+    /// </summary>
+    public bool IsPlaying => _playTask != null && !_playTask.IsCompleted;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        Stop();
+        _cts?.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    ///     Event raised when a frame is rendered
+    /// </summary>
+    public event EventHandler<FrameRenderedEventArgs>? FrameRendered;
+
+    /// <summary>
+    ///     Event raised when animation completes
+    /// </summary>
+    public event EventHandler? AnimationCompleted;
+
+    /// <summary>
+    ///     Play the animation in the console
     /// </summary>
     public async Task PlayAsync(CancellationToken cancellationToken = default)
     {
@@ -87,32 +98,32 @@ public class AsciiAnimationPlayer : IDisposable
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var token = _cts.Token;
 
-        int loops = 0;
+        var loops = 0;
 
         // Pre-build entire frame buffers as single atomic strings
         // This eliminates flicker by writing everything in one Console.Write call
         var frameBuffers = new string[_frames.Count];
-        int maxHeight = 0;
+        var maxHeight = 0;
 
         // First pass: determine max height
         var frameLines = new string[_frames.Count][];
-        for (int i = 0; i < _frames.Count; i++)
+        for (var i = 0; i < _frames.Count; i++)
         {
-            string frameStr = _useColor ? _frames[i].ToAnsiString(_darkThreshold, _lightThreshold) : _frames[i].ToString();
+            var frameStr = _useColor ? _frames[i].ToAnsiString(_darkThreshold, _lightThreshold) : _frames[i].ToString();
             frameLines[i] = frameStr.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
             if (frameLines[i].Length > maxHeight)
                 maxHeight = frameLines[i].Length;
         }
 
         // Second pass: build atomic frame buffers
-        for (int i = 0; i < _frames.Count; i++)
+        for (var i = 0; i < _frames.Count; i++)
         {
-            var sb = new System.Text.StringBuilder();
-            sb.Append(SyncStart);  // Begin synchronized output
+            var sb = new StringBuilder();
+            sb.Append(SyncStart); // Begin synchronized output
             sb.Append(CursorHome); // Home cursor
 
             var lines = frameLines[i];
-            for (int lineIdx = 0; lineIdx < maxHeight; lineIdx++)
+            for (var lineIdx = 0; lineIdx < maxHeight; lineIdx++)
             {
                 sb.Append("\x1b[2K"); // Clear entire line
                 if (lineIdx < lines.Length)
@@ -132,10 +143,7 @@ public class AsciiAnimationPlayer : IDisposable
             : null;
 
         // Enter alternate screen buffer if enabled (preserves scrollback)
-        if (_useAltScreen)
-        {
-            Console.Write(AltScreenEnter);
-        }
+        if (_useAltScreen) Console.Write(AltScreenEnter);
         Console.Write(CursorHide);
         // Clear entire screen to prevent residual content from flashing
         Console.Write("\x1b[2J");
@@ -145,7 +153,7 @@ public class AsciiAnimationPlayer : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
-                for (int i = 0; i < _frames.Count; i++)
+                for (var i = 0; i < _frames.Count; i++)
                 {
                     if (token.IsCancellationRequested) break;
 
@@ -159,11 +167,8 @@ public class AsciiAnimationPlayer : IDisposable
 
                     // Wait for frame delay with responsive cancellation
                     // Use fixed delay if target FPS is set, otherwise use frame's embedded delay
-                    int delayMs = fixedDelayMs ?? _frames[i].DelayMs;
-                    if (delayMs > 0)
-                    {
-                        await ResponsiveDelay(delayMs, token);
-                    }
+                    var delayMs = fixedDelayMs ?? _frames[i].DelayMs;
+                    if (delayMs > 0) await ResponsiveDelay(delayMs, token);
                 }
 
                 loops++;
@@ -179,28 +184,24 @@ public class AsciiAnimationPlayer : IDisposable
         {
             Console.Write(CursorShow);
             if (_useAltScreen)
-            {
                 Console.Write(AltScreenExit);
-            }
             else
-            {
                 Console.WriteLine();
-            }
             AnimationCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
 
     /// <summary>
-    /// Delay that responds quickly to cancellation
+    ///     Delay that responds quickly to cancellation
     /// </summary>
     private static async Task ResponsiveDelay(int totalMs, CancellationToken token)
     {
         const int chunkMs = 50; // Check cancellation every 50ms
-        int remaining = totalMs;
+        var remaining = totalMs;
 
         while (remaining > 0 && !token.IsCancellationRequested)
         {
-            int delay = Math.Min(remaining, chunkMs);
+            var delay = Math.Min(remaining, chunkMs);
             try
             {
                 await Task.Delay(delay, token);
@@ -209,12 +210,13 @@ public class AsciiAnimationPlayer : IDisposable
             {
                 break;
             }
+
             remaining -= delay;
         }
     }
 
     /// <summary>
-    /// Start playing the animation in the background
+    ///     Start playing the animation in the background
     /// </summary>
     public void Play()
     {
@@ -225,7 +227,7 @@ public class AsciiAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Stop the animation
+    ///     Stop the animation
     /// </summary>
     public void Stop()
     {
@@ -233,7 +235,7 @@ public class AsciiAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Render a single frame to the console
+    ///     Render a single frame to the console
     /// </summary>
     public void RenderFrame(int frameIndex)
     {
@@ -241,12 +243,12 @@ public class AsciiAnimationPlayer : IDisposable
             throw new ArgumentOutOfRangeException(nameof(frameIndex));
 
         var frame = _frames[frameIndex];
-        string output = _useColor ? frame.ToAnsiString(_darkThreshold, _lightThreshold) : frame.ToString();
+        var output = _useColor ? frame.ToAnsiString(_darkThreshold, _lightThreshold) : frame.ToString();
         Console.WriteLine(output);
     }
 
     /// <summary>
-    /// Get frame data for manual rendering
+    ///     Get frame data for manual rendering
     /// </summary>
     public AsciiFrame GetFrame(int frameIndex)
     {
@@ -255,29 +257,19 @@ public class AsciiAnimationPlayer : IDisposable
 
         return _frames[frameIndex];
     }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        Stop();
-        _cts?.Dispose();
-        GC.SuppressFinalize(this);
-    }
 }
 
 /// <summary>
-/// Event arguments for frame rendered events
+///     Event arguments for frame rendered events
 /// </summary>
 public class FrameRenderedEventArgs : EventArgs
 {
-    public int FrameIndex { get; }
-    public int TotalFrames { get; }
-
     public FrameRenderedEventArgs(int frameIndex, int totalFrames)
     {
         FrameIndex = frameIndex;
         TotalFrames = totalFrames;
     }
+
+    public int FrameIndex { get; }
+    public int TotalFrames { get; }
 }

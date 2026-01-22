@@ -9,8 +9,8 @@ namespace ConsoleImage.Core;
 // Note: Rgb24 is also commonly used, so we provide overloads for both Rgba32 and Rgb24
 
 /// <summary>
-/// Utility class for brightness and luminance calculations.
-/// Uses the standard perceived brightness formula (ITU BT.601).
+///     Utility class for brightness and luminance calculations.
+///     Uses the standard perceived brightness formula (ITU BT.601).
 /// </summary>
 public static class BrightnessHelper
 {
@@ -20,7 +20,7 @@ public static class BrightnessHelper
     private const float BlueCoefficient = 0.114f;
 
     /// <summary>
-    /// Calculate perceived brightness using standard luminance formula.
+    ///     Calculate perceived brightness using standard luminance formula.
     /// </summary>
     /// <param name="pixel">The pixel to calculate brightness for.</param>
     /// <returns>Brightness value from 0.0 (black) to 1.0 (white).</returns>
@@ -31,7 +31,7 @@ public static class BrightnessHelper
     }
 
     /// <summary>
-    /// Calculate perceived brightness from RGB components.
+    ///     Calculate perceived brightness from RGB components.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float GetBrightness(int r, int g, int b)
@@ -40,7 +40,7 @@ public static class BrightnessHelper
     }
 
     /// <summary>
-    /// Calculate perceived brightness from RGB byte components.
+    ///     Calculate perceived brightness from RGB byte components.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float GetBrightness(byte r, byte g, byte b)
@@ -49,7 +49,7 @@ public static class BrightnessHelper
     }
 
     /// <summary>
-    /// Calculate perceived brightness for Rgb24 pixel.
+    ///     Calculate perceived brightness for Rgb24 pixel.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float GetBrightness(Rgb24 pixel)
@@ -58,7 +58,7 @@ public static class BrightnessHelper
     }
 
     /// <summary>
-    /// Convert a pixel to grayscale value (0-255).
+    ///     Convert a pixel to grayscale value (0-255).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte ToGrayscale(Rgba32 pixel)
@@ -67,8 +67,8 @@ public static class BrightnessHelper
     }
 
     /// <summary>
-    /// Check if a color should be skipped based on brightness thresholds.
-    /// Used for terminal optimization to skip very dark/bright colors.
+    ///     Check if a color should be skipped based on brightness thresholds.
+    ///     Used for terminal optimization to skip very dark/bright colors.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ShouldSkipColor(float brightness, float? darkThreshold, float? lightThreshold)
@@ -78,7 +78,7 @@ public static class BrightnessHelper
     }
 
     /// <summary>
-    /// Check if a color should be skipped based on brightness thresholds.
+    ///     Check if a color should be skipped based on brightness thresholds.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ShouldSkipColor(Rgba32 pixel, float? darkThreshold, float? lightThreshold)
@@ -86,13 +86,13 @@ public static class BrightnessHelper
         if (!darkThreshold.HasValue && !lightThreshold.HasValue)
             return false;
 
-        float brightness = GetBrightness(pixel);
+        var brightness = GetBrightness(pixel);
         return ShouldSkipColor(brightness, darkThreshold, lightThreshold);
     }
 
     /// <summary>
-    /// Apply gamma correction to a brightness value.
-    /// Gamma less than 1.0 brightens, greater than 1.0 darkens.
+    ///     Apply gamma correction to a brightness value.
+    ///     Gamma less than 1.0 brightens, greater than 1.0 darkens.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float ApplyGamma(float brightness, float gamma)
@@ -102,7 +102,7 @@ public static class BrightnessHelper
     }
 
     /// <summary>
-    /// Apply gamma correction to a pixel, returning a new brightened/darkened pixel.
+    ///     Apply gamma correction to a pixel, returning a new brightened/darkened pixel.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Rgba32 ApplyGamma(Rgba32 pixel, float gamma)
@@ -110,9 +110,9 @@ public static class BrightnessHelper
         if (gamma == 1.0f) return pixel;
 
         // Apply gamma to each channel
-        byte r = (byte)Math.Clamp(MathF.Pow(pixel.R / 255f, gamma) * 255f, 0, 255);
-        byte g = (byte)Math.Clamp(MathF.Pow(pixel.G / 255f, gamma) * 255f, 0, 255);
-        byte b = (byte)Math.Clamp(MathF.Pow(pixel.B / 255f, gamma) * 255f, 0, 255);
+        var r = (byte)Math.Clamp(MathF.Pow(pixel.R / 255f, gamma) * 255f, 0, 255);
+        var g = (byte)Math.Clamp(MathF.Pow(pixel.G / 255f, gamma) * 255f, 0, 255);
+        var b = (byte)Math.Clamp(MathF.Pow(pixel.B / 255f, gamma) * 255f, 0, 255);
 
         return new Rgba32(r, g, b, pixel.A);
     }

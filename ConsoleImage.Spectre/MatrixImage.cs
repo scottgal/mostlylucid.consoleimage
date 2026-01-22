@@ -7,17 +7,17 @@ using CoreRenderOptions = ConsoleImage.Core.RenderOptions;
 namespace ConsoleImage.Spectre;
 
 /// <summary>
-/// A Spectre.Console renderable that displays an image using Matrix digital rain effect.
-/// Supports both static display and animated rain.
+///     A Spectre.Console renderable that displays an image using Matrix digital rain effect.
+///     Supports both static display and animated rain.
 /// </summary>
 public class MatrixImage : IRenderable
 {
     private readonly string _content;
-    private readonly int _width;
     private readonly int _height;
+    private readonly int _width;
 
     /// <summary>
-    /// Create a Matrix image from a file path.
+    ///     Create a Matrix image from a file path.
     /// </summary>
     public MatrixImage(string filePath, CoreRenderOptions? options = null, MatrixOptions? matrixOptions = null)
     {
@@ -34,7 +34,7 @@ public class MatrixImage : IRenderable
     }
 
     /// <summary>
-    /// Create a Matrix image from pre-rendered content.
+    ///     Create a Matrix image from pre-rendered content.
     /// </summary>
     public MatrixImage(string content, int width, int height)
     {
@@ -44,7 +44,7 @@ public class MatrixImage : IRenderable
     }
 
     /// <summary>
-    /// Create a Matrix image from a MatrixFrame.
+    ///     Create a Matrix image from a MatrixFrame.
     /// </summary>
     public MatrixImage(MatrixFrame frame)
     {
@@ -72,10 +72,9 @@ public class MatrixImage : IRenderable
     private static int GetVisibleWidth(string line)
     {
         // Strip ANSI escape sequences to get visible character count
-        int width = 0;
-        bool inEscape = false;
-        foreach (char c in line)
-        {
+        var width = 0;
+        var inEscape = false;
+        foreach (var c in line)
             if (c == '\x1b')
             {
                 inEscape = true;
@@ -89,57 +88,47 @@ public class MatrixImage : IRenderable
             {
                 width++;
             }
-        }
+
         return width;
     }
 }
 
 /// <summary>
-/// Animated Matrix rain effect for use with Spectre.Console's Live display.
+///     Animated Matrix rain effect for use with Spectre.Console's Live display.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Creates a continuous "Matrix digital rain" animation overlaid on an image.
-/// For static images, generates continuous rain frames. For GIFs, applies
-/// rain effect to each source frame.
-/// </para>
-/// <para>
-/// <b>Basic usage:</b>
-/// <code>
+///     <para>
+///         Creates a continuous "Matrix digital rain" animation overlaid on an image.
+///         For static images, generates continuous rain frames. For GIFs, applies
+///         rain effect to each source frame.
+///     </para>
+///     <para>
+///         <b>Basic usage:</b>
+///         <code>
 /// var animation = new AnimatedMatrixImage("photo.jpg", frameCount: 200);
 /// await animation.PlayAsync(cancellationToken);
 /// </code>
-/// </para>
-/// <para>
-/// <b>With custom Matrix options:</b>
-/// <code>
+///     </para>
+///     <para>
+///         <b>With custom Matrix options:</b>
+///         <code>
 /// var matrixOpts = MatrixOptions.RedPill; // or ClassicGreen, BluePill, etc.
 /// var animation = new AnimatedMatrixImage("photo.jpg", matrixOptions: matrixOpts);
 /// </code>
-/// </para>
+///     </para>
 /// </remarks>
 public partial class AnimatedMatrixImage : IRenderable
 {
     private readonly List<FrameData> _frames;
-    private readonly int _width;
     private readonly int _height;
-    private int _currentFrame;
+    private readonly int _width;
     private DateTime _lastFrameTime;
 
     /// <summary>
-    /// Current frame index.
+    ///     Create an animated Matrix image from a file (image or GIF).
     /// </summary>
-    public int CurrentFrame => _currentFrame;
-
-    /// <summary>
-    /// Total number of frames.
-    /// </summary>
-    public int FrameCount => _frames.Count;
-
-    /// <summary>
-    /// Create an animated Matrix image from a file (image or GIF).
-    /// </summary>
-    public AnimatedMatrixImage(string filePath, CoreRenderOptions? options = null, MatrixOptions? matrixOptions = null, int frameCount = 100)
+    public AnimatedMatrixImage(string filePath, CoreRenderOptions? options = null, MatrixOptions? matrixOptions = null,
+        int frameCount = 100)
     {
         options ??= new CoreRenderOptions { UseColor = true };
         matrixOptions ??= new MatrixOptions();
@@ -148,14 +137,10 @@ public partial class AnimatedMatrixImage : IRenderable
 
         // Check if it's a GIF
         if (filePath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
-        {
             LoadGifFrames(filePath, options, matrixOptions);
-        }
         else
-        {
             // Static image - generate rain animation frames
             LoadStaticImageFrames(filePath, options, matrixOptions, frameCount);
-        }
 
         if (_frames.Count > 0)
         {
@@ -165,32 +150,20 @@ public partial class AnimatedMatrixImage : IRenderable
         }
     }
 
-    private void LoadGifFrames(string filePath, CoreRenderOptions options, MatrixOptions matrixOptions)
-    {
-        using var renderer = new MatrixRenderer(options, matrixOptions);
-        var frames = renderer.RenderGif(filePath);
-        foreach (var frame in frames)
-        {
-            _frames.Add(new FrameData(frame.Content, frame.DelayMs));
-        }
-    }
-
-    private void LoadStaticImageFrames(string filePath, CoreRenderOptions options, MatrixOptions matrixOptions, int frameCount)
-    {
-        using var renderer = new MatrixRenderer(options, matrixOptions);
-
-        // Generate multiple frames for animation effect
-        for (int i = 0; i < frameCount; i++)
-        {
-            var frame = renderer.RenderFile(filePath);
-            _frames.Add(new FrameData(frame.Content, frame.DelayMs));
-        }
-    }
+    /// <summary>
+    ///     Current frame index.
+    /// </summary>
+    public int CurrentFrame { get; private set; }
 
     /// <summary>
-    /// Advance to the next frame if enough time has elapsed.
-    /// Call this in your Live display loop.
-    /// Returns true if frame changed.
+    ///     Total number of frames.
+    /// </summary>
+    public int FrameCount => _frames.Count;
+
+    /// <summary>
+    ///     Advance to the next frame if enough time has elapsed.
+    ///     Call this in your Live display loop.
+    ///     Returns true if frame changed.
     /// </summary>
     public bool TryAdvanceFrame()
     {
@@ -198,11 +171,11 @@ public partial class AnimatedMatrixImage : IRenderable
             return false;
 
         var now = DateTime.UtcNow;
-        var currentDelay = _frames[_currentFrame].DelayMs;
+        var currentDelay = _frames[CurrentFrame].DelayMs;
 
         if ((now - _lastFrameTime).TotalMilliseconds >= currentDelay)
         {
-            _currentFrame = (_currentFrame + 1) % _frames.Count;
+            CurrentFrame = (CurrentFrame + 1) % _frames.Count;
             _lastFrameTime = now;
             return true;
         }
@@ -211,22 +184,22 @@ public partial class AnimatedMatrixImage : IRenderable
     }
 
     /// <summary>
-    /// Reset animation to first frame.
+    ///     Reset animation to first frame.
     /// </summary>
     public void Reset()
     {
-        _currentFrame = 0;
+        CurrentFrame = 0;
         _lastFrameTime = DateTime.UtcNow;
     }
 
     /// <summary>
-    /// Set current frame directly.
+    ///     Set current frame directly.
     /// </summary>
     public void SetFrame(int frameIndex)
     {
         if (frameIndex >= 0 && frameIndex < _frames.Count)
         {
-            _currentFrame = frameIndex;
+            CurrentFrame = frameIndex;
             _lastFrameTime = DateTime.UtcNow;
         }
     }
@@ -241,7 +214,7 @@ public partial class AnimatedMatrixImage : IRenderable
         if (_frames.Count == 0)
             yield break;
 
-        var frame = _frames[_currentFrame];
+        var frame = _frames[CurrentFrame];
         var lines = frame.Content.Split('\n');
         foreach (var line in lines)
         {
@@ -250,22 +223,45 @@ public partial class AnimatedMatrixImage : IRenderable
         }
     }
 
+    private void LoadGifFrames(string filePath, CoreRenderOptions options, MatrixOptions matrixOptions)
+    {
+        using var renderer = new MatrixRenderer(options, matrixOptions);
+        var frames = renderer.RenderGif(filePath);
+        foreach (var frame in frames) _frames.Add(new FrameData(frame.Content, frame.DelayMs));
+    }
+
+    private void LoadStaticImageFrames(string filePath, CoreRenderOptions options, MatrixOptions matrixOptions,
+        int frameCount)
+    {
+        using var renderer = new MatrixRenderer(options, matrixOptions);
+
+        // Generate multiple frames for animation effect
+        for (var i = 0; i < frameCount; i++)
+        {
+            var frame = renderer.RenderFile(filePath);
+            _frames.Add(new FrameData(frame.Content, frame.DelayMs));
+        }
+    }
+
     private static int GetVisibleWidth(string line)
     {
-        int width = 0;
-        bool inEscape = false;
-        foreach (char c in line)
-        {
+        var width = 0;
+        var inEscape = false;
+        foreach (var c in line)
             if (c == '\x1b')
+            {
                 inEscape = true;
+            }
             else if (inEscape)
             {
                 if (char.IsLetter(c))
                     inEscape = false;
             }
             else
+            {
                 width++;
-        }
+            }
+
         return width;
     }
 
@@ -273,12 +269,12 @@ public partial class AnimatedMatrixImage : IRenderable
 }
 
 /// <summary>
-/// Extension methods for AnimatedMatrixImage with Spectre.Console.
+///     Extension methods for AnimatedMatrixImage with Spectre.Console.
 /// </summary>
 public static class AnimatedMatrixImageExtensions
 {
     /// <summary>
-    /// Play an animated Matrix image using Spectre's Live display.
+    ///     Play an animated Matrix image using Spectre's Live display.
     /// </summary>
     public static async Task PlayAsync(
         this AnimatedMatrixImage animation,
@@ -286,7 +282,7 @@ public static class AnimatedMatrixImageExtensions
         int loopCount = 0,
         Action<LiveDisplayContext, AnimatedMatrixImage>? onFrame = null)
     {
-        int loops = 0;
+        var loops = 0;
 
         await AnsiConsole.Live(animation)
             .AutoClear(false)

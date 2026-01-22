@@ -1,40 +1,16 @@
 // ASCII Art Renderer - C# implementation based on Alex Harri's approach
 // Original article: https://alexharri.com/blog/ascii-rendering
 
+using System.Text;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Represents a single frame of ASCII art, optionally with color information
+///     Represents a single frame of ASCII art, optionally with color information
 /// </summary>
 public class AsciiFrame
 {
-    /// <summary>
-    /// The ASCII characters for this frame, row by row
-    /// </summary>
-    public char[,] Characters { get; }
-
-    /// <summary>
-    /// Optional color information for each character (RGB)
-    /// </summary>
-    public Rgb24[,]? Colors { get; }
-
-    /// <summary>
-    /// Frame delay in milliseconds (for animations)
-    /// </summary>
-    public int DelayMs { get; }
-
-    /// <summary>
-    /// Width of the frame in characters
-    /// </summary>
-    public int Width => Characters.GetLength(1);
-
-    /// <summary>
-    /// Height of the frame in characters
-    /// </summary>
-    public int Height => Characters.GetLength(0);
-
     public AsciiFrame(char[,] characters, Rgb24[,]? colors = null, int delayMs = 0)
     {
         Characters = characters;
@@ -43,18 +19,40 @@ public class AsciiFrame
     }
 
     /// <summary>
-    /// Convert to plain text string
+    ///     The ASCII characters for this frame, row by row
+    /// </summary>
+    public char[,] Characters { get; }
+
+    /// <summary>
+    ///     Optional color information for each character (RGB)
+    /// </summary>
+    public Rgb24[,]? Colors { get; }
+
+    /// <summary>
+    ///     Frame delay in milliseconds (for animations)
+    /// </summary>
+    public int DelayMs { get; }
+
+    /// <summary>
+    ///     Width of the frame in characters
+    /// </summary>
+    public int Width => Characters.GetLength(1);
+
+    /// <summary>
+    ///     Height of the frame in characters
+    /// </summary>
+    public int Height => Characters.GetLength(0);
+
+    /// <summary>
+    ///     Convert to plain text string
     /// </summary>
     public override string ToString()
     {
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
 
-        for (int y = 0; y < Height; y++)
+        for (var y = 0; y < Height; y++)
         {
-            for (int x = 0; x < Width; x++)
-            {
-                sb.Append(Characters[y, x]);
-            }
+            for (var x = 0; x < Width; x++) sb.Append(Characters[y, x]);
             if (y < Height - 1)
                 sb.AppendLine();
         }
@@ -63,7 +61,7 @@ public class AsciiFrame
     }
 
     /// <summary>
-    /// Convert to string with ANSI color codes
+    ///     Convert to string with ANSI color codes
     /// </summary>
     /// <param name="darkThreshold">Optional: skip colors for pixels below this brightness (for dark terminals). 0.0-1.0</param>
     /// <param name="lightThreshold">Optional: skip colors for pixels above this brightness (for light terminals). 0.0-1.0</param>
@@ -72,27 +70,25 @@ public class AsciiFrame
         if (Colors == null)
             return ToString();
 
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         Rgb24? lastColor = null;
-        bool lastWasSkipped = false;
+        var lastWasSkipped = false;
 
-        for (int y = 0; y < Height; y++)
+        for (var y = 0; y < Height; y++)
         {
-            for (int x = 0; x < Width; x++)
+            for (var x = 0; x < Width; x++)
             {
                 var color = Colors[y, x];
-                float brightness = BrightnessHelper.GetBrightness(color);
+                var brightness = BrightnessHelper.GetBrightness(color);
 
                 // Skip colors that match terminal background
-                bool skipColor = BrightnessHelper.ShouldSkipColor(brightness, darkThreshold, lightThreshold);
+                var skipColor = BrightnessHelper.ShouldSkipColor(brightness, darkThreshold, lightThreshold);
 
                 if (skipColor)
                 {
                     // Output space without color code (blends with terminal background)
                     if (!lastWasSkipped && lastColor != null)
-                    {
                         sb.Append(AnsiCodes.Reset); // Reset before outputting plain space
-                    }
                     sb.Append(' ');
                     lastWasSkipped = true;
                     lastColor = null;
@@ -104,10 +100,12 @@ public class AsciiFrame
                         sb.Append(AnsiCodes.Foreground(color));
                         lastColor = color;
                     }
+
                     sb.Append(Characters[y, x]);
                     lastWasSkipped = false;
                 }
             }
+
             if (y < Height - 1)
                 sb.AppendLine();
         }
@@ -117,7 +115,7 @@ public class AsciiFrame
     }
 
     /// <summary>
-    /// Get a single row as a string
+    ///     Get a single row as a string
     /// </summary>
     public string GetRow(int row)
     {
@@ -125,15 +123,12 @@ public class AsciiFrame
             throw new ArgumentOutOfRangeException(nameof(row));
 
         var chars = new char[Width];
-        for (int x = 0; x < Width; x++)
-        {
-            chars[x] = Characters[row, x];
-        }
+        for (var x = 0; x < Width; x++) chars[x] = Characters[row, x];
         return new string(chars);
     }
 
     /// <summary>
-    /// Get a single row with ANSI colors
+    ///     Get a single row with ANSI colors
     /// </summary>
     /// <param name="row">Row index</param>
     /// <param name="darkThreshold">Optional: skip colors for pixels below this brightness (for dark terminals). 0.0-1.0</param>
@@ -146,24 +141,21 @@ public class AsciiFrame
         if (Colors == null)
             return GetRow(row);
 
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         Rgb24? lastColor = null;
-        bool lastWasSkipped = false;
+        var lastWasSkipped = false;
 
-        for (int x = 0; x < Width; x++)
+        for (var x = 0; x < Width; x++)
         {
             var color = Colors[row, x];
-            float brightness = BrightnessHelper.GetBrightness(color);
+            var brightness = BrightnessHelper.GetBrightness(color);
 
             // Skip colors that match terminal background
-            bool skipColor = BrightnessHelper.ShouldSkipColor(brightness, darkThreshold, lightThreshold);
+            var skipColor = BrightnessHelper.ShouldSkipColor(brightness, darkThreshold, lightThreshold);
 
             if (skipColor)
             {
-                if (!lastWasSkipped && lastColor != null)
-                {
-                    sb.Append(AnsiCodes.Reset);
-                }
+                if (!lastWasSkipped && lastColor != null) sb.Append(AnsiCodes.Reset);
                 sb.Append(' ');
                 lastWasSkipped = true;
                 lastColor = null;
@@ -175,6 +167,7 @@ public class AsciiFrame
                     sb.Append(AnsiCodes.Foreground(color));
                     lastColor = color;
                 }
+
                 sb.Append(Characters[row, x]);
                 lastWasSkipped = false;
             }

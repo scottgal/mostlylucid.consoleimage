@@ -95,6 +95,7 @@ var frames = renderer.RenderGif("animation.gif");
 ```
 
 **Matrix Presets:**
+
 ```csharp
 var green = MatrixOptions.ClassicGreen;    // Default green
 var red = MatrixOptions.RedPill;           // Red tint
@@ -104,6 +105,7 @@ var fullColor = MatrixOptions.FullColor;   // Source image colors
 ```
 
 **Custom Alphabets:**
+
 - Default: Half-width katakana + numbers + symbols
 - `UseAsciiOnly = true`: ASCII letters only
 - `CustomAlphabet = "01"`: Binary rain
@@ -214,7 +216,8 @@ bool hasSixel = TerminalCapabilities.SupportsSixel();
 
 ## Related Packages
 
-- [mostlylucid.consoleimage.video](https://www.nuget.org/packages/mostlylucid.consoleimage.video/) - FFmpeg video playback
+- [mostlylucid.consoleimage.video](https://www.nuget.org/packages/mostlylucid.consoleimage.video/) - FFmpeg video
+  playback
 
 ## Attribution
 

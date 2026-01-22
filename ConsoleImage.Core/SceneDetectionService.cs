@@ -4,15 +4,15 @@ using SixLabors.ImageSharp.PixelFormats;
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Scene detection using histogram-based comparison.
-/// Pure ImageSharp implementation - no ML dependencies.
-/// Based on research: histogram methods achieve ~1.7ms per comparison with F1=0.6+ accuracy.
+///     Scene detection using histogram-based comparison.
+///     Pure ImageSharp implementation - no ML dependencies.
+///     Based on research: histogram methods achieve ~1.7ms per comparison with F1=0.6+ accuracy.
 /// </summary>
 public static class SceneDetectionService
 {
     /// <summary>
-    /// Detect scenes in an animated image using histogram-based motion detection.
-    /// Returns frame indices at the END of each scene.
+    ///     Detect scenes in an animated image using histogram-based motion detection.
+    ///     Returns frame indices at the END of each scene.
     /// </summary>
     /// <param name="image">The loaded animated image</param>
     /// <param name="maxScenes">Maximum number of scenes to return</param>
@@ -91,10 +91,8 @@ public static class SceneDetectionService
         var sceneFrames = new List<int> { 0 }; // Always include first frame
 
         foreach (var (frameIdx, score) in motionScores)
-        {
             if (score > threshold && !sceneFrames.Contains(frameIdx))
                 sceneFrames.Add(frameIdx);
-        }
 
         // Always include the last frame
         var lastFrame = frameCount - 1;
@@ -130,7 +128,7 @@ public static class SceneDetectionService
     }
 
     /// <summary>
-    /// Quick check if an animated image has significant scene changes.
+    ///     Quick check if an animated image has significant scene changes.
     /// </summary>
     public static bool HasSignificantSceneChanges(Image<Rgba32> image, double threshold = 0.15)
     {
@@ -153,7 +151,7 @@ public static class SceneDetectionService
     }
 
     /// <summary>
-    /// Compute color histogram for a frame (64 bins per channel = 192 total).
+    ///     Compute color histogram for a frame (64 bins per channel = 192 total).
     /// </summary>
     private static int[] ComputeColorHistogram(Image<Rgba32> frame)
     {
@@ -175,8 +173,8 @@ public static class SceneDetectionService
     }
 
     /// <summary>
-    /// Compare two histograms using histogram intersection.
-    /// Returns difference score: 0 = identical, 1 = completely different.
+    ///     Compare two histograms using histogram intersection.
+    ///     Returns difference score: 0 = identical, 1 = completely different.
     /// </summary>
     private static double CompareHistograms(int[] hist1, int[] hist2)
     {
@@ -196,7 +194,7 @@ public static class SceneDetectionService
     }
 
     /// <summary>
-    /// Remove visually similar frames from the scene list.
+    ///     Remove visually similar frames from the scene list.
     /// </summary>
     private static List<int> DeduplicateSceneFrames(Image<Rgba32> image, List<int> frameIndices)
     {
@@ -231,7 +229,7 @@ public static class SceneDetectionService
 }
 
 /// <summary>
-/// Scene detection result for animated images.
+///     Scene detection result for animated images.
 /// </summary>
 public record SceneDetectionResult
 {

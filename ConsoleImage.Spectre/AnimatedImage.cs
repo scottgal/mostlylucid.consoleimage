@@ -7,39 +7,42 @@ using CoreRenderOptions = ConsoleImage.Core.RenderOptions;
 namespace ConsoleImage.Spectre;
 
 /// <summary>
-/// Animation mode for rendering GIFs.
+///     Animation mode for rendering GIFs.
 /// </summary>
 public enum AnimationMode
 {
     /// <summary>Standard ASCII art rendering.</summary>
     Ascii,
+
     /// <summary>High-fidelity colored Unicode blocks.</summary>
     ColorBlock,
+
     /// <summary>Ultra-high resolution braille characters.</summary>
     Braille,
+
     /// <summary>Matrix digital rain effect.</summary>
     Matrix
 }
 
 /// <summary>
-/// Animated image for use with Spectre.Console's Live display.
-/// Supports ASCII, ColorBlock, Braille, and Matrix rendering modes.
+///     Animated image for use with Spectre.Console's Live display.
+///     Supports ASCII, ColorBlock, Braille, and Matrix rendering modes.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Use this class to display animated GIFs or create animation effects from static images.
-/// Each frame is pre-rendered at construction time for smooth playback.
-/// </para>
-/// <para>
-/// <b>Basic usage:</b>
-/// <code>
+///     <para>
+///         Use this class to display animated GIFs or create animation effects from static images.
+///         Each frame is pre-rendered at construction time for smooth playback.
+///     </para>
+///     <para>
+///         <b>Basic usage:</b>
+///         <code>
 /// var animation = new AnimatedImage("cat.gif", AnimationMode.Braille);
 /// await animation.PlayAsync(cancellationToken);
 /// </code>
-/// </para>
-/// <para>
-/// <b>Manual control:</b>
-/// <code>
+///     </para>
+///     <para>
+///         <b>Manual control:</b>
+///         <code>
 /// await AnsiConsole.Live(animation).StartAsync(async ctx => {
 ///     while (!token.IsCancellationRequested) {
 ///         animation.TryAdvanceFrame();
@@ -48,38 +51,18 @@ public enum AnimationMode
 ///     }
 /// });
 /// </code>
-/// </para>
+///     </para>
 /// </remarks>
 public partial class AnimatedImage : IRenderable
 {
     private readonly List<FrameData> _frames;
-    private readonly int _width;
     private readonly int _height;
-    private int _currentFrame;
+    private readonly int _width;
     private DateTime _lastFrameTime;
     private float? _targetFps;
 
     /// <summary>
-    /// Current frame index.
-    /// </summary>
-    public int CurrentFrame => _currentFrame;
-
-    /// <summary>
-    /// Total number of frames.
-    /// </summary>
-    public int FrameCount => _frames.Count;
-
-    /// <summary>
-    /// Target FPS override. If set, ignores embedded GIF timing.
-    /// </summary>
-    public float? TargetFps
-    {
-        get => _targetFps;
-        set => _targetFps = value;
-    }
-
-    /// <summary>
-    /// Create an animated image from a GIF file.
+    ///     Create an animated image from a GIF file.
     /// </summary>
     public AnimatedImage(string filePath, AnimationMode mode = AnimationMode.Ascii, CoreRenderOptions? options = null)
     {
@@ -107,6 +90,90 @@ public partial class AnimatedImage : IRenderable
         {
             _width = _frames[0].Width;
             _height = _frames[0].Height;
+        }
+    }
+
+    /// <summary>
+    ///     Target FPS override. If set, ignores embedded GIF timing.
+    /// </summary>
+    public float? TargetFps
+    {
+        get => _targetFps;
+        set => _targetFps = value;
+    }
+
+    /// <summary>
+    ///     Current frame index.
+    /// </summary>
+    public int CurrentFrame { get; private set; }
+
+    /// <summary>
+    ///     Total number of frames.
+    /// </summary>
+    public int FrameCount => _frames.Count;
+
+    /// <summary>
+    ///     Advance to the next frame if enough time has elapsed.
+    ///     Call this in your Live display loop.
+    ///     Returns true if frame changed.
+    /// </summary>
+    public bool TryAdvanceFrame()
+    {
+        if (_frames.Count <= 1)
+            return false;
+
+        var now = DateTime.UtcNow;
+        var currentDelay = _targetFps.HasValue && _targetFps.Value > 0
+            ? (int)(1000f / _targetFps.Value)
+            : _frames[CurrentFrame].DelayMs;
+
+        if ((now - _lastFrameTime).TotalMilliseconds >= currentDelay)
+        {
+            CurrentFrame = (CurrentFrame + 1) % _frames.Count;
+            _lastFrameTime = now;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    ///     Reset animation to first frame.
+    /// </summary>
+    public void Reset()
+    {
+        CurrentFrame = 0;
+        _lastFrameTime = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    ///     Set current frame directly.
+    /// </summary>
+    public void SetFrame(int frameIndex)
+    {
+        if (frameIndex >= 0 && frameIndex < _frames.Count)
+        {
+            CurrentFrame = frameIndex;
+            _lastFrameTime = DateTime.UtcNow;
+        }
+    }
+
+    public Measurement Measure(SpectreRenderOptions options, int maxWidth)
+    {
+        return new Measurement(_width, _width);
+    }
+
+    public IEnumerable<Segment> Render(SpectreRenderOptions options, int maxWidth)
+    {
+        if (_frames.Count == 0)
+            yield break;
+
+        var frame = _frames[CurrentFrame];
+        var lines = frame.Content.Split('\n');
+        foreach (var line in lines)
+        {
+            yield return new Segment(line.TrimEnd('\r'));
+            yield return Segment.LineBreak;
         }
     }
 
@@ -157,105 +224,43 @@ public partial class AnimatedImage : IRenderable
     private static (int width, int height) GetDimensionsFromContent(string content)
     {
         var lines = content.Split('\n');
-        int height = lines.Length;
-        int width = lines.Length > 0 ? GetVisibleWidth(lines[0]) : 0;
+        var height = lines.Length;
+        var width = lines.Length > 0 ? GetVisibleWidth(lines[0]) : 0;
         return (width, height);
     }
 
     private static int GetVisibleWidth(string line)
     {
-        int width = 0;
-        bool inEscape = false;
-        foreach (char c in line)
-        {
+        var width = 0;
+        var inEscape = false;
+        foreach (var c in line)
             if (c == '\x1b')
+            {
                 inEscape = true;
+            }
             else if (inEscape)
             {
                 if (char.IsLetter(c))
                     inEscape = false;
             }
             else
+            {
                 width++;
-        }
+            }
+
         return width;
-    }
-
-    /// <summary>
-    /// Advance to the next frame if enough time has elapsed.
-    /// Call this in your Live display loop.
-    /// Returns true if frame changed.
-    /// </summary>
-    public bool TryAdvanceFrame()
-    {
-        if (_frames.Count <= 1)
-            return false;
-
-        var now = DateTime.UtcNow;
-        var currentDelay = _targetFps.HasValue && _targetFps.Value > 0
-            ? (int)(1000f / _targetFps.Value)
-            : _frames[_currentFrame].DelayMs;
-
-        if ((now - _lastFrameTime).TotalMilliseconds >= currentDelay)
-        {
-            _currentFrame = (_currentFrame + 1) % _frames.Count;
-            _lastFrameTime = now;
-            return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Reset animation to first frame.
-    /// </summary>
-    public void Reset()
-    {
-        _currentFrame = 0;
-        _lastFrameTime = DateTime.UtcNow;
-    }
-
-    /// <summary>
-    /// Set current frame directly.
-    /// </summary>
-    public void SetFrame(int frameIndex)
-    {
-        if (frameIndex >= 0 && frameIndex < _frames.Count)
-        {
-            _currentFrame = frameIndex;
-            _lastFrameTime = DateTime.UtcNow;
-        }
-    }
-
-    public Measurement Measure(SpectreRenderOptions options, int maxWidth)
-    {
-        return new Measurement(_width, _width);
-    }
-
-    public IEnumerable<Segment> Render(SpectreRenderOptions options, int maxWidth)
-    {
-        if (_frames.Count == 0)
-            yield break;
-
-        var frame = _frames[_currentFrame];
-        var lines = frame.Content.Split('\n');
-        foreach (var line in lines)
-        {
-            yield return new Segment(line.TrimEnd('\r'));
-            yield return Segment.LineBreak;
-        }
     }
 
     private record FrameData(string Content, int Width, int Height, int DelayMs);
 }
 
 /// <summary>
-/// Extension methods for AnimatedImage with Spectre.Console.
+///     Extension methods for AnimatedImage with Spectre.Console.
 /// </summary>
 public static class AnimatedImageExtensions
 {
     /// <summary>
-    /// Play an animated image using Spectre's Live display.
+    ///     Play an animated image using Spectre's Live display.
     /// </summary>
     public static async Task PlayAsync(
         this AnimatedImage animation,
@@ -263,7 +268,7 @@ public static class AnimatedImageExtensions
         int loopCount = 0,
         Action<LiveDisplayContext, AnimatedImage>? onFrame = null)
     {
-        int loops = 0;
+        var loops = 0;
 
         await AnsiConsole.Live(animation)
             .AutoClear(false)

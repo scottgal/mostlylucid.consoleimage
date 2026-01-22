@@ -4,7 +4,9 @@ Model Context Protocol (MCP) server that exposes ConsoleImage rendering capabili
 
 ## What is MCP?
 
-[Model Context Protocol](https://modelcontextprotocol.io/) is an open standard that allows AI assistants (like Claude) to interact with external tools and services. This MCP server lets Claude render images as ASCII art, create animated GIFs, and analyze media files.
+[Model Context Protocol](https://modelcontextprotocol.io/) is an open standard that allows AI assistants (like Claude)
+to interact with external tools and services. This MCP server lets Claude render images as ASCII art, create animated
+GIFs, and analyze media files.
 
 ## Installation
 
@@ -12,14 +14,15 @@ Model Context Protocol (MCP) server that exposes ConsoleImage rendering capabili
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/scottgal/ConsoleImage/releases):
 
-| Platform | Download |
-|----------|----------|
-| Windows x64 | `consoleimage-win-x64-mcp.zip` |
-| Linux x64 | `consoleimage-linux-x64-mcp.tar.gz` |
+| Platform    | Download                              |
+|-------------|---------------------------------------|
+| Windows x64 | `consoleimage-win-x64-mcp.zip`        |
+| Linux x64   | `consoleimage-linux-x64-mcp.tar.gz`   |
 | Linux ARM64 | `consoleimage-linux-arm64-mcp.tar.gz` |
-| macOS ARM64 | `consoleimage-osx-arm64-mcp.tar.gz` |
+| macOS ARM64 | `consoleimage-osx-arm64-mcp.tar.gz`   |
 
 Extract to a directory of your choice, e.g.:
+
 - Windows: `C:\Tools\consoleimage-mcp\`
 - Linux/macOS: `~/tools/consoleimage-mcp/`
 
@@ -41,15 +44,16 @@ dotnet publish ConsoleImage.Mcp -c Release -r win-x64 --self-contained -p:Publis
 
 Provides the following MCP tools:
 
-| Tool | Description |
-|------|-------------|
-| `render_image` | Render image/GIF to ASCII art (ascii, blocks, braille, matrix modes) |
-| `render_to_gif` | Create animated GIF from image/GIF source |
-| `get_gif_info` | Get GIF metadata (dimensions, frame count) |
-| `get_video_info` | Get video file info via FFmpeg |
-| `list_render_modes` | List available render modes with descriptions |
-| `list_matrix_presets` | List Matrix digital rain color presets |
-| `compare_render_modes` | Render same image in all modes for comparison |
+| Tool                   | Description                                                          |
+|------------------------|----------------------------------------------------------------------|
+| `render_image`         | Render image/GIF to ASCII art (ascii, blocks, braille, matrix modes) |
+| `render_to_gif`        | Create animated GIF from image/GIF source                            |
+| `get_image_info`       | Get detailed image metadata (format, dimensions, EXIF, color depth)  |
+| `get_gif_info`         | Get GIF metadata (dimensions, frame count)                           |
+| `get_video_info`       | Get video file info via FFmpeg                                       |
+| `list_render_modes`    | List available render modes with descriptions                        |
+| `list_matrix_presets`  | List Matrix digital rain color presets                               |
+| `compare_render_modes` | Render same image in all modes for comparison                        |
 
 ## Configuration
 
@@ -60,6 +64,7 @@ Once installed, configure your AI assistant to use the MCP server.
 Edit `claude_desktop_config.json`:
 
 **Windows** (`%APPDATA%\Claude\claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
@@ -71,6 +76,7 @@ Edit `claude_desktop_config.json`:
 ```
 
 **macOS** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
@@ -82,6 +88,7 @@ Edit `claude_desktop_config.json`:
 ```
 
 **Linux** (`~/.config/Claude/claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
@@ -113,6 +120,7 @@ Or add to your global config at `~/.claude/mcp.json` (or `%USERPROFILE%\.claude\
 After adding, restart Claude Code. The tools will be available as `mcp__consoleimage__render_image`, etc.
 
 **Quick test after setup:**
+
 ```
 You: "Use the render_image tool to show me what photo.jpg looks like"
 Claude: [calls mcp__consoleimage__render_image with path="photo.jpg"]
@@ -132,6 +140,33 @@ Add to VS Code settings (`settings.json`):
 }
 ```
 
+## Best Practices for LLM Context
+
+ASCII art with ANSI color codes can generate large outputs that consume significant context window space. Here are
+strategies to minimize context usage:
+
+| Strategy               | How                                  | When to Use                                          |
+|------------------------|--------------------------------------|------------------------------------------------------|
+| **Save to file**       | Use `outputPath` parameter           | When you want to see the image but not waste context |
+| **Braille + no color** | `mode: "braille"`, `useColor: false` | Quick preview with maximum detail, minimal output    |
+| **Reduce size**        | Lower `maxWidth`/`maxHeight`         | When rough preview is sufficient                     |
+| **ASCII mode**         | Use default `mode: "ascii"`          | Fewer bytes than blocks mode, decent detail          |
+
+**Quick preview (minimal context):**
+
+```
+"Quick preview of photo.jpg using braille without color at 60 wide"
+```
+
+**Full render without consuming context:**
+
+```
+"Render photo.jpg in blocks mode and save to render.txt"
+```
+
+Returns only:
+`{"success": true, "outputPath": "render.txt", "mode": "blocks", "width": 80, "height": 40, "fileSizeKB": 12.5}`
+
 ## Usage Examples
 
 Once configured, you can ask Claude things like:
@@ -141,6 +176,9 @@ Once configured, you can ask Claude things like:
 - "Compare all render modes for this image"
 - "Convert this GIF to ASCII art and save it"
 - "What are the dimensions of this video file?"
+- "Quick preview of image.png using braille without color" (minimal context)
+- "Render photo.jpg to output.txt" (saves to file, returns metadata only)
+- "Show info for photo.jpg" (get detailed metadata: format, dimensions, EXIF, color depth)
 
 ## Tool Reference
 
@@ -157,11 +195,36 @@ Renders an image or GIF frame to ASCII art and returns the result as text with A
 | `maxHeight` | int | `40` | Maximum height in characters |
 | `useColor` | bool | `true` | Enable ANSI color codes in output |
 | `frameIndex` | int | `0` | For GIFs, which frame to render (0-based) |
+| `outputPath` | string | `null` | Save to file instead of returning inline (reduces context usage) |
 
 **Example prompts:**
+
 - "Render photo.jpg as ASCII art"
 - "Show me image.png in braille mode at 120 characters wide"
 - "Display frame 5 of animation.gif in matrix style"
+- "Render photo.jpg and save to output.txt" (uses outputPath to avoid context bloat)
+
+**Tips for reducing context usage:**
+
+Large colored renders can consume significant context. To minimize this:
+
+1. **Use `outputPath`** - Save output to a file instead of returning inline:
+   ```
+   "Render image.jpg to output.txt"
+   ```
+   Returns only metadata (success, dimensions, file size) instead of the full ANSI output.
+
+2. **Use `braille` mode with `useColor: false`** - Fastest way to preview an image:
+   ```
+   "Quick preview of image.jpg using braille without color"
+   ```
+   Braille characters pack 8 pixels per character (2x4 dots), giving high detail with minimal output size. Without color
+   codes, the response is very compact.
+
+3. **Reduce dimensions** - Use smaller `maxWidth`/`maxHeight`:
+   ```
+   "Render image.jpg at 40 wide"
+   ```
 
 ### render_to_gif
 
@@ -178,12 +241,54 @@ Creates an animated GIF file from an image or GIF source, rendered in the specif
 | `maxColors` | int | `64` | GIF palette size (16-256) |
 
 **Example prompts:**
+
 - "Convert animation.gif to ASCII art and save as output.gif"
 - "Create a matrix-style GIF from photo.jpg"
 
+### get_image_info
+
+Returns comprehensive metadata about any image file. Useful for understanding an image before rendering.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | (required) | Path to image file (jpg, png, gif, bmp, webp) |
+
+**Returns:** JSON with detailed information:
+
+```json
+{
+  "fileName": "photo.jpg",
+  "fullPath": "/path/to/photo.jpg",
+  "format": "JPEG",
+  "width": 1920,
+  "height": 1080,
+  "aspectRatio": "16:9",
+  "fileSizeBytes": 245760,
+  "fileSizeFormatted": "240.0 KB",
+  "frameCount": 1,
+  "isAnimated": false,
+  "bitsPerPixel": 24,
+  "pixelFormat": "NoAlpha, 24bpp",
+  "megaPixels": 2.07,
+  "metadata": {
+    "Make": "Canon",
+    "Model": "EOS R5",
+    "DateTimeOriginal": "2024:01:15 14:30:00",
+    "FocalLength": "50/1"
+  }
+}
+```
+
+**Example prompts:**
+
+- "Show info for photo.jpg"
+- "What are the details of this image?"
+- "Get metadata for screenshot.png"
+
 ### get_gif_info
 
-Returns metadata about a GIF file as JSON.
+Returns metadata about a GIF file as JSON. (Use `get_image_info` for more detailed information.)
 
 **Parameters:**
 | Parameter | Type | Default | Description |
@@ -208,6 +313,7 @@ Returns metadata about a video file via FFmpeg.
 Lists all available render modes with descriptions. Takes no parameters.
 
 **Returns:**
+
 ```json
 {
   "modes": [
@@ -236,14 +342,17 @@ Renders the same image in all four modes for side-by-side comparison.
 | `maxWidth` | int | `40` | Width for each render (smaller for comparison) |
 
 **Example prompts:**
+
 - "Compare all render modes for photo.jpg"
 - "Show me how this image looks in each ASCII style"
 
 ## AOT Support
 
-The server is configured for Native AOT compilation for fast startup. All JSON serialization uses source generators for AOT compatibility.
+The server is configured for Native AOT compilation for fast startup. All JSON serialization uses source generators for
+AOT compatibility.
 
 Supported platforms:
+
 - `win-x64` - Windows x64
 - `linux-x64` - Linux x64
 - `osx-x64` - macOS Intel
@@ -263,15 +372,18 @@ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | ./consoleimage-mcp
 ### Common Issues
 
 **"Command not found"**
+
 - Ensure the full path to the binary is correct in your config
 - On Linux/macOS, ensure the binary is executable: `chmod +x consoleimage-mcp`
 
 **"Tools not appearing in Claude"**
+
 - Restart Claude Desktop after editing config
 - Check Claude Desktop logs for MCP connection errors
 - Verify JSON syntax in config file (use a JSON validator)
 
 **"Video tools not working"**
+
 - FFmpeg is required for video features
 - FFmpeg will auto-download on first use, or install manually
 
