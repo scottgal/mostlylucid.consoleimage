@@ -184,19 +184,78 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag_name }}
           name: ConsoleImage ${{ steps.version.outputs.version }}
           body: |
-            ## ConsoleImage - ASCII Art Renderer
+            ## ConsoleImage Suite ${{ steps.version.outputs.version }}
 
-            High-quality ASCII art renderer for converting images and GIFs to terminal output.
-            Based on [Alex Harri's shape-matching algorithm](https://alexharri.com/blog/ascii-rendering).
+            **Combined release** of ConsoleImage CLI tools. High-quality ASCII art renderer using [Alex Harri's shape-matching algorithm](https://alexharri.com/blog/ascii-rendering).
 
-            ### Downloads
+            > **Note:** For video support (`consolevideo`), use the [Publish All NuGet workflow](../../actions/workflows/publish-all-nuget.yml) which builds all CLIs.
 
-            | Platform | CLI | MCP Server |
-            |----------|-----|------------|
+            ### CLI Downloads
+
+            | Platform | consoleimage | consoleimage-mcp |
+            |----------|--------------|------------------|
             | Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-win-x64-mcp.zip` |
             | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-linux-x64-mcp.tar.gz` |
             | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
             | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-osx-arm64-mcp.tar.gz` |
+
+            ---
+
+            ### consoleimage - Image & GIF to ASCII
+
+            ```bash
+            # Basic usage - render image to terminal
+            consoleimage photo.jpg
+
+            # Render modes
+            consoleimage photo.png --blocks      # Unicode color blocks (▀▄) - highest fidelity
+            consoleimage photo.png --braille     # Braille patterns - ultra-high resolution
+            consoleimage photo.png --matrix      # Matrix digital rain effect
+
+            # Animated GIF playback
+            consoleimage animation.gif
+            consoleimage animation.gif --speed 1.5 --loop 3
+
+            # Output to file
+            consoleimage animation.gif -o output.gif    # Create animated GIF
+            consoleimage photo.png -o render.json       # Save as JSON document
+
+            # Size control
+            consoleimage photo.jpg -w 120              # Set width (auto-fits to terminal by default)
+            consoleimage photo.jpg -w 80 -h 40        # Set both dimensions
+
+            # Aspect ratio calibration
+            consoleimage --calibrate                   # Show calibration circle
+            consoleimage --calibrate --aspect-ratio 0.48 --save
+            ```
+
+            ---
+
+            ### consoleimage-mcp - MCP Server for AI Tools
+
+            Add to Claude Desktop (`claude_desktop_config.json`):
+            ```json
+            {
+              "mcpServers": {
+                "consoleimage": {
+                  "command": "C:/path/to/consoleimage-mcp.exe"
+                }
+              }
+            }
+            ```
+
+            **Available MCP Tools:**
+            | Tool | Description |
+            |------|-------------|
+            | `render_image` | Render image/GIF to ASCII art |
+            | `render_to_gif` | Create ASCII art GIF file |
+            | `get_image_info` | Get image metadata (dimensions, format, EXIF) |
+            | `get_gif_info` | Get GIF frame count and dimensions |
+            | `get_video_info` | Get video metadata (duration, resolution, codec) |
+            | `list_render_modes` | List available render modes |
+            | `compare_render_modes` | Compare all modes side-by-side |
+
+            ---
 
             ### NuGet Packages
             ```bash
@@ -206,47 +265,10 @@ jobs:
             ```
 
             ### Features
-            - 🎨 **Four render modes**: ASCII art, Unicode color blocks (▀▄), Braille patterns, and Matrix rain
-            - 🎬 **Animated GIF support** with smooth, flicker-free playback
-            - 🎥 **Video support** with FFmpeg (auto-downloads)
-            - 🤖 **MCP Server** for AI tool integration (Claude, etc.)
-            - 🖥️ **Dynamic resize**: Animations re-render when console resizes
-            - 📐 **Auto-fits to console**: Output defaults to your terminal size
-            - 🔧 **Aspect ratio calibration**: Auto-saved per-mode calibration
-
-            ### Quick Start - CLI
-
-            ```bash
-            # Render an image
-            consoleimage photo.jpg
-
-            # High-fidelity color blocks mode
-            consoleimage photo.png --blocks
-
-            # Ultra-high resolution braille mode
-            consoleimage photo.png --braille
-
-            # Matrix digital rain effect
-            consoleimage photo.png --matrix
-
-            # Animated GIF playback
-            consoleimage animation.gif
-            ```
-
-            ### Quick Start - MCP Server
-
-            Add to Claude Desktop config (`claude_desktop_config.json`):
-            ```json
-            {
-              "mcpServers": {
-                "consoleimage": {
-                  "command": "path/to/consoleimage-mcp"
-                }
-              }
-            }
-            ```
-
-            MCP tools: `render_image`, `render_to_gif`, `get_gif_info`, `get_video_info`, `list_render_modes`, `list_matrix_presets`, `compare_render_modes`
+            - **Four render modes**: ASCII art, Unicode color blocks, Braille patterns, Matrix rain
+            - **Animated playback**: GIFs with flicker-free DECSET 2026 sync
+            - **Auto-fits to terminal**: Output defaults to your console size
+            - **AOT compiled**: Fast startup, no .NET runtime required
 
           files: |
             artifacts/**/*.zip

@@ -416,11 +416,12 @@ jobs:
           tag_name: consoleimage-v${{ needs.publish-core.outputs.version }}
           name: ConsoleImage ${{ needs.publish-core.outputs.version }}
           body: |
-            ## ConsoleImage ${{ needs.publish-core.outputs.version }}
+            ## ConsoleImage Suite ${{ needs.publish-core.outputs.version }}
 
-            High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+            **Combined release** of all ConsoleImage CLI tools and NuGet packages.
+            High-quality ASCII art renderer using [Alex Harri's shape-matching algorithm](https://alexharri.com/blog/ascii-rendering).
 
-            ### Downloads
+            ### CLI Downloads
 
             | Platform | consoleimage | consolevideo | consoleimage-mcp |
             |----------|--------------|--------------|------------------|
@@ -429,7 +430,88 @@ jobs:
             | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consolevideo-linux-arm64.tar.gz` | `consoleimage-mcp-linux-arm64.tar.gz` |
             | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consolevideo-osx-arm64.tar.gz` | `consoleimage-mcp-osx-arm64.tar.gz` |
 
-            ### NuGet Packages
+            ---
+
+            ### consoleimage - Image & GIF to ASCII
+
+            ```bash
+            # Basic usage - render image to terminal
+            consoleimage photo.jpg
+
+            # Render modes
+            consoleimage photo.png --blocks      # Unicode color blocks (▀▄) - highest fidelity
+            consoleimage photo.png --braille     # Braille patterns - ultra-high resolution
+            consoleimage photo.png --matrix      # Matrix digital rain effect
+
+            # Animated GIF playback
+            consoleimage animation.gif
+            consoleimage animation.gif --speed 1.5 --loop 3
+
+            # Output to file
+            consoleimage animation.gif -o output.gif    # Create animated GIF
+            consoleimage photo.png -o render.json       # Save as JSON document
+
+            # Size control
+            consoleimage photo.jpg -w 120              # Set width (auto-fits to terminal by default)
+            consoleimage photo.jpg -w 80 -h 40        # Set both dimensions
+
+            # Show status line with progress
+            consoleimage animation.gif --status
+            ```
+
+            ---
+
+            ### consolevideo - Video to ASCII (FFmpeg)
+
+            ```bash
+            # Play video as ASCII art (auto-downloads FFmpeg if needed)
+            consolevideo movie.mp4
+
+            # Render modes (same as consoleimage)
+            consolevideo movie.mp4 --blocks
+            consolevideo movie.mp4 --braille
+            consolevideo movie.mp4 --matrix
+
+            # Size and speed control
+            consolevideo movie.mp4 -w 120 --speed 2.0
+
+            # Output to animated GIF
+            consolevideo movie.mp4 -o output.gif --gif-colors 64
+
+            # Show status line with timing info
+            consolevideo movie.mp4 --status
+            ```
+
+            ---
+
+            ### consoleimage-mcp - MCP Server for AI Tools
+
+            Add to Claude Desktop (`claude_desktop_config.json`):
+            ```json
+            {
+              "mcpServers": {
+                "consoleimage": {
+                  "command": "C:/path/to/consoleimage-mcp.exe"
+                }
+              }
+            }
+            ```
+
+            **Available MCP Tools:**
+            | Tool | Description |
+            |------|-------------|
+            | `render_image` | Render image/GIF to ASCII art |
+            | `render_to_gif` | Create ASCII art GIF file |
+            | `get_image_info` | Get image metadata (dimensions, format, EXIF) |
+            | `get_gif_info` | Get GIF frame count and dimensions |
+            | `get_video_info` | Get video metadata (duration, resolution, codec) |
+            | `list_render_modes` | List available render modes |
+            | `list_matrix_presets` | List Matrix color presets |
+            | `compare_render_modes` | Compare all modes side-by-side |
+
+            ---
+
+            ### NuGet Packages (for .NET developers)
             ```bash
             dotnet add package mostlylucid.consoleimage --version ${{ needs.publish-core.outputs.version }}
             dotnet add package mostlylucid.consoleimage.video --version ${{ needs.publish-core.outputs.version }}
@@ -437,21 +519,11 @@ jobs:
             ```
 
             ### Features
-            - 🎨 **Four render modes**: ASCII, Unicode blocks, Braille, Matrix rain
-            - 🎬 **Animated GIF/Video** with flicker-free playback
-            - 🤖 **MCP Server** for AI tool integration (Claude Desktop, VS Code)
-            - 📦 **AOT compiled** - Fast startup, no runtime required
-
-            ### MCP Server Setup
-            ```json
-            {
-              "mcpServers": {
-                "consoleimage": {
-                  "command": "path/to/consoleimage-mcp"
-                }
-              }
-            }
-            ```
+            - **Four render modes**: ASCII art, Unicode color blocks, Braille patterns, Matrix rain
+            - **Animated playback**: GIFs and videos with flicker-free DECSET 2026 sync
+            - **Auto-fits to terminal**: Output defaults to your console size
+            - **AOT compiled**: Fast startup, no .NET runtime required
+            - **Cross-platform**: Windows, Linux, macOS (x64 and ARM64)
 
           files: |
             artifacts/**/*.zip
