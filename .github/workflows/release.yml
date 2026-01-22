@@ -64,7 +64,7 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: Publish AOT
+      - name: Publish AOT - consoleimage
         shell: bash
         run: |
           dotnet publish ConsoleImage/ConsoleImage.csproj \
@@ -78,26 +78,50 @@ jobs:
             -p:IlcGenerateStackTraceData=false \
             -o ./publish/${{ matrix.artifact }}
 
+      - name: Publish AOT - consoleimage-mcp
+        shell: bash
+        run: |
+          dotnet publish ConsoleImage.Mcp/ConsoleImage.Mcp.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishAot=true \
+            -p:OptimizationPreference=Size \
+            -p:IlcOptimizationPreference=Size \
+            -p:StripSymbols=true \
+            -p:IlcGenerateStackTraceData=false \
+            -o ./publish/${{ matrix.artifact }}-mcp
+
       - name: Prepare archive contents
         shell: bash
         run: |
+          # ConsoleImage CLI
           mkdir -p ./archive/${{ matrix.artifact }}
-          # Copy only the executable
           if [ "${{ matrix.ext }}" == ".exe" ]; then
             cp ./publish/${{ matrix.artifact }}/consoleimage.exe ./archive/${{ matrix.artifact }}/
           else
             cp ./publish/${{ matrix.artifact }}/consoleimage ./archive/${{ matrix.artifact }}/
             chmod +x ./archive/${{ matrix.artifact }}/consoleimage
           fi
-          # Copy README and calibration
           cp README.md ./archive/${{ matrix.artifact }}/
           cp ConsoleImage/calibration.json ./archive/${{ matrix.artifact }}/ || true
+
+          # ConsoleImage MCP Server
+          mkdir -p ./archive/${{ matrix.artifact }}-mcp
+          if [ "${{ matrix.ext }}" == ".exe" ]; then
+            cp ./publish/${{ matrix.artifact }}-mcp/consoleimage-mcp.exe ./archive/${{ matrix.artifact }}-mcp/
+          else
+            cp ./publish/${{ matrix.artifact }}-mcp/consoleimage-mcp ./archive/${{ matrix.artifact }}-mcp/
+            chmod +x ./archive/${{ matrix.artifact }}-mcp/consoleimage-mcp
+          fi
+          cp ConsoleImage.Mcp/README.md ./archive/${{ matrix.artifact }}-mcp/
 
       - name: Archive (Windows)
         if: runner.os == 'Windows'
         run: |
           cd archive
           Compress-Archive -Path ${{ matrix.artifact }}/* -DestinationPath ${{ matrix.artifact }}.zip
+          Compress-Archive -Path ${{ matrix.artifact }}-mcp/* -DestinationPath ${{ matrix.artifact }}-mcp.zip
         shell: pwsh
 
       - name: Archive (Linux/macOS)
@@ -105,12 +129,20 @@ jobs:
         run: |
           cd archive/${{ matrix.artifact }}
           tar -czvf ../${{ matrix.artifact }}.tar.gz *
+          cd ../${{ matrix.artifact }}-mcp
+          tar -czvf ../${{ matrix.artifact }}-mcp.tar.gz *
 
-      - name: Upload artifact
+      - name: Upload artifact - CLI
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           path: archive/${{ matrix.artifact }}.*
+
+      - name: Upload artifact - MCP
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact }}-mcp
+          path: archive/${{ matrix.artifact }}-mcp.*
 
   release:
     needs: [build]
@@ -157,25 +189,35 @@ jobs:
             High-quality ASCII art renderer for converting images and GIFs to terminal output.
             Based on [Alex Harri's shape-matching algorithm](https://alexharri.com/blog/ascii-rendering).
 
-            ### NuGet Package
+            ### Downloads
+
+            | Platform | CLI | MCP Server |
+            |----------|-----|------------|
+            | Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-win-x64-mcp.zip` |
+            | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-linux-x64-mcp.tar.gz` |
+            | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
+            | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-osx-arm64-mcp.tar.gz` |
+
+            ### NuGet Packages
             ```bash
             dotnet add package mostlylucid.consoleimage --version ${{ steps.version.outputs.version }}
+            dotnet add package mostlylucid.consoleimage.video --version ${{ steps.version.outputs.version }}
+            dotnet add package mostlylucid.consoleimage.spectre --version ${{ steps.version.outputs.version }}
             ```
 
             ### Features
-            - 🎨 **Three render modes**: ASCII art, Unicode color blocks (▀▄), and Braille patterns
+            - 🎨 **Four render modes**: ASCII art, Unicode color blocks (▀▄), Braille patterns, and Matrix rain
             - 🎬 **Animated GIF support** with smooth, flicker-free playback
-            - 🔄 **Smooth loop transitions**: Automatic interpolation creates seamless loops
-            - 🖥️ **Dynamic resize**: Animations automatically re-render when you resize the console window
-            - 🎯 **Diff-based rendering**: Only updates changed lines between frames - no flicker
+            - 🎥 **Video support** with FFmpeg (auto-downloads)
+            - 🤖 **MCP Server** for AI tool integration (Claude, etc.)
+            - 🖥️ **Dynamic resize**: Animations re-render when console resizes
             - 📐 **Auto-fits to console**: Output defaults to your terminal size
-            - 🌙 **Terminal-aware**: Optimized for both dark and light backgrounds
-            - 🔧 **Aspect ratio calibration**: Auto-saved per-mode calibration for perfect circles
+            - 🔧 **Aspect ratio calibration**: Auto-saved per-mode calibration
 
-            ### Quick Start
+            ### Quick Start - CLI
 
             ```bash
-            # Render an image (auto-fits to terminal)
+            # Render an image
             consoleimage photo.jpg
 
             # High-fidelity color blocks mode
@@ -184,33 +226,27 @@ jobs:
             # Ultra-high resolution braille mode
             consoleimage photo.png --braille
 
-            # Calibrate aspect ratio (run once per terminal)
-            consoleimage --calibrate --save
+            # Matrix digital rain effect
+            consoleimage photo.png --matrix
 
             # Animated GIF playback
             consoleimage animation.gif
             ```
 
-            ### Command-Line Options
+            ### Quick Start - MCP Server
 
+            Add to Claude Desktop config (`claude_desktop_config.json`):
+            ```json
+            {
+              "mcpServers": {
+                "consoleimage": {
+                  "command": "path/to/consoleimage-mcp"
+                }
+              }
+            }
             ```
-            Arguments:
-              input              Path to the image or GIF file to convert
 
-            Options:
-              -w, --width        Output width in characters
-              -h, --height       Output height in characters
-              -a, --aspect-ratio Character aspect ratio (width/height)
-              -b, --blocks       Use colored Unicode blocks (high fidelity)
-              -B, --braille      Use braille characters (ultra resolution)
-              -s, --speed        Animation speed multiplier [default: 1.0]
-              -l, --loop         Loop count (0 = infinite) [default: 0]
-              --calibrate        Show aspect ratio calibration pattern
-              --save             Save calibration to calibration.json
-              --no-color         Disable colored output
-              --no-invert        For light terminal backgrounds
-              --no-animate       Show first frame only
-            ```
+            MCP tools: `render_image`, `render_to_gif`, `get_gif_info`, `get_video_info`, `list_render_modes`, `list_matrix_presets`, `compare_render_modes`
 
           files: |
             artifacts/**/*.zip

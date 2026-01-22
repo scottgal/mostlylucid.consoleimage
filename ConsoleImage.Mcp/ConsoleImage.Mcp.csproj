@@ -15,13 +15,34 @@
     <TrimMode>full</TrimMode>
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
 
+    <!-- Additional size optimizations -->
+    <StripSymbols>true</StripSymbols>
+    <DebugType>none</DebugType>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <EventSourceSupport>false</EventSourceSupport>
+    <StackTraceSupport>false</StackTraceSupport>
+    <IlcGenerateMstatFile>false</IlcGenerateMstatFile>
+    <IlcGenerateDgmlFile>false</IlcGenerateDgmlFile>
+
     <!-- Cross-platform RuntimeIdentifiers for publishing -->
     <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
-  <ItemGroup>
+  <!-- Local development: use ProjectReference -->
+  <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
     <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
     <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj" />
+  </ItemGroup>
+
+  <!-- CI/Release: use NuGet packages -->
+  <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
+    <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)" />
+    <PackageReference Include="mostlylucid.consoleimage.video" Version="$(VideoPackageVersion)" />
   </ItemGroup>
 
   <ItemGroup>
