@@ -12,7 +12,7 @@ GIFs, and analyze media files.
 
 ### Option 1: Download Pre-built Binary (Recommended)
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/scottgal/ConsoleImage/releases):
+Download the latest release for your platform from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
 
 | Platform    | Download                              |
 |-------------|---------------------------------------|
@@ -30,7 +30,7 @@ Extract to a directory of your choice, e.g.:
 
 ```bash
 # Clone the repository
-git clone https://github.com/scottgal/ConsoleImage.git
+git clone https://github.com/scottgal/mostlylucid.consoleimage.git
 cd ConsoleImage
 
 # Build with AOT (produces native binary)

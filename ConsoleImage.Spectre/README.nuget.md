@@ -5,7 +5,7 @@ Spectre.Console integration for ConsoleImage - display ASCII art within Spectre 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.spectre.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
 
-> **[Full documentation on GitHub](https://github.com/scottgal/ConsoleImage)**
+> **[Full documentation on GitHub](https://github.com/scottgal/mostlylucid.consoleimage)**
 
 ## Render Modes
 
@@ -184,4 +184,4 @@ var options = new RenderOptions
 
 ## License
 
-Public domain - [UNLICENSE](https://github.com/scottgal/ConsoleImage/blob/master/UNLICENSE)
+Public domain - [UNLICENSE](https://github.com/scottgal/mostlylucid.consoleimage/blob/master/UNLICENSE)

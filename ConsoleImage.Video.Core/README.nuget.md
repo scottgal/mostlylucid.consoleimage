@@ -5,7 +5,7 @@ Real-time video to ASCII art rendering using FFmpeg for .NET 10.
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.video.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage.video/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
 
-> **[Full documentation and examples on GitHub](https://github.com/scottgal/ConsoleImage)**
+> **[Full documentation and examples on GitHub](https://github.com/scottgal/mostlylucid.consoleimage)**
 
 ## Video Render Modes
 
@@ -124,4 +124,4 @@ Auto-detected per platform:
 
 ## License
 
-Public domain - [UNLICENSE](https://github.com/scottgal/ConsoleImage/blob/master/UNLICENSE)
+Public domain - [UNLICENSE](https://github.com/scottgal/mostlylucid.consoleimage/blob/master/UNLICENSE)
