@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.0] - 2025-01-22
+
+### Major Features
+
+#### MCP Server for AI Tool Integration
+- **`consoleimage-mcp`** - Model Context Protocol server exposes rendering as AI tools
+- **Works with Claude Desktop, VS Code** - Add to MCP config for instant image rendering
+- **AOT compiled** - Fast startup, cross-platform binaries available
+- **7 tools available**:
+  - `render_image` - Render image/GIF to ASCII art (all 4 modes)
+  - `render_to_gif` - Create animated GIF output
+  - `get_gif_info` - Get GIF metadata (dimensions, frame count)
+  - `get_video_info` - Get video file info via FFmpeg
+  - `list_render_modes` - List available render modes with descriptions
+  - `list_matrix_presets` - List Matrix digital rain color presets
+  - `compare_render_modes` - Render same image in all modes for comparison
+
+```json
+// Claude Desktop config (claude_desktop_config.json)
+{
+  "mcpServers": {
+    "consoleimage": {
+      "command": "path/to/consoleimage-mcp"
+    }
+  }
+}
+```
+
+### New Packages
+
+#### MCP Server (`ConsoleImage.Mcp`)
+- Cross-platform AOT binaries in GitHub releases
+- Supports NuGet dependency mode for CI builds
+- JSON source generation for AOT compatibility
+
+### Spectre.Console Enhancements
+- **`MatrixImage`** - Static Matrix rain effect renderable
+- **`AnimatedMatrixImage`** - Animated Matrix rain with `AnsiConsole.Live()`
+- **`ConsoleImageFactory`** - Factory for creating renderables by mode
+- **`MultiAnimationPlayer`** - Play multiple animations side-by-side
+- **`RenderModeComparison`** - Compare all render modes in a grid
+- **`IAnimatedRenderable`** - Interface for animated renderables
+
+### Documentation
+- **VideoPlayer static class** - Simple one-liner video playback API
+- **NuGet READMEs** - Proper package-specific documentation with working image links
+- **DocTests project** - Verifies all documented APIs compile and work
+
+### Bug Fixes
+- Fixed CalibrationSettings test for Matrix mode (shared aspect ratio property)
+- Fixed duplicate ConsoleImage.Video.Core entry in solution file
+
+---
+
 ## [2.5.0] - 2025-01-22
 
 ### Major Features

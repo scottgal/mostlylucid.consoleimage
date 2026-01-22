@@ -1,8 +1,14 @@
 # mostlylucid.consoleimage
 
-**Version 2.5** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+**Version 2.6** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 **Based on [Alex Harri's excellent article](https://alexharri.com/blog/ascii-rendering)** on ASCII rendering techniques.
+
+## What's New in 2.6
+
+- **MCP Server** - `consoleimage-mcp` exposes rendering as AI tools for Claude Desktop, VS Code, etc.
+- **Spectre.Console Enhancements** - `MatrixImage`, `MultiAnimationPlayer`, `RenderModeComparison`
+- **VideoPlayer API** - Simple one-liner video playback: `await VideoPlayer.PlayAsync("video.mp4")`
 
 ## What's New in 2.5
 
@@ -136,12 +142,12 @@ dotnet add package mostlylucid.consoleimage
 
 Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
 
-| Platform | Download |
-|----------|----------|
-| Windows x64 | `consoleimage-win-x64.zip` |
-| Linux x64 | `consoleimage-linux-x64.tar.gz` |
-| Linux ARM64 | `consoleimage-linux-arm64.tar.gz` |
-| macOS ARM64 | `consoleimage-osx-arm64.tar.gz` |
+| Platform | CLI | MCP Server |
+|----------|-----|------------|
+| Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-win-x64-mcp.zip` |
+| Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-linux-x64-mcp.tar.gz` |
+| Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
+| macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-osx-arm64-mcp.tar.gz` |
 
 ## Requirements
 
@@ -182,6 +188,31 @@ consoleimage animation.gif -o json:output.json
 # Play back saved JSON document
 consoleimage output.json
 ```
+
+### MCP Server (AI Tool Integration)
+
+The MCP server exposes ConsoleImage as tools for AI assistants like Claude Desktop:
+
+```json
+// Add to claude_desktop_config.json
+{
+  "mcpServers": {
+    "consoleimage": {
+      "command": "path/to/consoleimage-mcp"
+    }
+  }
+}
+```
+
+**Available tools:**
+- `render_image` - Render image/GIF to ASCII art (ascii, blocks, braille, matrix)
+- `render_to_gif` - Create animated GIF output
+- `get_gif_info` - Get GIF metadata (dimensions, frame count)
+- `get_video_info` - Get video file info via FFmpeg
+- `list_render_modes` - List available render modes
+- `compare_render_modes` - Render same image in all modes
+
+See [ConsoleImage.Mcp/README.md](ConsoleImage.Mcp/README.md) for full documentation.
 
 ### Library
 
