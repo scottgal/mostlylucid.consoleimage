@@ -15,6 +15,7 @@
         <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
+        <PackageIconUrl>https://raw.githubusercontent.com/scottgal/ConsoleImage/master/icon.png</PackageIconUrl>
         <RepositoryUrl>https://github.com/scottgal/ConsoleImage</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -26,11 +27,11 @@
     </ItemGroup>
 
     <!-- Use ProjectReference for local dev, PackageReference for NuGet publishing -->
-    <ItemGroup Condition="'$(UseNuGetDependencies)' != 'true'">
+    <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
         <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
     </ItemGroup>
 
-    <ItemGroup Condition="'$(UseNuGetDependencies)' == 'true'">
+    <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
         <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)" />
     </ItemGroup>
 

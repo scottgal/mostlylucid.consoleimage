@@ -1,22 +1,38 @@
 name: Publish Spectre NuGet
 
 on:
+  # Automatically trigger after Core package is published
+  workflow_run:
+    workflows: ["Publish NuGet"]
+    types:
+      - completed
+
+  # Direct tag trigger for Spectre-only releases
+  push:
+    tags:
+      - 'consoleimage-spectre-v*.*.*'
+
+  # Manual trigger
   workflow_dispatch:
     inputs:
       version:
         description: 'Spectre package version to publish (e.g., 1.0.0)'
         required: true
       core_version:
-        description: 'Core package version to depend on (e.g., 1.0.0)'
-        required: true
+        description: 'Core package version to depend on (leave empty to auto-detect latest)'
+        required: false
 
 permissions:
   id-token: write
   contents: read
+  packages: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Only run if the triggering workflow succeeded (for workflow_run)
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+
     steps:
     - uses: actions/checkout@v6
       with:
@@ -26,23 +42,85 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
-    - name: Create version tag for MinVer
-      run: git tag "consoleimage-spectre-v${{ github.event.inputs.version }}"
-
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Build & Pack Spectre (depends on Core NuGet package)
+    - name: Determine Core version
+      id: core_version
       run: |
-        dotnet build ConsoleImage.Spectre/ConsoleImage.Spectre.csproj -c Release \
-          -p:UseNuGetDependencies=true \
-          -p:CorePackageVersion=${{ github.event.inputs.core_version }}
-        dotnet pack ConsoleImage.Spectre/ConsoleImage.Spectre.csproj -c Release -o ./artifacts \
-          -p:UseNuGetDependencies=true \
-          -p:CorePackageVersion=${{ github.event.inputs.core_version }}
+        if [ -n "${{ github.event.inputs.core_version }}" ]; then
+          # Use provided version
+          CORE_VERSION="${{ github.event.inputs.core_version }}"
+        else
+          # Auto-detect from latest tag
+          CORE_TAG=$(git tag -l 'consoleimage-v*' --sort=-v:refname | head -1)
+          CORE_VERSION=${CORE_TAG#consoleimage-v}
+        fi
+        echo "version=${CORE_VERSION}" >> $GITHUB_OUTPUT
+        echo "Detected Core version: ${CORE_VERSION}"
 
-    - name: List artifacts
-      run: ls -la ./artifacts
+    - name: Determine Spectre version
+      id: spectre_version
+      run: |
+        if [ -n "${{ github.event.inputs.version }}" ]; then
+          # Use provided version
+          SPECTRE_VERSION="${{ github.event.inputs.version }}"
+        elif [ "${{ github.event_name }}" = "push" ]; then
+          # Extract from tag
+          SPECTRE_VERSION="${GITHUB_REF#refs/tags/consoleimage-spectre-v}"
+        else
+          # Use Core version for workflow_run trigger
+          SPECTRE_VERSION="${{ steps.core_version.outputs.version }}"
+        fi
+        echo "version=${SPECTRE_VERSION}" >> $GITHUB_OUTPUT
+        echo "Spectre version: ${SPECTRE_VERSION}"
+
+    - name: Create version tag for MinVer
+      run: |
+        TAG="consoleimage-spectre-v${{ steps.spectre_version.outputs.version }}"
+        if git rev-parse "$TAG" >/dev/null 2>&1; then
+          echo "Tag $TAG already exists, skipping creation"
+        else
+          git tag "$TAG"
+          echo "Created tag $TAG"
+        fi
+
+    - name: Wait for Core package availability on NuGet
+      run: |
+        CORE_VERSION="${{ steps.core_version.outputs.version }}"
+        echo "Waiting for mostlylucid.consoleimage version ${CORE_VERSION} to be available on NuGet..."
+
+        MAX_ATTEMPTS=60
+        ATTEMPT=0
+
+        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          ATTEMPT=$((ATTEMPT + 1))
+          echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: Checking NuGet API..."
+
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.nuget.org/v3-flatcontainer/mostlylucid.consoleimage/${CORE_VERSION}/mostlylucid.consoleimage.${CORE_VERSION}.nupkg")
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Package mostlylucid.consoleimage ${CORE_VERSION} is available!"
+            break
+          fi
+
+          if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            echo "Timeout waiting for package. Proceeding anyway..."
+            break
+          fi
+
+          echo "Package not yet available (HTTP ${HTTP_STATUS}), waiting 30 seconds..."
+          sleep 30
+        done
+
+    - name: Build & Pack Spectre
+      run: |
+        dotnet restore ConsoleImage.Spectre/ConsoleImage.Spectre.csproj \
+          -p:UseNuGetDependency=true \
+          -p:CorePackageVersion=${{ steps.core_version.outputs.version }}
+        dotnet pack ConsoleImage.Spectre/ConsoleImage.Spectre.csproj \
+          -c Release \
+          -o ./artifacts \
+          -p:UseNuGetDependency=true \
+          -p:CorePackageVersion=${{ steps.core_version.outputs.version }}
 
     - name: NuGet Login (OIDC)
       id: nuget
@@ -50,5 +128,16 @@ jobs:
       with:
         user: 'mostlylucid'
 
-    - name: Publish Spectre package
-      run: dotnet nuget push ./artifacts/mostlylucid.consoleimage.spectre.*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+    - name: Publish to NuGet.org
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+    - name: Publish to GitHub Packages
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
+
+    - name: Summary
+      run: |
+        echo "## Published Spectre Package" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Package | Version | Depends On |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|---------|------------|" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage.spectre | ${{ steps.spectre_version.outputs.version }} | mostlylucid.consoleimage ${{ steps.core_version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY

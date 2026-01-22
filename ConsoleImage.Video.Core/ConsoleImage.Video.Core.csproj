@@ -20,6 +20,7 @@
         <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>icon.png</PackageIcon>
+        <PackageIconUrl>https://raw.githubusercontent.com/scottgal/ConsoleImage/master/icon.png</PackageIconUrl>
         <RepositoryUrl>https://github.com/scottgal/ConsoleImage</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>

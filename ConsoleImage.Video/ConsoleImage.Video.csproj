@@ -29,8 +29,14 @@
         <IlcGenerateDgmlFile>false</IlcGenerateDgmlFile>
     </PropertyGroup>
 
-    <ItemGroup>
+    <!-- Local development: use ProjectReference -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
         <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj" />
+    </ItemGroup>
+
+    <!-- CI/Release: use NuGet packages -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
+        <PackageReference Include="mostlylucid.consoleimage.video" Version="$(VideoPackageVersion)" />
     </ItemGroup>
 
     <ItemGroup>

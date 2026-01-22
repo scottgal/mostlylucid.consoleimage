@@ -67,7 +67,8 @@
       "Bash(ffprobe:*)",
       "Bash(E:/source/vectorascii/ConsoleImage/ConsoleImage/bin/Debug/net10.0/consoleimage.exe:*)",
       "WebFetch(domain:carlnewton.github.io)",
-      "Bash(dotnet:*)"
+      "Bash(dotnet:*)",
+      "Bash(gh workflow view:*)"
     ]
   }
 }
