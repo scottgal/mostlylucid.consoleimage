@@ -2,6 +2,114 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.0] - 2025-01-22
+
+### Major Features
+
+#### Matrix Mode (Digital Rain Effect)
+- **Iconic Matrix digital rain** - `-M/--matrix` option renders images with falling code effect
+- **Authentic characters** - Half-width katakana, numbers, and symbols from The Matrix films
+- **Color presets** - `--matrix-color green|red|blue|amber|cyan|purple` or hex `#RRGGBB`
+- **Full color mode** - `--matrix-fullcolor` uses source image colors with Matrix lighting
+- **Custom alphabets** - `--matrix-alphabet "01"` for binary rain, or any custom string
+- **ASCII fallback** - `--matrix-ascii` for terminals without katakana support
+- **Configurable density/speed** - `--matrix-density` and `--matrix-speed` options
+
+```bash
+# Classic green Matrix
+consoleimage photo.jpg --matrix
+
+# Full color from source image
+consoleimage photo.jpg --matrix --matrix-fullcolor
+
+# Binary rain
+consoleimage photo.jpg --matrix --matrix-alphabet "01"
+
+# Custom color
+consoleimage photo.jpg --matrix --matrix-color "#FF6600"
+```
+
+#### Edge Detection Image Reveal
+- **Sobel edge detection** - `--matrix-edge-detect` reveals image shape through rain
+- **Brightness persistence** - `--matrix-bright-persist` makes bright areas glow longer
+- **Horizontal edge priority** - Rain "collects" on shoulders/ledges like real rain
+- **Phosphor glow effect** - Characters flash brightly when crossing edges
+- **ImageReveal preset** - Optimized settings for clear image visibility
+
+```bash
+# Image reveal mode - see the shape through the rain
+consoleimage portrait.jpg --matrix --matrix-edge-detect --matrix-bright-persist
+```
+
+#### FFmpeg Auto-Download
+- **Zero setup required** - FFmpeg downloads automatically on first use (~100MB)
+- **Interactive prompt** - Asks before downloading, respects `-y/--yes` for automation
+- **Skip option** - `--no-ffmpeg-download` to prevent auto-download
+- **Platform detection** - Downloads correct binary for Windows/Linux/macOS
+
+#### Smart Keyframe Extraction
+- **Scene detection** - `--smart-keyframes` uses histogram analysis to find scene changes
+- **Representative frames** - Extracts visually distinct frames, not just uniform intervals
+- **Memory efficient** - Streams frames directly to FFmpeg, only 1 frame in memory
+- **Configurable limits** - `--gif-frames` and `--duration` control output
+
+```bash
+# Extract 20 representative keyframes from a video
+consolevideo movie.mp4 --raw --smart-keyframes -o gif:keyframes.gif --gif-frames 20
+```
+
+### New Classes
+
+- **`MatrixRenderer`** - Full Matrix digital rain effect renderer
+- **`MatrixOptions`** - Configuration for Matrix mode (colors, density, edge detection)
+- **`SceneDetectionService`** - Histogram-based scene change detection
+- **`StreamingGifWriter`** - Memory-efficient GIF writer with frame buffering
+- **`FFmpegGifWriter`** - Pipes raw frames to FFmpeg stdin (1 frame in memory)
+
+### Performance Improvements
+
+- **FFmpeg pipe streaming** - GIF encoding via stdin pipe, no temp files
+- **Pre-allocated frame buffers** - Reuses memory for frame processing
+- **Incremental GIF writing** - Frames flushed as processed, no memory buildup
+
+### Bug Fixes
+
+- **White pixel bleed in ASCII GIF** - Fixed color reset code using wrong foreground color
+- **Matrix animation static** - Fixed missing `_state.Advance()` call for animation
+
+### Documentation
+
+- **Documentation matrix** - Root README now links to all project docs
+- **CLI-focused READMEs** - Separate docs for CLI tools vs NuGet libraries
+- **Matrix mode examples** - Sample GIFs showing different Matrix variations
+- **GIF output documentation** - Added to Video CLI README
+- **Keyframe extraction docs** - Scene detection and raw frame extraction
+
+### New CLI Options
+
+#### Matrix Mode Options
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-M, --matrix` | Enable Matrix digital rain effect | OFF |
+| `--matrix-color` | Color: green, red, blue, amber, cyan, purple, or #RRGGBB | green |
+| `--matrix-fullcolor` | Use source image colors | OFF |
+| `--matrix-ascii` | ASCII only (no katakana) | OFF |
+| `--matrix-alphabet` | Custom character set | - |
+| `--matrix-density` | Rain density (0.1-2.0) | 0.5 |
+| `--matrix-speed` | Animation speed | 1.0 |
+| `--matrix-edge-detect` | Enable edge detection reveal | OFF |
+| `--matrix-bright-persist` | Brightness persistence | OFF |
+
+#### Video CLI Options
+| Option | Description |
+|--------|-------------|
+| `--smart-keyframes` | Use scene detection for keyframe extraction |
+| `--raw` | Extract raw video frames as GIF |
+| `-y, --yes` | Auto-confirm prompts (for automation) |
+| `--no-ffmpeg-download` | Prevent automatic FFmpeg download |
+
+---
+
 ## [2.0.0] - 2025-01-21
 
 ### Major Features

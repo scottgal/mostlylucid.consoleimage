@@ -5,11 +5,11 @@
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.video.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage.video/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
 
-| ASCII Mode | ColorBlocks Mode | Braille Mode |
-|------------|------------------|--------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif" width="200" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_blocks.gif" width="200" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_braille.gif" width="200" alt="Braille"> |
+**[Full documentation with animated examples on GitHub](https://github.com/scottgal/mostlylucid.consoleimage)**
 
-> **Note:** These images are rendered using the tool's GIF output with a consistent monospace font. Actual terminal display varies by terminal emulator, font, and color support.
+![ASCII Mode](https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif)
+
+*Video to ASCII rendering - see [GitHub](https://github.com/scottgal/mostlylucid.consoleimage) for more examples*
 
 ## Features
 

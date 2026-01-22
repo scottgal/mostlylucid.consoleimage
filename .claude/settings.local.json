@@ -58,7 +58,16 @@
       "Bash(powershell -ExecutionPolicy Bypass -File generate-samples.ps1)",
       "Bash(powershell -ExecutionPolicy Bypass -File build-aot.ps1)",
       "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consolevideo.exe\" \"X:\\\\Movies\\\\Superman.2025.1080p.WEB.h264-ETHEL.mkv\" -B -w 150 --status -ss 2330 -to 2335)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:en.wikipedia.org)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(E:/source/vectorascii/ConsoleImage/ConsoleImage/bin/Release/net10.0/win-x64/publish/consoleimage.exe:*)",
+      "WebFetch(domain:www.schemecolor.com)",
+      "Bash(ffprobe:*)",
+      "Bash(E:/source/vectorascii/ConsoleImage/ConsoleImage/bin/Debug/net10.0/consoleimage.exe:*)",
+      "WebFetch(domain:carlnewton.github.io)",
+      "Bash(dotnet:*)"
     ]
   }
 }

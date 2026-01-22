@@ -18,7 +18,7 @@
         <Description>High-quality ASCII art renderer using shape-matching algorithm based on Alex Harri's approach (https://alexharri.com/blog/ascii-rendering). Converts images and animated GIFs to ASCII art with edge detection and contrast enhancement. AOT compatible.</Description>
         <PackageTags>ascii;art;image;console;gif;animation;rendering;aot</PackageTags>
         <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
-        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageReadmeFile>README.md</PackageReadmeFile> <!-- Maps to README.nuget.md -->
         <PackageIcon>icon.png</PackageIcon>
         <RepositoryUrl>https://github.com/scottgal/ConsoleImage</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
@@ -34,7 +34,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="README.md" Pack="true" PackagePath="\" />
+        <!-- Use NuGet-specific README without embedded images -->
+        <None Include="README.nuget.md" Pack="true" PackagePath="README.md" />
         <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')" />
     </ItemGroup>
 

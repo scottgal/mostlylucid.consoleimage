@@ -4,6 +4,9 @@
 using System.CommandLine;
 using ConsoleImage.Core;
 using ConsoleImage.Video.Core;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
@@ -143,6 +146,19 @@ var gifFramesOption = new Option<int?>("--gif-frames") { Description = "Max numb
 var gifWidthOption = new Option<int?>("--gif-width") { Description = "GIF output width in characters (overrides -w for GIF)" };
 var gifHeightOption = new Option<int?>("--gif-height") { Description = "GIF output height in characters (overrides -h for GIF)" };
 
+// Raw/extract mode - output actual video frames as GIF (no ASCII rendering)
+var rawOption = new Option<bool>("--raw") { Description = "Extract raw video frames as GIF (no ASCII rendering)" };
+rawOption.Aliases.Add("--extract");
+var rawWidthOption = new Option<int?>("--raw-width") { Description = "Width for raw GIF output in pixels (default: 320)" };
+var rawHeightOption = new Option<int?>("--raw-height") { Description = "Height for raw GIF output in pixels (auto-calculated if not set)" };
+var smartKeyframesOption = new Option<bool>("--smart-keyframes") { Description = "Use smart scene detection for keyframe extraction (with --raw)" };
+smartKeyframesOption.Aliases.Add("--smart");
+
+// FFmpeg download options
+var noAutoDownloadOption = new Option<bool>("--no-ffmpeg-download") { Description = "Don't auto-download FFmpeg, prompt instead" };
+var ffmpegYesOption = new Option<bool>("--yes") { Description = "Auto-confirm FFmpeg download without prompting" };
+ffmpegYesOption.Aliases.Add("-y");
+
 // Options matching consoleimage for consistency
 var noInvertOption = new Option<bool>("--no-invert") { Description = "Don't invert output (for light terminal backgrounds)" };
 
@@ -211,6 +227,12 @@ rootCommand.Options.Add(gifLengthOption);
 rootCommand.Options.Add(gifFramesOption);
 rootCommand.Options.Add(gifWidthOption);
 rootCommand.Options.Add(gifHeightOption);
+rootCommand.Options.Add(rawOption);
+rootCommand.Options.Add(rawWidthOption);
+rootCommand.Options.Add(rawHeightOption);
+rootCommand.Options.Add(smartKeyframesOption);
+rootCommand.Options.Add(noAutoDownloadOption);
+rootCommand.Options.Add(ffmpegYesOption);
 rootCommand.Options.Add(noInvertOption);
 rootCommand.Options.Add(edgeOption);
 rootCommand.Options.Add(bgThresholdOption);
@@ -265,6 +287,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var gifFrames = parseResult.GetValue(gifFramesOption);
     var gifWidth = parseResult.GetValue(gifWidthOption);
     var gifHeight = parseResult.GetValue(gifHeightOption);
+    var rawMode = parseResult.GetValue(rawOption);
+    var rawWidth = parseResult.GetValue(rawWidthOption);
+    var rawHeight = parseResult.GetValue(rawHeightOption);
+    var smartKeyframes = parseResult.GetValue(smartKeyframesOption);
+    var noAutoDownload = parseResult.GetValue(noAutoDownloadOption);
+    var autoConfirmDownload = parseResult.GetValue(ffmpegYesOption);
     var output = parseResult.GetValue(outputOption);
     var noInvert = parseResult.GetValue(noInvertOption);
     var enableEdge = parseResult.GetValue(edgeOption);
@@ -281,7 +309,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     // Parse unified output option - auto-detect format from extension
     bool outputAsJson = false;
-    bool outputAsGif = false;
     string? jsonOutputPath = null;
     string? gifOutputPath = null;
 
@@ -300,18 +327,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
         else if (output.Equals("gif", StringComparison.OrdinalIgnoreCase))
         {
-            outputAsGif = true;
             // Use input filename with .gif extension - will set later when we have input
         }
         else if (output.StartsWith("gif:", StringComparison.OrdinalIgnoreCase))
         {
-            outputAsGif = true;
             gifOutputPath = output[4..]; // Everything after "gif:"
         }
         // Auto-detect from extension
         else if (output.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
         {
-            outputAsGif = true;
             gifOutputPath = output;
         }
         else if (output.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
@@ -325,7 +349,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             // Unknown extension - default to GIF for video
             Console.Error.WriteLine($"Warning: Unknown output format for '{output}'. Use .gif for animated GIF or .json for JSON document.");
             Console.Error.WriteLine("Assuming GIF output. Use 'json:path' prefix for JSON.");
-            outputAsGif = true;
             gifOutputPath = output.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ? output : output + ".gif";
         }
     }
@@ -516,12 +539,46 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         ffmpegPath: ffmpegExe,
         useHardwareAcceleration: !noHwAccel);
 
-    // Show FFmpeg status and initialize (may download if not found)
+    // Check FFmpeg availability with interactive prompt
     if (!FFmpegProvider.IsAvailable(ffmpegPath))
     {
-        Console.WriteLine("FFmpeg not found. Downloading...");
-        Console.WriteLine($"Cache location: {FFmpegProvider.CacheDirectory}");
-        Console.WriteLine();
+        var (needsDownload, statusMsg, downloadUrl) = FFmpegProvider.GetDownloadStatus();
+
+        if (needsDownload)
+        {
+            Console.WriteLine("FFmpeg not found on system.");
+            Console.WriteLine($"Cache location: {FFmpegProvider.CacheDirectory}");
+            Console.WriteLine();
+
+            bool shouldDownload = autoConfirmDownload;
+
+            if (!shouldDownload && !noAutoDownload)
+            {
+                // Interactive prompt
+                Console.Write("Would you like to download FFmpeg automatically? (~100MB) [Y/n]: ");
+                var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+                shouldDownload = string.IsNullOrEmpty(response) || response == "y" || response == "yes";
+            }
+            else if (noAutoDownload && !autoConfirmDownload)
+            {
+                Console.WriteLine("FFmpeg is required for video playback.");
+                Console.WriteLine("Install manually or run with -y to auto-download.");
+                Console.WriteLine();
+                Console.WriteLine("Installation options:");
+                Console.WriteLine("  Windows: winget install ffmpeg");
+                Console.WriteLine("  macOS:   brew install ffmpeg");
+                Console.WriteLine("  Linux:   apt install ffmpeg  (or equivalent)");
+                return 1;
+            }
+
+            if (!shouldDownload)
+            {
+                Console.WriteLine("FFmpeg is required for video playback. Exiting.");
+                return 1;
+            }
+
+            Console.WriteLine("Downloading FFmpeg...");
+        }
     }
 
     var progress = new Progress<(string Status, double Progress)>(p =>
@@ -564,6 +621,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         end = duration.Value;
     }
 
+    // Raw mode requires output file
+    if (rawMode && outputGif == null)
+    {
+        Console.Error.WriteLine("Error: --raw mode requires --output to specify a GIF file.");
+        Console.Error.WriteLine("Example: consolevideo video.mp4 --raw -o keyframes.gif --gif-frames 4");
+        return 1;
+    }
+
     // GIF output mode - render video frames to animated GIF
     if (outputGif != null)
     {
@@ -572,6 +637,176 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             Console.Error.WriteLine("Error: Could not read video info.");
             return 1;
+        }
+
+        // RAW MODE - extract actual video frames as GIF (no ASCII rendering)
+        if (rawMode)
+        {
+            int targetWidth = rawWidth ?? 320;
+            int targetHeight = rawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+
+            // Calculate limits from existing flags
+            int maxFrames = gifFrames ?? 4; // Default to 4 frames for raw/keyframe extraction
+            double maxLength = gifLength ?? duration ?? 10.0; // Use -t or --gif-length or default 10s
+            double rawStartTime = start ?? 0;
+            double rawEndTime = end ?? rawStartTime + maxLength;
+
+            // Smart keyframe mode - use scene detection
+            if (smartKeyframes)
+            {
+                Console.WriteLine($"Smart keyframe extraction (scene detection)...");
+                Console.WriteLine($"  Output: {outputGif.FullName}");
+                Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+                Console.WriteLine($"  Target: {targetWidth}x{targetHeight}, max {maxFrames} keyframes");
+                Console.WriteLine();
+
+                // First, detect scene changes using FFmpeg's built-in scene detection
+                Console.Write("Detecting scene changes...");
+                var sceneTimestamps = await ffmpeg.DetectSceneChangesAsync(
+                    input.FullName,
+                    sceneThreshold,
+                    rawStartTime,
+                    rawEndTime > rawStartTime ? rawEndTime : null,
+                    cancellationToken);
+                Console.WriteLine($" found {sceneTimestamps.Count} scene changes");
+
+                // If no scene changes detected, fall back to uniform sampling
+                List<double> keyframeTimes;
+                if (sceneTimestamps.Count == 0)
+                {
+                    Console.WriteLine("No scene changes detected, using uniform sampling...");
+                    keyframeTimes = new List<double>();
+                    double interval = (rawEndTime - rawStartTime) / (maxFrames - 1);
+                    for (int i = 0; i < maxFrames; i++)
+                    {
+                        keyframeTimes.Add(rawStartTime + i * interval);
+                    }
+                }
+                else
+                {
+                    // Always include first frame
+                    keyframeTimes = new List<double> { rawStartTime };
+
+                    // Add scene change timestamps
+                    keyframeTimes.AddRange(sceneTimestamps);
+
+                    // Always include a frame near the end if not already
+                    if (keyframeTimes.Count > 0 && rawEndTime - keyframeTimes.Last() > 1.0)
+                    {
+                        keyframeTimes.Add(rawEndTime - 0.5);
+                    }
+
+                    // Limit to maxFrames
+                    if (keyframeTimes.Count > maxFrames)
+                    {
+                        // Keep first, last, and distribute the rest
+                        var first = keyframeTimes.First();
+                        var last = keyframeTimes.Last();
+                        var middle = keyframeTimes.Skip(1).Take(keyframeTimes.Count - 2)
+                            .OrderBy(t => t)
+                            .Take(maxFrames - 2)
+                            .ToList();
+                        keyframeTimes = new List<double> { first };
+                        keyframeTimes.AddRange(middle);
+                        keyframeTimes.Add(last);
+                        keyframeTimes = keyframeTimes.Distinct().OrderBy(t => t).ToList();
+                    }
+                }
+
+                Console.WriteLine($"Extracting {keyframeTimes.Count} keyframes at: {string.Join(", ", keyframeTimes.Select(t => $"{t:F1}s"))}");
+
+                // Calculate frame delay for GIF (spread evenly or use fps if specified)
+                double targetFps = fps ?? 2.0; // Default 2fps for keyframe GIF
+                int rawDelayMs = (int)(1000.0 / targetFps);
+
+                using var rawGif = new Image<Rgba32>(targetWidth, targetHeight);
+                var gifMetaData = rawGif.Metadata.GetGifMetadata();
+                gifMetaData.RepeatCount = (ushort)(loop != 1 ? loop : 0);
+
+                int frameCount = 0;
+                foreach (var timestamp in keyframeTimes)
+                {
+                    Console.Write($"\rExtracting frame at {timestamp:F1}s...");
+                    var frameImage = await ffmpeg.ExtractFrameAsync(
+                        input.FullName, timestamp, targetWidth, targetHeight, cancellationToken);
+
+                    if (frameImage != null)
+                    {
+                        var gifFrameMetadata = frameImage.Frames.RootFrame.Metadata.GetGifMetadata();
+                        gifFrameMetadata.FrameDelay = rawDelayMs / 10;
+                        rawGif.Frames.AddFrame(frameImage.Frames.RootFrame);
+                        frameImage.Dispose();
+                        frameCount++;
+                    }
+                }
+
+                // Remove the initial empty frame
+                if (rawGif.Frames.Count > 1)
+                    rawGif.Frames.RemoveFrame(0);
+
+                Console.WriteLine($" Done! ({frameCount} frames)");
+
+                // Save
+                Console.Write("Saving GIF...");
+                var encoder = new SixLabors.ImageSharp.Formats.Gif.GifEncoder
+                {
+                    ColorTableMode = SixLabors.ImageSharp.Formats.Gif.GifColorTableMode.Local
+                };
+                await rawGif.SaveAsGifAsync(outputGif.FullName, encoder, cancellationToken);
+                Console.WriteLine($" Saved to {outputGif.FullName}");
+
+                return 0;
+            }
+
+            // Regular raw mode - uniform frame extraction using FFmpeg streaming
+            // This is memory-efficient: only one frame in memory at a time
+            double uniformTargetFps = fps ?? Math.Min(videoInfo.FrameRate, 10.0);
+            int uniformFpsInt = Math.Max(1, (int)uniformTargetFps);
+
+            Console.WriteLine($"Extracting video frames to GIF (streaming mode)...");
+            Console.WriteLine($"  Output: {outputGif.FullName}");
+            Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+            Console.WriteLine($"  Target: {targetWidth}x{targetHeight} @ {uniformTargetFps:F1} fps, step {frameStep}");
+            Console.WriteLine($"  Memory: streaming (1 frame at a time)");
+
+            // Use FFmpeg streaming GIF writer - only one frame in memory at a time
+            await using var streamingGif = new FFmpegGifWriter(
+                outputGif.FullName,
+                targetWidth,
+                targetHeight,
+                uniformFpsInt,
+                loop != 1 ? loop : 0,
+                gifColors,
+                maxLength,
+                maxFrames > 0 ? maxFrames : null);
+
+            await streamingGif.StartAsync(null, cancellationToken);
+
+            int uniformFrameCount = 0;
+
+            await foreach (var frameImage in ffmpeg.StreamFramesAsync(
+                input.FullName, targetWidth, targetHeight,
+                rawStartTime, rawEndTime, frameStep, uniformTargetFps, cancellationToken))
+            {
+                if (streamingGif.ShouldStop)
+                {
+                    frameImage.Dispose();
+                    break;
+                }
+
+                await streamingGif.AddFrameAsync(frameImage, cancellationToken);
+                frameImage.Dispose(); // Dispose immediately - already written to FFmpeg
+                uniformFrameCount++;
+
+                Console.Write($"\rStreaming frame {uniformFrameCount}...");
+            }
+
+            Console.WriteLine($" Done! ({uniformFrameCount} frames)");
+            Console.Write("Finalizing GIF...");
+            await streamingGif.FinishAsync(cancellationToken);
+            Console.WriteLine($" Saved to {outputGif.FullName}");
+
+            return 0;
         }
 
         // Determine render mode from flags

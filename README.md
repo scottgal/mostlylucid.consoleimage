@@ -1,8 +1,16 @@
 # mostlylucid.consoleimage
 
-**Version 2.0** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+**Version 2.5** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 **Based on [Alex Harri's excellent article](https://alexharri.com/blog/ascii-rendering)** on ASCII rendering techniques.
+
+## What's New in 2.5
+
+- **Matrix Mode** - `--matrix` digital rain effect with color presets, full color mode, custom alphabets
+- **Edge Detection Reveal** - `--matrix-edge-detect` reveals image shape through rain
+- **FFmpeg Auto-Download** - Zero setup, FFmpeg downloads automatically on first use
+- **Smart Keyframes** - Scene detection for representative frame extraction
+- **Memory Efficient** - Streaming GIF output, only 1 frame in memory
 
 ## What's New in 2.0
 
@@ -73,6 +81,22 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_ascii.gif" width="200" alt="Earth ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_blocks.gif" width="200" alt="Earth Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_braille.gif" width="200" alt="Earth Braille"> |
 
 **Smooth animation** - DECSET 2026 synchronized output with diff-based rendering
+
+### Matrix Mode (Digital Rain)
+
+| Classic Green | Full Color | Edge Reveal |
+|---------------|------------|-------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_portrait_final.gif" width="200" alt="Matrix Classic"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_mountain_fullcolor.gif" width="200" alt="Matrix Full Color"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_edge_reveal.gif" width="200" alt="Matrix Edge Reveal"> |
+
+**The Matrix digital rain effect** - `--matrix` option with color presets (green, red, blue, amber, purple) or full color from source image.
+
+**Edge Detection Reveal** - `--matrix-edge-detect --matrix-bright-persist` makes rain "flash" brightly when crossing image edges, revealing the shape through the rain. Characters slow down and collect on horizontal edges like rain on shoulders.
+
+| Binary Rain | Custom Alphabet |
+|-------------|-----------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_binary.gif" width="200" alt="Matrix Binary"> | `--matrix-alphabet "HELLO"` |
+
+**Custom alphabets** - `--matrix-alphabet "01"` for binary rain, or any custom string like `"HELLO"`.
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -583,6 +607,17 @@ Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 | `block` | ` ░▒▓█` | High density blocks |
 | `classic` | 71 ASCII chars | Original algorithm set |
 
+## Documentation
+
+| Component | Description | Documentation |
+|-----------|-------------|---------------|
+| **consoleimage** | CLI for images & GIFs | [ConsoleImage/README.md](ConsoleImage/README.md) |
+| **consolevideo** | CLI for video playback | [ConsoleImage.Video/README.md](ConsoleImage.Video/README.md) |
+| **mostlylucid.consoleimage** | Core library (NuGet) | [ConsoleImage.Core/README.md](ConsoleImage.Core/README.md) |
+| **mostlylucid.consoleimage.video** | Video library (NuGet) | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
+| **JSON Format** | Document format spec | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) |
+| **Changelog** | Version history | [CHANGELOG.md](CHANGELOG.md) |
+
 ## Architecture
 
 ```
@@ -590,6 +625,7 @@ ConsoleImage.Core              # Core library (NuGet: mostlylucid.consoleimage)
 ├── AsciiRenderer              # Shape-matching ASCII renderer
 ├── ColorBlockRenderer         # Unicode half-block renderer
 ├── BrailleRenderer            # 2×4 dot braille renderer
+├── MatrixRenderer             # Digital rain effect
 ├── Protocol renderers         # iTerm2, Kitty, Sixel support
 ├── AsciiAnimationPlayer       # Flicker-free GIF playback
 ├── GifWriter                  # Animated GIF output

@@ -125,6 +125,21 @@ colorBlocksOption.Aliases.Add("-b");
 var brailleOption = new Option<bool>("--braille") { Description = "Use braille characters for ultra-high resolution (2x4 dots per cell)" };
 brailleOption.Aliases.Add("-B");
 
+var matrixOption = new Option<bool>("--matrix") { Description = "Use Matrix digital rain effect (falling characters with glow)" };
+matrixOption.Aliases.Add("-M");
+
+var matrixColorOption = new Option<string?>("--matrix-color") { Description = "Matrix color: green (default), red, blue, amber, cyan, purple, or hex (#RRGGBB)" };
+var matrixFullColorOption = new Option<bool>("--matrix-fullcolor") { Description = "Use source image colors with Matrix lighting effect" };
+var matrixDensityOption = new Option<float>("--matrix-density") { Description = "Matrix rain density (0.1-2.0, default 0.5)", DefaultValueFactory = _ => 0.5f };
+var matrixSpeedOption = new Option<float>("--matrix-speed") { Description = "Matrix rain speed multiplier (0.5-3.0, default 1.0)", DefaultValueFactory = _ => 1.0f };
+var matrixAsciiOption = new Option<bool>("--matrix-ascii") { Description = "Use ASCII characters only (no katakana) - better font compatibility" };
+var matrixFpsOption = new Option<int>("--matrix-fps") { Description = "Matrix animation FPS (5-60, default 20)", DefaultValueFactory = _ => 20 };
+var matrixAlphabetOption = new Option<string?>("--matrix-alphabet") { Description = "Custom character set for Matrix rain (e.g., 'HELLO' or '01')" };
+var matrixEdgeDetectOption = new Option<bool>("--matrix-edge-detect") { Description = "Enable edge detection - rain collects on horizontal edges (shoulders, ledges)" };
+matrixEdgeDetectOption.Aliases.Add("--matrix-reveal");
+var matrixEdgePersistOption = new Option<float>("--matrix-edge-persist") { Description = "Edge persistence strength (0.0-1.0, default 0.7)", DefaultValueFactory = _ => 0.7f };
+var matrixBrightPersistOption = new Option<bool>("--matrix-bright-persist") { Description = "Enable brightness persistence - brighter areas glow longer" };
+
 var noAltScreenOption = new Option<bool>("--no-alt-screen") { Description = "Disable alternate screen buffer for animations (keeps output in scrollback)" };
 
 var noParallelOption = new Option<bool>("--no-parallel") { Description = "Disable parallel processing" };
@@ -147,8 +162,8 @@ var saveCalibrationOption = new Option<bool>("--save") { Description = "Save cur
 var statusOption = new Option<bool>("--status") { Description = "Show status line below output with file info, resolution, progress" };
 statusOption.Aliases.Add("-S");
 
-// Mode selection option (supports: ascii, blocks, braille, sixel, iterm2, kitty, auto, list)
-var modeOption = new Option<string?>("--mode") { Description = "Rendering mode: ascii, blocks, braille, sixel, iterm2, kitty, auto, list (shows available modes)" };
+// Mode selection option (supports: ascii, blocks, braille, matrix, sixel, iterm2, kitty, auto, list)
+var modeOption = new Option<string?>("--mode") { Description = "Rendering mode: ascii, blocks, braille, matrix, sixel, iterm2, kitty, auto, list (shows available modes)" };
 modeOption.Aliases.Add("-m");
 
 // GIF output options - save rendered output as animated GIF
@@ -188,6 +203,17 @@ rootCommand.Options.Add(darkBgThresholdOption);
 rootCommand.Options.Add(autoBgOption);
 rootCommand.Options.Add(colorBlocksOption);
 rootCommand.Options.Add(brailleOption);
+rootCommand.Options.Add(matrixOption);
+rootCommand.Options.Add(matrixColorOption);
+rootCommand.Options.Add(matrixFullColorOption);
+rootCommand.Options.Add(matrixDensityOption);
+rootCommand.Options.Add(matrixSpeedOption);
+rootCommand.Options.Add(matrixAsciiOption);
+rootCommand.Options.Add(matrixFpsOption);
+rootCommand.Options.Add(matrixAlphabetOption);
+rootCommand.Options.Add(matrixEdgeDetectOption);
+rootCommand.Options.Add(matrixEdgePersistOption);
+rootCommand.Options.Add(matrixBrightPersistOption);
 rootCommand.Options.Add(noAltScreenOption);
 rootCommand.Options.Add(noParallelOption);
 rootCommand.Options.Add(noDitherOption);
@@ -236,6 +262,17 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var autoBg = parseResult.GetValue(autoBgOption);
     var colorBlocks = parseResult.GetValue(colorBlocksOption);
     var braille = parseResult.GetValue(brailleOption);
+    var matrix = parseResult.GetValue(matrixOption);
+    var matrixColor = parseResult.GetValue(matrixColorOption);
+    var matrixFullColor = parseResult.GetValue(matrixFullColorOption);
+    var matrixDensity = parseResult.GetValue(matrixDensityOption);
+    var matrixSpeed = parseResult.GetValue(matrixSpeedOption);
+    var matrixAscii = parseResult.GetValue(matrixAsciiOption);
+    var matrixFps = parseResult.GetValue(matrixFpsOption);
+    var matrixAlphabet = parseResult.GetValue(matrixAlphabetOption);
+    var matrixEdgeDetect = parseResult.GetValue(matrixEdgeDetectOption);
+    var matrixEdgePersist = parseResult.GetValue(matrixEdgePersistOption);
+    var matrixBrightPersist = parseResult.GetValue(matrixBrightPersistOption);
     var noAltScreen = parseResult.GetValue(noAltScreenOption);
     var noParallel = parseResult.GetValue(noParallelOption);
     var noDither = parseResult.GetValue(noDitherOption);
@@ -301,16 +338,36 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 
     // Helper to create GIF output options
-    GifWriterOptions CreateGifOptions() => new GifWriterOptions
+    // Default to 10 seconds for animated sources unless explicitly set
+    // Use --gif-length 0 for unlimited
+    GifWriterOptions CreateGifOptions(bool isAnimatedSource = false)
     {
-        FontSize = gifFontSize,
-        Scale = gifScale,
-        MaxColors = Math.Clamp(gifColors, 16, 256),
-        TargetFps = gifFps,
-        MaxLengthSeconds = gifLength,
-        MaxFrames = gifFrames,
-        LoopCount = loop
-    };
+        // --gif-length 0 means unlimited (null)
+        double? effectiveLength = gifLength.HasValue
+            ? (gifLength.Value <= 0 ? null : gifLength.Value)  // 0 or negative = unlimited
+            : (isAnimatedSource ? 10.0 : null);                // Default 10s for animations
+
+        return new GifWriterOptions
+        {
+            FontSize = gifFontSize,
+            Scale = gifScale,
+            MaxColors = Math.Clamp(gifColors, 16, 256),
+            TargetFps = gifFps,
+            MaxLengthSeconds = effectiveLength,
+            MaxFrames = gifFrames,
+            LoopCount = loop
+        };
+    }
+
+    // Helper to check if we should stop adding frames (memory efficiency)
+    bool ShouldStopAddingFrames(GifWriter writer, GifWriterOptions opts, double elapsedMs)
+    {
+        if (opts.MaxFrames.HasValue && writer.FrameCount >= opts.MaxFrames.Value)
+            return true;
+        if (opts.MaxLengthSeconds.HasValue && elapsedMs / 1000.0 >= opts.MaxLengthSeconds.Value)
+            return true;
+        return false;
+    }
 
     // JSON mode helper - manual serialization for AOT compatibility
     void OutputJson(string json) => Console.WriteLine(json);
@@ -332,6 +389,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // Determine render mode for calibration
         var calibrationMode = braille ? RenderMode.Braille
             : colorBlocks ? RenderMode.ColorBlocks
+            : matrix ? RenderMode.Matrix
             : RenderMode.Ascii;
 
         // Get effective aspect ratio: explicit > saved for mode > default
@@ -343,6 +401,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             RenderMode.Braille => "Braille",
             RenderMode.ColorBlocks => "Blocks",
+            RenderMode.Matrix => "Matrix",
             _ => "ASCII"
         };
 
@@ -390,6 +449,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 RenderMode.Braille => " --braille",
                 RenderMode.ColorBlocks => " --blocks",
+                RenderMode.Matrix => " --matrix",
                 _ => ""
             };
             Console.WriteLine($"  consoleimage --calibrate{modeFlag} --aspect-ratio {calibrationAspect} --save");
@@ -537,6 +597,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // Parse mode option - override --blocks and --braille flags
         bool useBlocks = colorBlocks;
         bool useBraille = braille;
+        bool useMatrix = matrix;
         TerminalProtocol? explicitProtocol = null;
 
         if (!string.IsNullOrEmpty(mode))
@@ -546,15 +607,29 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 case "ascii":
                     useBlocks = false;
                     useBraille = false;
+                    useMatrix = false;
                     break;
                 case "blocks":
                 case "colorblocks":
                     useBlocks = true;
                     useBraille = false;
+                    // Don't override useMatrix - allow combining --mode blocks --matrix
                     break;
                 case "braille":
                     useBlocks = false;
                     useBraille = true;
+                    useMatrix = false;
+                    break;
+                case "matrix":
+                    // Don't override useBlocks - allow combining --matrix --blocks
+                    useBraille = false;
+                    useMatrix = true;
+                    break;
+                case "matrix-blocks":
+                case "matrixblocks":
+                    useBlocks = true;
+                    useBraille = false;
+                    useMatrix = true;
                     break;
                 case "sixel":
                     explicitProtocol = TerminalProtocol.Sixel;
@@ -572,12 +647,62 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             }
         }
 
+        // Helper to create MatrixOptions from CLI parameters
+        MatrixOptions CreateMatrixOptions()
+        {
+            var opts = matrixFullColor ? MatrixOptions.FullColor : new MatrixOptions();
+            opts.Density = Math.Clamp(matrixDensity, 0.1f, 2.0f);
+            opts.SpeedMultiplier = Math.Clamp(matrixSpeed, 0.5f, 3.0f);
+            opts.UseAsciiOnly = matrixAscii;
+            opts.UseBlockMode = useBlocks && useMatrix; // Combine Matrix + Blocks
+            opts.TargetFps = Math.Clamp(matrixFps, 5, 60);
+            opts.CustomAlphabet = matrixAlphabet; // Custom character set (e.g., "HELLO" or "01")
+
+            // Edge detection and persistence options
+            opts.EnableEdgeDetection = matrixEdgeDetect;
+            opts.EdgePersistence = Math.Clamp(matrixEdgePersist, 0.0f, 1.0f);
+            opts.EnableBrightnessPersistence = matrixBrightPersist;
+
+            if (!matrixFullColor && !string.IsNullOrEmpty(matrixColor))
+            {
+                opts.BaseColor = matrixColor.ToLowerInvariant() switch
+                {
+                    "green" => new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 65, 255), // #00FF41 authentic Matrix
+                    "red" => new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 50, 50, 255),
+                    "blue" => new SixLabors.ImageSharp.PixelFormats.Rgba32(50, 100, 255, 255),
+                    "amber" or "orange" => new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 176, 0, 255),
+                    "cyan" => new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 255, 255),
+                    "purple" or "magenta" => new SixLabors.ImageSharp.PixelFormats.Rgba32(180, 0, 255, 255),
+                    "white" => new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 255, 255, 255),
+                    "pink" => new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 100, 200, 255),
+                    _ when matrixColor.StartsWith('#') => ParseHexColor(matrixColor),
+                    _ => new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 65, 255) // Default authentic Matrix green
+                };
+            }
+            return opts;
+        }
+
+        SixLabors.ImageSharp.PixelFormats.Rgba32 ParseHexColor(string hex)
+        {
+            hex = hex.TrimStart('#');
+            if (hex.Length == 6 &&
+                byte.TryParse(hex[0..2], System.Globalization.NumberStyles.HexNumber, null, out byte r) &&
+                byte.TryParse(hex[2..4], System.Globalization.NumberStyles.HexNumber, null, out byte g) &&
+                byte.TryParse(hex[4..6], System.Globalization.NumberStyles.HexNumber, null, out byte b))
+            {
+                return new SixLabors.ImageSharp.PixelFormats.Rgba32(r, g, b, 255);
+            }
+            return new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 0, 255); // Default green
+        }
+
         // GIF output mode - render and save as animated GIF
         if (outputAsGif && !string.IsNullOrEmpty(gifOutputPath))
         {
             Console.WriteLine($"Rendering to GIF: {gifOutputPath}");
-            var gifOptions = CreateGifOptions();
+            // Pass isGif to apply default 10s limit for animated sources
+            var gifOptions = CreateGifOptions(isAnimatedSource: isGif);
             using var gifWriter = new GifWriter(gifOptions);
+            double totalElapsedMs = 0;
 
             // Create separate RenderOptions for GIF output if dimensions specified
             // Use higher MaxHeight for GIF output to preserve aspect ratio (not constrained by console)
@@ -605,7 +730,30 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             if (isGif)
             {
                 // Render animated GIF frames using mode-specific methods
-                if (useBraille)
+                if (useMatrix)
+                {
+                    var matrixOpts = CreateMatrixOptions();
+                    using var renderer = new MatrixRenderer(gifRenderOptions, matrixOpts);
+                    var matrixFrames = downloadedStream != null
+                        ? renderer.RenderGifStream(downloadedStream)
+                        : renderer.RenderGif(input);
+                    var sampledFrames = frameSample > 1
+                        ? matrixFrames.Where((f, i) => i % frameSample == 0).ToList()
+                        : matrixFrames.ToList();
+
+                    int frameIndex = 0;
+                    int totalFrames = sampledFrames.Count;
+                    foreach (var frame in sampledFrames)
+                    {
+                        if (ShouldStopAddingFrames(gifWriter, gifOptions, totalElapsedMs)) break;
+                        int delayMs = frame.DelayMs * frameSample;
+                        gifWriter.AddMatrixFrame(frame, delayMs, matrixOpts.UseBlockMode);
+                        totalElapsedMs += delayMs;
+                        frameIndex++;
+                        Console.Write($"\rProcessing frame {frameIndex}/{totalFrames}...");
+                    }
+                }
+                else if (useBraille)
                 {
                     using var renderer = new BrailleRenderer(gifRenderOptions);
                     var brailleFrames = renderer.RenderGifFrames(input);
@@ -617,7 +765,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     int totalFrames = sampledFrames.Count;
                     foreach (var frame in sampledFrames)
                     {
-                        gifWriter.AddBrailleFrame(frame, frame.DelayMs * frameSample);
+                        if (ShouldStopAddingFrames(gifWriter, gifOptions, totalElapsedMs)) break;
+                        int delayMs = frame.DelayMs * frameSample;
+                        gifWriter.AddBrailleFrame(frame, delayMs);
+                        totalElapsedMs += delayMs;
                         frameIndex++;
                         Console.Write($"\rProcessing frame {frameIndex}/{totalFrames}...");
                     }
@@ -636,7 +787,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     int totalFrames = sampledFrames.Count;
                     foreach (var frame in sampledFrames)
                     {
-                        gifWriter.AddColorBlockFrame(frame, frame.DelayMs * frameSample);
+                        if (ShouldStopAddingFrames(gifWriter, gifOptions, totalElapsedMs)) break;
+                        int delayMs = frame.DelayMs * frameSample;
+                        gifWriter.AddColorBlockFrame(frame, delayMs);
+                        totalElapsedMs += delayMs;
                         frameIndex++;
                         Console.Write($"\rProcessing frame {frameIndex}/{totalFrames}...");
                     }
@@ -655,17 +809,51 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     int totalFrames = sampledFrames.Count;
                     foreach (var frame in sampledFrames)
                     {
-                        gifWriter.AddFrame(frame, frame.DelayMs * frameSample);
+                        if (ShouldStopAddingFrames(gifWriter, gifOptions, totalElapsedMs)) break;
+                        int delayMs = frame.DelayMs * frameSample;
+                        gifWriter.AddFrame(frame, delayMs);
+                        totalElapsedMs += delayMs;
                         frameIndex++;
                         Console.Write($"\rProcessing frame {frameIndex}/{totalFrames}...");
                     }
                 }
                 Console.WriteLine(" Done!");
+                if (gifOptions.MaxLengthSeconds.HasValue && totalElapsedMs / 1000.0 >= gifOptions.MaxLengthSeconds.Value)
+                    Console.WriteLine($"(Limited to {gifOptions.MaxLengthSeconds.Value}s - use --gif-length 0 for unlimited)");
             }
             else
             {
-                // Static image - single frame
-                if (useBraille)
+                // Static image - single frame (or animated Matrix for static images)
+                if (useMatrix)
+                {
+                    // For static images, generate Matrix animation
+                    var matrixOpts = CreateMatrixOptions();
+                    using var renderer = new MatrixRenderer(gifRenderOptions, matrixOpts);
+                    using var img = downloadedStream != null
+                        ? Image.Load<Rgba32>(downloadedStream)
+                        : Image.Load<Rgba32>(input);
+
+                    // Calculate frame count from existing options:
+                    // --gif-frames takes priority, then --gif-length, then default 3 seconds
+                    int targetFps = matrixOpts.TargetFps;
+                    int totalFrames = gifFrames
+                        ?? (gifLength.HasValue ? (int)(gifLength.Value * targetFps) : targetFps * 3);
+
+                    var matrixFrames = new List<MatrixFrame>();
+                    for (int f = 0; f < totalFrames; f++)
+                    {
+                        matrixFrames.Add(renderer.RenderImage(img));
+                    }
+
+                    int frameIndex = 0;
+                    foreach (var frame in matrixFrames)
+                    {
+                        gifWriter.AddMatrixFrame(frame, frame.DelayMs, matrixOpts.UseBlockMode);
+                        frameIndex++;
+                        Console.Write($"\rGenerating Matrix frames {frameIndex}/{matrixFrames.Count}...");
+                    }
+                }
+                else if (useBraille)
                 {
                     using var renderer = new BrailleRenderer(gifRenderOptions);
                     var frame = downloadedStream != null
@@ -729,8 +917,120 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             return 0;
         }
 
+        // Matrix mode - digital rain effect
+        if (useMatrix)
+        {
+            var matrixOpts = CreateMatrixOptions();
+
+            if (isGif && !noAnimate)
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Console.CancelKeyPress += (s, e) =>
+                {
+                    e.Cancel = true;
+                    cts.Cancel();
+                };
+
+                var player = new ResizableAnimationPlayer(
+                    renderFrames: (maxW, maxH) =>
+                    {
+                        var renderOptions = options.Clone();
+                        renderOptions.MaxWidth = maxW;
+                        renderOptions.MaxHeight = maxH;
+                        using var renderer = new MatrixRenderer(renderOptions, matrixOpts);
+                        if (downloadedStream != null)
+                        {
+                            var ms = new MemoryStream(downloadedStream.ToArray());
+                            return renderer.RenderGifStream(ms);
+                        }
+                        return renderer.RenderGif(input);
+                    },
+                    explicitWidth: width,
+                    explicitHeight: height,
+                    loopCount: loop,
+                    useAltScreen: !noAltScreen,
+                    targetFps: framerate,
+                    showStatus: showStatus,
+                    fileName: input,
+                    renderMode: "Matrix"
+                );
+
+                await player.PlayAsync(cts.Token);
+            }
+            else
+            {
+                // Static image or animated display
+                using var renderer = new MatrixRenderer(options, matrixOpts);
+                MatrixFrame frame;
+                if (downloadedStream != null)
+                {
+                    downloadedStream.Position = 0;
+                    frame = renderer.RenderStream(downloadedStream);
+                }
+                else
+                {
+                    frame = renderer.RenderFile(input);
+                }
+
+                if (outputFile != null)
+                {
+                    File.WriteAllText(outputFile, frame.Content);
+                    Console.WriteLine($"Written to {outputFile}");
+                }
+                else
+                {
+                    // For static images with Matrix, run an animation loop
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    Console.CancelKeyPress += (s, e) =>
+                    {
+                        e.Cancel = true;
+                        cts.Cancel();
+                    };
+
+                    using var img = downloadedStream != null
+                        ? Image.Load<Rgba32>(downloadedStream)
+                        : Image.Load<Rgba32>(input);
+
+                    // Use alternate screen if not disabled
+                    if (!noAltScreen)
+                        Console.Write("\x1b[?1049h");
+
+                    try
+                    {
+                        int frameCount = 0;
+                        while (!cts.Token.IsCancellationRequested && (loop == 0 || frameCount < loop * 100))
+                        {
+                            var matrixFrame = renderer.RenderImage(img);
+
+                            // Move cursor to home and output frame
+                            Console.Write("\x1b[H");
+                            Console.Write(matrixFrame.Content);
+
+                            if (showStatus)
+                            {
+                                var lines = matrixFrame.Content.Split('\n');
+                                var frameHeight = lines.Length;
+                                var frameWidth = lines.Length > 0 ? GetVisibleLength(lines[0]) : 0;
+                                Console.Write("\x1b[0m\n");
+                                DisplayStatusLine(input, frameCount, null, frameWidth, frameHeight, "Matrix", !noColor);
+                            }
+
+                            await Task.Delay(matrixFrame.DelayMs, cts.Token);
+                            frameCount++;
+                        }
+                    }
+                    catch (OperationCanceledException) { }
+                    finally
+                    {
+                        if (!noAltScreen)
+                            Console.Write("\x1b[?1049l");
+                        Console.Write("\x1b[0m");
+                    }
+                }
+            }
+        }
         // Use color blocks mode for high-fidelity output
-        if (useBlocks)
+        else if (useBlocks)
         {
             if (isGif && !noAnimate)
             {

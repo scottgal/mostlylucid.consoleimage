@@ -71,5 +71,10 @@ Generate-Sample $portrait "demo_gamma_1.0.gif" "-w 80 --gamma 1.0" "Portrait Gam
 Generate-Sample $portrait "demo_gamma_0.85.gif" "-w 80 --gamma 0.85" "Portrait Gamma 0.85 (default - brighter)"
 Generate-Sample $portrait "demo_gamma_0.7.gif" "-w 80 --gamma 0.7" "Portrait Gamma 0.7 (much brighter)"
 
+# Matrix mode samples
+Generate-Sample $portrait "matrix_portrait_final.gif" "-w 60 --matrix --gif-length 3" "Matrix Classic Green"
+Generate-Sample $mountain "matrix_mountain_fullcolor.gif" "-w 80 --matrix --matrix-fullcolor --gif-length 3" "Matrix Full Color"
+Generate-Sample $portrait "matrix_binary.gif" "-w 60 --matrix --matrix-alphabet 01 --gif-length 3" "Matrix Binary Rain"
+
 Write-Host "`nDone! Samples generated in $samplesDir/" -ForegroundColor Green
 Write-Host "Remember to commit the updated samples to git." -ForegroundColor Cyan

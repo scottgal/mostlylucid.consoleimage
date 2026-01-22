@@ -165,6 +165,42 @@ public static class FFmpegProvider
     }
 
     /// <summary>
+    /// Check if FFmpeg needs to be downloaded and return status information.
+    /// </summary>
+    /// <returns>Tuple of (needsDownload, statusMessage, downloadUrl)</returns>
+    public static (bool NeedsDownload, string StatusMessage, string? DownloadUrl) GetDownloadStatus()
+    {
+        if (IsAvailable())
+        {
+            return (false, GetStatus(), null);
+        }
+
+        var rid = GetRuntimeIdentifier();
+        if (!DownloadUrls.TryGetValue(rid, out var url))
+        {
+            return (false, $"No auto-download available for {rid}. Please install FFmpeg manually.", null);
+        }
+
+        return (true, $"FFmpeg not found. Can auto-download (~100MB) to: {CacheDirectory}", url);
+    }
+
+    /// <summary>
+    /// Download FFmpeg with explicit user confirmation (non-interactive).
+    /// Call this after checking GetDownloadStatus() and confirming with user.
+    /// </summary>
+    public static async Task<string> DownloadAsync(
+        IProgress<(string Status, double Progress)>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (IsAvailable())
+        {
+            return (await GetFFmpegPathAsync(null, null, ct))!;
+        }
+
+        return await DownloadFFmpegAsync(progress, ct);
+    }
+
+    /// <summary>
     /// Clear downloaded FFmpeg from cache.
     /// </summary>
     public static void ClearCache()
@@ -284,7 +320,7 @@ public static class FFmpegProvider
         }
     }
 
-    private static async Task<string> DownloadFFmpegAsync(
+    internal static async Task<string> DownloadFFmpegAsync(
         IProgress<(string Status, double Progress)>? progress,
         CancellationToken ct)
     {

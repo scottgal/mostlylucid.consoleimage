@@ -82,6 +82,49 @@ Console.WriteLine(output);
 Best results with: photographs, gradients, detailed artwork. For line art, consider disabling
 dithering (`EnableDithering = false`) for sharper edges.
 
+### Matrix Mode (Digital Rain Effect)
+
+<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_portrait_final.gif" width="300" alt="Matrix Mode">
+
+The iconic Matrix digital rain effect with authentic color scheme - white glowing heads fading through bright green to dark green trails. Works on both static images and animations.
+
+```csharp
+var options = new RenderOptions { MaxWidth = 80 };
+var matrixOpts = new MatrixOptions
+{
+    BaseColor = new Rgba32(0, 255, 65, 255),  // Classic green (#00FF41)
+    Density = 0.5f,           // Rain density (0.1-2.0)
+    SpeedMultiplier = 1.0f,   // Animation speed
+    TargetFps = 20,           // Frames per second
+    UseAsciiOnly = false,     // Set true for ASCII (no katakana)
+    CustomAlphabet = null     // Or "01" for binary, "HELLO" for custom
+};
+
+using var renderer = new MatrixRenderer(options, matrixOpts);
+
+// Static image with animated rain overlay
+var frame = renderer.RenderImage(image);
+Console.WriteLine(frame.Content);
+
+// Animated GIF with Matrix effect
+var frames = renderer.RenderGif("animation.gif");
+```
+
+**Color Presets:**
+```csharp
+MatrixOptions.ClassicGreen  // Default authentic green
+MatrixOptions.RedPill       // Red tint
+MatrixOptions.BluePill      // Blue tint
+MatrixOptions.Amber         // Retro amber terminal
+MatrixOptions.FullColor     // Uses source image colors
+```
+
+**Custom Alphabets:**
+- Default: Half-width katakana + numbers + symbols (authentic Matrix style)
+- `UseAsciiOnly = true`: ASCII letters + numbers + symbols
+- `CustomAlphabet = "01"`: Binary rain
+- `CustomAlphabet = "HELLO"`: Custom message characters
+
 ### Terminal Protocols (Native Images)
 
 For terminals that support native image protocols:

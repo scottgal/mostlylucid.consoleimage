@@ -127,7 +127,9 @@ public class ResizableAnimationPlayer
         {
             while (!cancellationToken.IsCancellationRequested && _frames != null && _frameBuffers != null)
             {
-                for (int i = 0; i < _frames.Count; i++)
+                var frames = _frames; // Capture to avoid null warnings
+                var frameBuffers = _frameBuffers;
+                for (int i = 0; i < frames.Count; i++)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
 
@@ -136,21 +138,23 @@ public class ResizableAnimationPlayer
                     {
                         i = 0; // Restart from first frame
                         loopsDone = 0; // Reset loop count on resize
-                        if (_frames == null || _frameBuffers == null) break;
+                        frames = _frames;
+                        frameBuffers = _frameBuffers;
+                        if (frames == null || frameBuffers == null) break;
                     }
 
                     // Write frame with status line
-                    Console.Write(_frameBuffers![i]);
+                    Console.Write(frameBuffers[i]);
 
                     // Write status line if enabled
-                    if (_statusLine != null && _frames != null)
+                    if (_statusLine != null)
                     {
                         var statusInfo = new StatusLine.StatusInfo
                         {
                             FileName = _fileName,
                             RenderMode = _renderMode,
                             CurrentFrame = i + 1,
-                            TotalFrames = _frames.Count,
+                            TotalFrames = frames.Count,
                             LoopNumber = loopsDone + 1,
                             TotalLoops = _loopCount
                         };
@@ -161,7 +165,7 @@ public class ResizableAnimationPlayer
                     Console.Out.Flush();
 
                     // Delay
-                    int delayMs = fixedDelayMs ?? _frames[i].DelayMs;
+                    int delayMs = fixedDelayMs ?? frames[i].DelayMs;
                     if (delayMs > 0)
                     {
                         await ResponsiveDelay(delayMs, cancellationToken);

@@ -28,6 +28,7 @@ public record CalibrationSettings
     {
         RenderMode.ColorBlocks => BlocksCharacterAspectRatio,
         RenderMode.Braille => BrailleCharacterAspectRatio,
+        RenderMode.Matrix => AsciiCharacterAspectRatio, // Matrix uses same 1x1 cell as ASCII
         _ => AsciiCharacterAspectRatio
     };
 
@@ -36,6 +37,7 @@ public record CalibrationSettings
     {
         RenderMode.ColorBlocks => this with { BlocksCharacterAspectRatio = aspectRatio },
         RenderMode.Braille => this with { BrailleCharacterAspectRatio = aspectRatio },
+        RenderMode.Matrix => this with { AsciiCharacterAspectRatio = aspectRatio }, // Shares with ASCII
         _ => this with { AsciiCharacterAspectRatio = aspectRatio }
     };
 }
@@ -146,8 +148,16 @@ public static class CalibrationHelper
         {
             RenderMode.Braille => RenderBraille(image, renderOpts),
             RenderMode.ColorBlocks => RenderColorBlocks(image, renderOpts),
+            RenderMode.Matrix => RenderMatrix(image, renderOpts),
             _ => RenderAscii(image, renderOpts)
         };
+    }
+
+    private static string RenderMatrix(Image<Rgba32> image, RenderOptions opts)
+    {
+        using var renderer = new MatrixRenderer(opts);
+        var frame = renderer.RenderImage(image);
+        return frame.Content;
     }
 
     private static string RenderBraille(Image<Rgba32> image, RenderOptions opts)
@@ -177,5 +187,6 @@ public enum RenderMode
 {
     Ascii,
     ColorBlocks,
-    Braille
+    Braille,
+    Matrix
 }

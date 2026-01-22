@@ -11,6 +11,7 @@ ConsoleImage/
 │   ├── AsciiRenderer.cs         # Main ASCII rendering engine
 │   ├── ColorBlockRenderer.cs    # Unicode block-based rendering (2x resolution)
 │   ├── BrailleRenderer.cs       # Braille character rendering (2x4 dots per cell)
+│   ├── MatrixRenderer.cs        # Matrix digital rain effect rendering
 │   ├── AsciiAnimationPlayer.cs  # GIF playback with DECSET 2026
 │   ├── ResizableAnimationPlayer.cs # Dynamic console resize support
 │   ├── ConsoleImageDocument.cs  # JSON document format for saving/loading
@@ -52,6 +53,14 @@ Main rendering engine. Converts images to ASCII by:
 High-fidelity renderer using Unicode half-block characters (▀▄█).
 Each character displays 2 pixels vertically with separate fg/bg colors.
 Requires 24-bit color terminal support.
+
+### MatrixRenderer
+Renders images with the iconic "Matrix digital rain" falling code effect.
+- Uses half-width katakana, numbers, and symbols (authentic Matrix film characters)
+- Supports custom colors: green (default), red, blue, amber, cyan, purple, or hex (#RRGGBB)
+- Full-color mode uses source image colors with Matrix-style lighting/fading
+- Configurable density, speed, and trail length
+- Source image brightness influences rain appearance and intensity
 
 ### AsciiAnimationPlayer
 Plays GIF animations using DECSET 2026 synchronized output for flicker-free rendering.
@@ -162,6 +171,19 @@ consoleimage photo.png --blocks
 # Braille mode (ultra-high resolution)
 consoleimage photo.png --braille
 
+# Matrix mode (digital rain effect)
+consoleimage photo.png --matrix
+
+# Matrix with custom color
+consoleimage photo.png --matrix --matrix-color red
+consoleimage photo.png --matrix --matrix-color "#FF6600"
+
+# Matrix with source image colors (full-color mode)
+consoleimage photo.png --matrix --matrix-fullcolor
+
+# Matrix with adjusted density and speed
+consoleimage photo.png --matrix --matrix-density 0.8 --matrix-speed 1.5
+
 # Show status line with progress, timing, file info
 consoleimage animation.gif --status
 consolevideo movie.mp4 -S -w 120
@@ -244,6 +266,11 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `-f, --frame-sample` - Frame sampling rate (skip frames)
 - `-b, --blocks` - Use colored Unicode blocks
 - `-B, --braille` - Use braille characters (2x4 dots per cell)
+- `-M, --matrix` - Use Matrix digital rain effect
+- `--matrix-color` - Matrix color: green, red, blue, amber, cyan, purple, or hex (#RRGGBB)
+- `--matrix-fullcolor` - Use source image colors with Matrix lighting
+- `--matrix-density` - Rain density (0.1-2.0, default 0.5)
+- `--matrix-speed` - Rain speed multiplier (0.5-3.0, default 1.0)
 - `-o, --output` - Output file (auto-detects .gif or .json from extension)
 - `--calibrate` - Show aspect ratio calibration pattern
 - `--save` - Save calibration to calibration.json

@@ -78,6 +78,19 @@ public class GifWriter : IDisposable
     }
 
     /// <summary>
+    /// Add a Matrix frame - renders as text with fonts by default, or as pixel blocks if useBlockMode is true.
+    /// </summary>
+    /// <param name="frame">The Matrix frame to add</param>
+    /// <param name="delayMs">Frame delay in milliseconds</param>
+    /// <param name="useBlockMode">If true, render as pixel blocks instead of text</param>
+    public void AddMatrixFrame(MatrixFrame frame, int delayMs = 100, bool useBlockMode = false)
+    {
+        _useImageMode = true;
+        var image = useBlockMode ? RenderMatrixToImageAsBlocks(frame) : RenderMatrixToImage(frame);
+        _imageFrames.Add((image, delayMs));
+    }
+
+    /// <summary>
     /// Render ColorBlockFrame to an image (2 pixels per character cell vertically).
     /// </summary>
     private Image<Rgba32> RenderColorBlocksToImage(ColorBlockFrame frame)
@@ -156,6 +169,108 @@ public class GifWriter : IDisposable
         }
 
         return image;
+    }
+
+    /// <summary>
+    /// Render MatrixFrame to an image with actual text characters (like ASCII mode).
+    /// </summary>
+    private Image<Rgba32> RenderMatrixToImage(MatrixFrame frame)
+    {
+        var lines = frame.Content.Split('\n');
+        int charWidth = lines.Max(l => StripAnsi(l).Length);
+        int charHeight = lines.Length;
+
+        // Use text rendering like ASCII mode
+        int scaledFontSize = (int)(_options.FontSize * _options.Scale);
+        int charPixelWidth = (int)(_options.FontSize * 6 / 10 * _options.Scale);
+        int charPixelHeight = (int)((_options.FontSize + 2) * _options.Scale);
+        int scaledPadding = (int)(_options.Padding * _options.Scale);
+
+        int imageWidth = charWidth * charPixelWidth + scaledPadding * 2;
+        int imageHeight = charHeight * charPixelHeight + scaledPadding * 2;
+
+        var image = new Image<Rgba32>(imageWidth, imageHeight);
+        image.Mutate(ctx => ctx.Fill(_options.BackgroundColor));
+
+        // Get a font that supports the Matrix characters (katakana, etc.)
+        var font = GetMatrixFont(Math.Max(6, scaledFontSize));
+
+        for (int lineY = 0; lineY < lines.Length; lineY++)
+        {
+            int y = scaledPadding + lineY * charPixelHeight;
+            DrawColoredLine(image, lines[lineY], scaledPadding, y, charPixelWidth, font);
+        }
+
+        return image;
+    }
+
+    /// <summary>
+    /// Render MatrixFrame to an image as pixel blocks (for block mode Matrix).
+    /// </summary>
+    private Image<Rgba32> RenderMatrixToImageAsBlocks(MatrixFrame frame)
+    {
+        var lines = frame.Content.Split('\n');
+        int charWidth = lines.Max(l => StripAnsi(l).Length);
+        int charHeight = lines.Length;
+
+        // Matrix uses 1x1 character cells, but we scale them up for visibility
+        int pixelSize = Math.Max(1, (int)(_options.Scale * 4));
+        var image = new Image<Rgba32>(charWidth * pixelSize, charHeight * pixelSize);
+        image.Mutate(ctx => ctx.Fill(_options.BackgroundColor));
+
+        for (int lineY = 0; lineY < lines.Length; lineY++)
+        {
+            var cells = ParseMatrixLine(lines[lineY]);
+            for (int x = 0; x < cells.Count; x++)
+            {
+                var (character, fgColor) = cells[x];
+
+                // Skip space characters (background)
+                if (character == ' ')
+                    continue;
+
+                // Draw filled pixel for this character
+                int px = x * pixelSize;
+                int py = lineY * pixelSize;
+                var color = ToRgba32(fgColor);
+
+                for (int iy = 0; iy < pixelSize; iy++)
+                {
+                    for (int ix = 0; ix < pixelSize; ix++)
+                    {
+                        if (px + ix < image.Width && py + iy < image.Height)
+                            image[px + ix, py + iy] = color;
+                    }
+                }
+            }
+        }
+
+        return image;
+    }
+
+    /// <summary>
+    /// Parse a line of Matrix output to extract characters and their colors.
+    /// </summary>
+    private List<(char Character, Color FgColor)> ParseMatrixLine(string line)
+    {
+        var result = new List<(char, Color)>();
+        Color currentFg = _options.ForegroundColor;
+
+        foreach (System.Text.RegularExpressions.Match match in AnsiOrCharRegex.Matches(line))
+        {
+            if (match.Groups[1].Success)
+            {
+                var codes = match.Groups[1].Value.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                currentFg = ParseAnsiCodes(codes, currentFg);
+            }
+            else if (match.Groups[2].Success)
+            {
+                char c = match.Groups[2].Value[0];
+                result.Add((c, currentFg));
+            }
+        }
+
+        return result;
     }
 
     // Pre-compiled regex for ColorBlock/Braille parsing
@@ -495,8 +610,8 @@ public class GifWriter : IDisposable
 
             switch (code)
             {
-                case 0: // Reset
-                    currentColor = _options.ForegroundColor;
+                case 0: // Reset - use background color so "skipped" characters blend in
+                    currentColor = _options.BackgroundColor;
                     break;
                 case 38: // 24-bit or 256 foreground
                     if (i + 1 < codes.Length && codes[i + 1] == "2" && i + 4 < codes.Length)
@@ -871,6 +986,64 @@ public class GifWriter : IDisposable
         }
 
         throw new InvalidOperationException("No fonts available for GIF rendering. Install a monospace font like Consolas or Courier New.");
+    }
+
+    /// <summary>
+    /// Get a font that supports Matrix characters (katakana, symbols).
+    /// Tries Japanese-supporting fonts first, then falls back to monospace.
+    /// </summary>
+    private static Font GetMatrixFont(int size)
+    {
+        // Try fonts that support Japanese/katakana characters
+        // Windows fonts
+        string[] japaneseFonts = [
+            "MS Gothic",           // Windows - good katakana support
+            "Yu Gothic",           // Windows 10+
+            "Yu Gothic UI",        // Windows 10+
+            "Meiryo",              // Windows Vista+
+            "MS Mincho",           // Windows
+            // Cross-platform fonts
+            "Noto Sans Mono CJK JP", // Google's Noto fonts
+            "Noto Sans Mono CJK",
+            "Noto Sans JP",
+            "Source Han Sans",     // Adobe's open source CJK font
+            // macOS fonts
+            "Hiragino Kaku Gothic Pro",
+            "Hiragino Sans",
+            "Osaka",
+            // Linux fonts
+            "IPAGothic",
+            "TakaoGothic",
+            "VL Gothic",
+            // Fallback monospace fonts (may have limited katakana)
+            "Consolas",
+            "Courier New",
+            "DejaVu Sans Mono"
+        ];
+
+        try
+        {
+            foreach (var fontName in japaneseFonts)
+            {
+                if (SystemFonts.TryGet(fontName, out var family))
+                {
+                    return family.CreateFont(size);
+                }
+            }
+
+            // Fall back to first available font
+            var fallback = SystemFonts.Families.FirstOrDefault();
+            if (fallback.Name != null)
+            {
+                return fallback.CreateFont(size);
+            }
+        }
+        catch
+        {
+            // Font loading failed
+        }
+
+        throw new InvalidOperationException("No fonts available for Matrix GIF rendering. Install a Japanese-supporting font like MS Gothic, Yu Gothic, or Noto Sans CJK.");
     }
 
     // Pre-compiled regex for stripping ANSI

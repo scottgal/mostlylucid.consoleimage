@@ -165,6 +165,63 @@ Use `--mode list` to see all available modes.
 | `--ffmpeg-path` | Path to FFmpeg (file or directory) | Auto-detect/download |
 | `--calibrate` | Show calibration pattern | OFF |
 | `--save` | Save calibration | - |
+| `-o, --output` | Output file (gif:path.gif or json:path.json) | - |
+| `--raw` | Extract raw frames as GIF | - |
+| `--smart-keyframes` | Use scene detection for keyframe extraction | - |
+
+### GIF Output
+
+Convert videos to animated ASCII GIFs:
+
+```bash
+# Basic video to GIF conversion
+consolevideo video.mp4 -o gif:output.gif -w 80
+
+# With render mode
+consolevideo video.mp4 -o gif:output.gif --blocks
+consolevideo video.mp4 -o gif:output.gif --braille
+
+# Control GIF properties
+consolevideo video.mp4 -o gif:output.gif --gif-fps 10 --gif-colors 64
+
+# Limit output length
+consolevideo video.mp4 -o gif:output.gif --gif-length 10   # 10 seconds max
+consolevideo video.mp4 -o gif:output.gif --gif-frames 100  # 100 frames max
+
+# Extract specific section
+consolevideo video.mp4 -o gif:output.gif -ss 30 -t 10 --blocks
+```
+
+### GIF Output Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--gif-fps` | GIF framerate | 10 |
+| `--gif-colors` | Palette size (16-256) | 64 |
+| `--gif-font-size` | Font size in pixels | 10 |
+| `--gif-scale` | Scale factor | 1.0 |
+| `--gif-length` | Max length in seconds | - |
+| `--gif-frames` | Max frame count | - |
+
+### Raw Frame Extraction
+
+Extract video frames as an animated GIF without ASCII rendering:
+
+```bash
+# Extract frames at uniform intervals
+consolevideo video.mp4 --raw -o gif:frames.gif --fps 2 --duration 30
+
+# Smart keyframe extraction (uses scene detection)
+consolevideo video.mp4 --raw --smart-keyframes -o gif:keyframes.gif --gif-frames 20
+
+# Extract keyframes from specific section
+consolevideo video.mp4 --raw --smart-keyframes -o gif:keyframes.gif -ss 60 -t 60 --gif-frames 10
+```
+
+**Scene Detection**: The `--smart-keyframes` option uses histogram-based scene detection to identify visual changes and extract representative frames. This is useful for:
+- Creating video thumbnails
+- Extracting key moments from long videos
+- Building preview animations
 
 ## Library API
 
