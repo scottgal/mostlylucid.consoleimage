@@ -1,10 +1,10 @@
 name: Publish All NuGet Packages
 
-# This workflow publishes ALL NuGet packages:
+# This workflow publishes ALL NuGet packages AND CLI releases:
 # 1. ConsoleImage.Core → wait for NuGet availability
 # 2. ConsoleImage.Video.Core (needs Core) ─┬─ run in parallel after Core is available
 # 3. ConsoleImage.Spectre (needs Core)    ─┘
-# 4. Build CLIs using the NuGet packages (verification)
+# 4. Build & release CLI binaries (consoleimage, consolevideo, consoleimage-mcp)
 
 on:
   workflow_dispatch:
@@ -15,8 +15,11 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
   packages: write
+
+env:
+  DOTNET_VERSION: '10.0.x'
 
 jobs:
   # ============================================
@@ -261,79 +264,208 @@ jobs:
         exit 0
 
   # ============================================
-  # STEP 4: Build CLIs using NuGet packages (verification)
+  # STEP 4: Build ALL CLI binaries (AOT) for all platforms
   # ============================================
-  verify-consoleimage:
-    runs-on: ubuntu-latest
-    needs: [publish-core, wait-for-core]
-    steps:
-    - uses: actions/checkout@v6
-
-    - uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: '10.0.x'
-
-    - name: Build consoleimage CLI using NuGet package
-      run: |
-        dotnet build ConsoleImage/ConsoleImage.csproj -c Release \
-          -p:UseNuGetDependency=true \
-          -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
-
-  verify-consolevideo:
-    runs-on: ubuntu-latest
-    needs: [publish-core, publish-video, wait-for-video]
-    steps:
-    - uses: actions/checkout@v6
-
-    - uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: '10.0.x'
-
-    - name: Build consolevideo CLI using NuGet package
-      run: |
-        dotnet build ConsoleImage.Video/ConsoleImage.Video.csproj -c Release \
-          -p:UseNuGetDependency=true \
-          -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }}
-
-  verify-spectredemo:
-    runs-on: ubuntu-latest
-    needs: [publish-core, publish-video, publish-spectre, wait-for-video, wait-for-spectre]
-    steps:
-    - uses: actions/checkout@v6
-
-    - uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: '10.0.x'
-
-    - name: Build SpectreDemo using NuGet package
-      run: |
-        dotnet build ConsoleImage.SpectreDemo/ConsoleImage.SpectreDemo.csproj -c Release \
-          -p:UseNuGetDependency=true \
-          -p:SpectrePackageVersion=${{ needs.publish-core.outputs.version }}
-
-  verify-mcp:
-    runs-on: ubuntu-latest
+  build-cli:
     needs: [publish-core, publish-video, wait-for-core, wait-for-video]
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            ext: .exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            ext: ''
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            ext: ''
+          - os: macos-latest
+            rid: osx-arm64
+            ext: ''
+
+    runs-on: ${{ matrix.os }}
+
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-    - uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: '10.0.x'
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: Build consoleimage-mcp using NuGet packages
-      run: |
-        dotnet build ConsoleImage.Mcp/ConsoleImage.Mcp.csproj -c Release \
-          -p:UseNuGetDependency=true \
-          -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} \
-          -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }}
+      - name: Install AOT prerequisites (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Restore with NuGet packages
+        run: |
+          dotnet restore ConsoleImage/ConsoleImage.csproj -p:UseNuGetDependency=true -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
+          dotnet restore ConsoleImage.Video/ConsoleImage.Video.csproj -p:UseNuGetDependency=true -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }}
+          dotnet restore ConsoleImage.Mcp/ConsoleImage.Mcp.csproj -p:UseNuGetDependency=true -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }}
+
+      - name: Publish AOT - consoleimage
+        shell: bash
+        run: |
+          dotnet publish ConsoleImage/ConsoleImage.csproj \
+            -c Release -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=true -p:UseNuGetDependency=true \
+            -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} \
+            -o ./publish/consoleimage-${{ matrix.rid }}
+
+      - name: Publish AOT - consolevideo
+        shell: bash
+        run: |
+          dotnet publish ConsoleImage.Video/ConsoleImage.Video.csproj \
+            -c Release -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=true -p:UseNuGetDependency=true \
+            -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }} \
+            -o ./publish/consolevideo-${{ matrix.rid }}
+
+      - name: Publish AOT - consoleimage-mcp
+        shell: bash
+        run: |
+          dotnet publish ConsoleImage.Mcp/ConsoleImage.Mcp.csproj \
+            -c Release -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=true -p:UseNuGetDependency=true \
+            -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} \
+            -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }} \
+            -o ./publish/consoleimage-mcp-${{ matrix.rid }}
+
+      - name: Prepare archives
+        shell: bash
+        run: |
+          # consoleimage
+          mkdir -p ./archive/consoleimage-${{ matrix.rid }}
+          if [ "${{ matrix.ext }}" == ".exe" ]; then
+            cp ./publish/consoleimage-${{ matrix.rid }}/consoleimage.exe ./archive/consoleimage-${{ matrix.rid }}/
+          else
+            cp ./publish/consoleimage-${{ matrix.rid }}/consoleimage ./archive/consoleimage-${{ matrix.rid }}/
+            chmod +x ./archive/consoleimage-${{ matrix.rid }}/consoleimage
+          fi
+          cp README.md ./archive/consoleimage-${{ matrix.rid }}/
+          cp ConsoleImage/calibration.json ./archive/consoleimage-${{ matrix.rid }}/ || true
+
+          # consolevideo
+          mkdir -p ./archive/consolevideo-${{ matrix.rid }}
+          if [ "${{ matrix.ext }}" == ".exe" ]; then
+            cp ./publish/consolevideo-${{ matrix.rid }}/consolevideo.exe ./archive/consolevideo-${{ matrix.rid }}/
+          else
+            cp ./publish/consolevideo-${{ matrix.rid }}/consolevideo ./archive/consolevideo-${{ matrix.rid }}/
+            chmod +x ./archive/consolevideo-${{ matrix.rid }}/consolevideo
+          fi
+          cp ConsoleImage.Video/README.md ./archive/consolevideo-${{ matrix.rid }}/ || cp README.md ./archive/consolevideo-${{ matrix.rid }}/
+
+          # consoleimage-mcp
+          mkdir -p ./archive/consoleimage-mcp-${{ matrix.rid }}
+          if [ "${{ matrix.ext }}" == ".exe" ]; then
+            cp ./publish/consoleimage-mcp-${{ matrix.rid }}/consoleimage-mcp.exe ./archive/consoleimage-mcp-${{ matrix.rid }}/
+          else
+            cp ./publish/consoleimage-mcp-${{ matrix.rid }}/consoleimage-mcp ./archive/consoleimage-mcp-${{ matrix.rid }}/
+            chmod +x ./archive/consoleimage-mcp-${{ matrix.rid }}/consoleimage-mcp
+          fi
+          cp ConsoleImage.Mcp/README.md ./archive/consoleimage-mcp-${{ matrix.rid }}/
+
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd archive
+          Compress-Archive -Path consoleimage-${{ matrix.rid }}/* -DestinationPath consoleimage-${{ matrix.rid }}.zip
+          Compress-Archive -Path consolevideo-${{ matrix.rid }}/* -DestinationPath consolevideo-${{ matrix.rid }}.zip
+          Compress-Archive -Path consoleimage-mcp-${{ matrix.rid }}/* -DestinationPath consoleimage-mcp-${{ matrix.rid }}.zip
+
+      - name: Archive (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cd archive/consoleimage-${{ matrix.rid }} && tar -czvf ../consoleimage-${{ matrix.rid }}.tar.gz * && cd ..
+          cd consolevideo-${{ matrix.rid }} && tar -czvf ../consolevideo-${{ matrix.rid }}.tar.gz * && cd ..
+          cd consoleimage-mcp-${{ matrix.rid }} && tar -czvf ../consoleimage-mcp-${{ matrix.rid }}.tar.gz *
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: cli-${{ matrix.rid }}
+          path: |
+            archive/*.zip
+            archive/*.tar.gz
+
+  # ============================================
+  # STEP 5: Create GitHub Release with all CLI binaries
+  # ============================================
+  release:
+    needs: [publish-core, publish-video, publish-spectre, build-cli]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: consoleimage-v${{ needs.publish-core.outputs.version }}
+          name: ConsoleImage ${{ needs.publish-core.outputs.version }}
+          body: |
+            ## ConsoleImage ${{ needs.publish-core.outputs.version }}
+
+            High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+
+            ### Downloads
+
+            | Platform | consoleimage | consolevideo | consoleimage-mcp |
+            |----------|--------------|--------------|------------------|
+            | Windows x64 | `consoleimage-win-x64.zip` | `consolevideo-win-x64.zip` | `consoleimage-mcp-win-x64.zip` |
+            | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consolevideo-linux-x64.tar.gz` | `consoleimage-mcp-linux-x64.tar.gz` |
+            | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consolevideo-linux-arm64.tar.gz` | `consoleimage-mcp-linux-arm64.tar.gz` |
+            | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consolevideo-osx-arm64.tar.gz` | `consoleimage-mcp-osx-arm64.tar.gz` |
+
+            ### NuGet Packages
+            ```bash
+            dotnet add package mostlylucid.consoleimage --version ${{ needs.publish-core.outputs.version }}
+            dotnet add package mostlylucid.consoleimage.video --version ${{ needs.publish-core.outputs.version }}
+            dotnet add package mostlylucid.consoleimage.spectre --version ${{ needs.publish-core.outputs.version }}
+            ```
+
+            ### Features
+            - 🎨 **Four render modes**: ASCII, Unicode blocks, Braille, Matrix rain
+            - 🎬 **Animated GIF/Video** with flicker-free playback
+            - 🤖 **MCP Server** for AI tool integration (Claude Desktop, VS Code)
+            - 📦 **AOT compiled** - Fast startup, no runtime required
+
+            ### MCP Server Setup
+            ```json
+            {
+              "mcpServers": {
+                "consoleimage": {
+                  "command": "path/to/consoleimage-mcp"
+                }
+              }
+            }
+            ```
+
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ============================================
   # Summary
   # ============================================
   summary:
     runs-on: ubuntu-latest
-    needs: [publish-core, publish-video, publish-spectre, verify-consoleimage, verify-consolevideo, verify-spectredemo, verify-mcp]
+    needs: [publish-core, publish-video, publish-spectre, build-cli, release]
     if: always()
     steps:
     - name: Summary
@@ -341,14 +473,18 @@ jobs:
         VERSION="${{ needs.publish-core.outputs.version }}"
         echo "## Published Packages (v${VERSION})" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Package | Version | NuGet | GitHub |" >> $GITHUB_STEP_SUMMARY
-        echo "|---------|---------|-------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| mostlylucid.consoleimage | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage/${VERSION}) | [GitHub](https://github.com/${{ github.repository_owner }}/ConsoleImage/packages) |" >> $GITHUB_STEP_SUMMARY
-        echo "| mostlylucid.consoleimage.video | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.video/${VERSION}) | [GitHub](https://github.com/${{ github.repository_owner }}/ConsoleImage/packages) |" >> $GITHUB_STEP_SUMMARY
-        echo "| mostlylucid.consoleimage.spectre | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/${VERSION}) | [GitHub](https://github.com/${{ github.repository_owner }}/ConsoleImage/packages) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Package | Version | NuGet |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|---------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage.video | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.video/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage.spectre | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### CLI Verification" >> $GITHUB_STEP_SUMMARY
-        echo "- consoleimage: ${{ needs.verify-consoleimage.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- consolevideo: ${{ needs.verify-consolevideo.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- consoleimage-mcp: ${{ needs.verify-mcp.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- spectredemo: ${{ needs.verify-spectredemo.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "## CLI Releases" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| CLI | Platforms |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----|-----------|" >> $GITHUB_STEP_SUMMARY
+        echo "| consoleimage | win-x64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
+        echo "| consolevideo | win-x64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
+        echo "| consoleimage-mcp | win-x64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "[View Release](https://github.com/${{ github.repository }}/releases/tag/consoleimage-v${VERSION})" >> $GITHUB_STEP_SUMMARY
