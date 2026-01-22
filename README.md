@@ -191,10 +191,21 @@ consoleimage output.json
 
 ### MCP Server (AI Tool Integration)
 
-The MCP server exposes ConsoleImage as tools for AI assistants like Claude Desktop:
+The MCP server exposes ConsoleImage as tools for AI assistants. Once configured, you can simply ask Claude to "render this image as ASCII art" and it will use the tools automatically.
 
+**Claude Desktop** - Add to `claude_desktop_config.json`:
 ```json
-// Add to claude_desktop_config.json
+{
+  "mcpServers": {
+    "consoleimage": {
+      "command": "C:\\Tools\\consoleimage-mcp\\consoleimage-mcp.exe"
+    }
+  }
+}
+```
+
+**Claude Code** - Create `.mcp.json` in your project root:
+```json
 {
   "mcpServers": {
     "consoleimage": {
@@ -205,12 +216,15 @@ The MCP server exposes ConsoleImage as tools for AI assistants like Claude Deskt
 ```
 
 **Available tools:**
-- `render_image` - Render image/GIF to ASCII art (ascii, blocks, braille, matrix)
-- `render_to_gif` - Create animated GIF output
-- `get_gif_info` - Get GIF metadata (dimensions, frame count)
-- `get_video_info` - Get video file info via FFmpeg
-- `list_render_modes` - List available render modes
-- `compare_render_modes` - Render same image in all modes
+| Tool | Description |
+|------|-------------|
+| `render_image` | Render image/GIF to ASCII art (ascii, blocks, braille, matrix) |
+| `render_to_gif` | Create animated GIF output |
+| `get_gif_info` | Get GIF metadata (dimensions, frame count) |
+| `get_video_info` | Get video file info via FFmpeg |
+| `list_render_modes` | List available render modes with descriptions |
+| `list_matrix_presets` | List Matrix color presets |
+| `compare_render_modes` | Render same image in all modes for comparison |
 
 See [ConsoleImage.Mcp/README.md](ConsoleImage.Mcp/README.md) for full documentation.
 

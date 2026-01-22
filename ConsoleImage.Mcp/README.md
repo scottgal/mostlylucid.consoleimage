@@ -96,16 +96,26 @@ After editing, restart Claude Desktop. The tools will appear in Claude's tool li
 
 ### Claude Code (CLI)
 
-Add to your project's `.mcp.json` or global MCP config:
+Create a `.mcp.json` file in your project root:
 
 ```json
 {
   "mcpServers": {
     "consoleimage": {
-      "command": "path/to/consoleimage-mcp"
+      "command": "C:\\Tools\\consoleimage-mcp\\consoleimage-mcp.exe"
     }
   }
 }
+```
+
+Or add to your global config at `~/.claude/mcp.json` (or `%USERPROFILE%\.claude\mcp.json` on Windows).
+
+After adding, restart Claude Code. The tools will be available as `mcp__consoleimage__render_image`, etc.
+
+**Quick test after setup:**
+```
+You: "Use the render_image tool to show me what photo.jpg looks like"
+Claude: [calls mcp__consoleimage__render_image with path="photo.jpg"]
 ```
 
 ### VS Code (with Claude extension)
@@ -132,43 +142,102 @@ Once configured, you can ask Claude things like:
 - "Convert this GIF to ASCII art and save it"
 - "What are the dimensions of this video file?"
 
-## Tool Examples
+## Tool Reference
 
 ### render_image
 
-```
-Render photo.jpg to ASCII art at 80 columns wide
-```
+Renders an image or GIF frame to ASCII art and returns the result as text with ANSI color codes.
 
-Parameters:
-- `path` (required): Image file path
-- `mode`: ascii, blocks, braille, or matrix (default: ascii)
-- `maxWidth`: Max width in characters (default: 80)
-- `maxHeight`: Max height in characters (default: 40)
-- `useColor`: Enable ANSI colors (default: true)
-- `frameIndex`: For GIFs, which frame to render (default: 0)
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | (required) | Path to image file (jpg, png, gif, bmp, webp) |
+| `mode` | string | `"ascii"` | Render mode: `ascii`, `blocks`, `braille`, or `matrix` |
+| `maxWidth` | int | `80` | Maximum width in characters |
+| `maxHeight` | int | `40` | Maximum height in characters |
+| `useColor` | bool | `true` | Enable ANSI color codes in output |
+| `frameIndex` | int | `0` | For GIFs, which frame to render (0-based) |
+
+**Example prompts:**
+- "Render photo.jpg as ASCII art"
+- "Show me image.png in braille mode at 120 characters wide"
+- "Display frame 5 of animation.gif in matrix style"
 
 ### render_to_gif
 
-```
-Convert animation.gif to ASCII art GIF
-```
+Creates an animated GIF file from an image or GIF source, rendered in the specified ASCII art style.
 
-Parameters:
-- `inputPath` (required): Source image/GIF path
-- `outputPath` (required): Output GIF path
-- `mode`: ascii, blocks, braille, or matrix (default: ascii)
-- `maxWidth`: Max width in characters (default: 60)
-- `fontSize`: Font size for rendering (default: 10)
-- `maxColors`: GIF palette size (default: 64)
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `inputPath` | string | (required) | Source image or GIF path |
+| `outputPath` | string | (required) | Output GIF file path |
+| `mode` | string | `"ascii"` | Render mode: `ascii`, `blocks`, `braille`, or `matrix` |
+| `maxWidth` | int | `60` | Width in characters |
+| `fontSize` | int | `10` | Font size for text rendering |
+| `maxColors` | int | `64` | GIF palette size (16-256) |
+
+**Example prompts:**
+- "Convert animation.gif to ASCII art and save as output.gif"
+- "Create a matrix-style GIF from photo.jpg"
+
+### get_gif_info
+
+Returns metadata about a GIF file as JSON.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | (required) | Path to GIF file |
+
+**Returns:** JSON with `path`, `width`, `height`, `frameCount`, `isAnimated`
 
 ### get_video_info
 
-```
-Get duration and resolution of movie.mp4
+Returns metadata about a video file via FFmpeg.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | (required) | Path to video file |
+
+**Returns:** JSON with `path`, `duration`, `durationFormatted`, `width`, `height`, `frameRate`, `videoCodec`
+
+### list_render_modes
+
+Lists all available render modes with descriptions. Takes no parameters.
+
+**Returns:**
+```json
+{
+  "modes": [
+    {"name": "ascii", "description": "Classic ASCII characters..."},
+    {"name": "blocks", "description": "Unicode half-blocks..."},
+    {"name": "braille", "description": "Braille patterns..."},
+    {"name": "matrix", "description": "Matrix digital rain..."}
+  ]
+}
 ```
 
-Returns JSON with duration, resolution, frame rate, and codec info.
+### list_matrix_presets
+
+Lists available Matrix color presets. Takes no parameters.
+
+**Returns:** JSON array of preset names: `green`, `red`, `blue`, `amber`, `cyan`, `purple`
+
+### compare_render_modes
+
+Renders the same image in all four modes for side-by-side comparison.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | (required) | Path to image file |
+| `maxWidth` | int | `40` | Width for each render (smaller for comparison) |
+
+**Example prompts:**
+- "Compare all render modes for photo.jpg"
+- "Show me how this image looks in each ASCII style"
 
 ## AOT Support
 
