@@ -145,7 +145,7 @@ public class ConsolePlayer : IDisposable
     }
 
     /// <summary>
-    ///     Get document info as a string.
+    ///     Get document and player info as a string.
     /// </summary>
     public string GetInfo()
     {
@@ -159,8 +159,8 @@ public class ConsolePlayer : IDisposable
         if (_document.IsAnimated)
         {
             info.AppendLine($"Duration: {_document.TotalDurationMs}ms");
-            info.AppendLine($"Speed: {_document.Settings.AnimationSpeedMultiplier}x");
-            info.AppendLine($"Loop Count: {(_document.Settings.LoopCount == 0 ? "infinite" : _document.Settings.LoopCount.ToString())}");
+            info.AppendLine($"Speed: {_speedMultiplier}x");
+            info.AppendLine($"Loop Count: {(_loopCount == 0 ? "infinite" : _loopCount.ToString())}");
         }
 
         info.AppendLine($"Size: {_document.Settings.MaxWidth}x{_document.Settings.MaxHeight}");

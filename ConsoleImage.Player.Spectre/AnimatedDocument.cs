@@ -1,4 +1,5 @@
 // AnimatedDocument - Spectre.Console animated IRenderable for PlayerDocument
+using System.Diagnostics;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
@@ -11,7 +12,7 @@ namespace ConsoleImage.Player.Spectre;
 public class AnimatedDocument : IRenderable
 {
     private readonly PlayerDocument _document;
-    private DateTime _lastFrameTime;
+    private readonly Stopwatch _frameTimer = Stopwatch.StartNew();
     private float? _targetFps;
 
     /// <summary>
@@ -20,7 +21,6 @@ public class AnimatedDocument : IRenderable
     public AnimatedDocument(PlayerDocument document)
     {
         _document = document;
-        _lastFrameTime = DateTime.UtcNow;
     }
 
     /// <summary>
@@ -80,15 +80,14 @@ public class AnimatedDocument : IRenderable
         if (_document.FrameCount <= 1)
             return false;
 
-        var now = DateTime.UtcNow;
         var currentDelay = _targetFps.HasValue && _targetFps.Value > 0
             ? (int)(1000f / _targetFps.Value)
             : _document.Frames[CurrentFrame].DelayMs;
 
-        if ((now - _lastFrameTime).TotalMilliseconds >= currentDelay)
+        if (_frameTimer.ElapsedMilliseconds >= currentDelay)
         {
             CurrentFrame = (CurrentFrame + 1) % _document.FrameCount;
-            _lastFrameTime = now;
+            _frameTimer.Restart();
             return true;
         }
 
@@ -101,7 +100,7 @@ public class AnimatedDocument : IRenderable
     public void Reset()
     {
         CurrentFrame = 0;
-        _lastFrameTime = DateTime.UtcNow;
+        _frameTimer.Restart();
     }
 
     /// <summary>
@@ -112,7 +111,7 @@ public class AnimatedDocument : IRenderable
         if (frameIndex >= 0 && frameIndex < _document.FrameCount)
         {
             CurrentFrame = frameIndex;
-            _lastFrameTime = DateTime.UtcNow;
+            _frameTimer.Restart();
         }
     }
 
@@ -122,7 +121,8 @@ public class AnimatedDocument : IRenderable
             return new Measurement(0, 0);
 
         var frame = _document.Frames[CurrentFrame];
-        return new Measurement(frame.Width, frame.Width);
+        // Min = frame width (we need at least this much), Max = capped at maxWidth
+        return new Measurement(frame.Width, Math.Min(frame.Width, maxWidth));
     }
 
     public IEnumerable<Segment> Render(RenderOptions options, int maxWidth)

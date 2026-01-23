@@ -39,7 +39,7 @@ public class DocumentFrame : IRenderable
 
     public Measurement Measure(RenderOptions options, int maxWidth)
     {
-        return new Measurement(_frame.Width, _frame.Width);
+        return new Measurement(_frame.Width, Math.Min(_frame.Width, maxWidth));
     }
 
     public IEnumerable<Segment> Render(RenderOptions options, int maxWidth)
@@ -86,7 +86,7 @@ public class DocumentImage : IRenderable
             return new Measurement(0, 0);
 
         var frame = _document.Frames[_frameIndex];
-        return new Measurement(frame.Width, frame.Width);
+        return new Measurement(frame.Width, Math.Min(frame.Width, maxWidth));
     }
 
     public IEnumerable<Segment> Render(RenderOptions options, int maxWidth)

@@ -29,6 +29,18 @@ public partial class PlayerJsonContext : JsonSerializerContext;
 public class PlayerDocument
 {
     /// <summary>
+    ///     JSON-LD context for semantic web compatibility
+    /// </summary>
+    [JsonPropertyName("@context")]
+    public string Context { get; set; } = "https://schema.org/";
+
+    /// <summary>
+    ///     JSON-LD type identifier
+    /// </summary>
+    [JsonPropertyName("@type")]
+    public string Type { get; set; } = "ConsoleImageDocument";
+
+    /// <summary>
     ///     Document version
     /// </summary>
     public string Version { get; set; } = "2.0";
@@ -76,8 +88,13 @@ public class PlayerDocument
     /// <summary>
     ///     Load a document from a JSON file (auto-detects format)
     /// </summary>
+    /// <exception cref="FileNotFoundException">File does not exist</exception>
+    /// <exception cref="JsonException">Invalid JSON format</exception>
     public static async Task<PlayerDocument> LoadAsync(string path, CancellationToken ct = default)
     {
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"Document not found: {path}", path);
+
         // Check if streaming NDJSON format
         if (await IsStreamingFormatAsync(path, ct))
             return await LoadStreamingAsync(path, ct);
@@ -200,14 +217,44 @@ public class PlayerDocument
 }
 
 /// <summary>
-///     Playback settings
+///     Playback and render settings preserved from document creation
 /// </summary>
 public class PlayerSettings
 {
+    /// <summary>Explicit width (null = auto)</summary>
+    public int? Width { get; set; }
+
+    /// <summary>Explicit height (null = auto)</summary>
+    public int? Height { get; set; }
+
+    /// <summary>Maximum output width</summary>
     public int MaxWidth { get; set; } = 120;
+
+    /// <summary>Maximum output height</summary>
     public int MaxHeight { get; set; } = 60;
+
+    /// <summary>Character aspect ratio used during rendering</summary>
+    public float CharacterAspectRatio { get; set; } = 0.5f;
+
+    /// <summary>Contrast power used during rendering</summary>
+    public float ContrastPower { get; set; } = 2.5f;
+
+    /// <summary>Gamma correction used during rendering</summary>
+    public float Gamma { get; set; } = 0.85f;
+
+    /// <summary>Whether color output is enabled</summary>
     public bool UseColor { get; set; } = true;
+
+    /// <summary>Whether output was inverted (for dark terminals)</summary>
+    public bool Invert { get; set; } = true;
+
+    /// <summary>Character set preset name</summary>
+    public string? CharacterSetPreset { get; set; }
+
+    /// <summary>Animation speed multiplier (1.0 = normal)</summary>
     public float AnimationSpeedMultiplier { get; set; } = 1.0f;
+
+    /// <summary>Number of loops (0 = infinite)</summary>
     public int LoopCount { get; set; }
 }
 

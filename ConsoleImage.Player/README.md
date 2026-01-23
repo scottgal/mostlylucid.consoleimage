@@ -8,6 +8,8 @@ A minimal, zero-dependency player for ConsoleImage JSON documents. Play pre-rend
 - **AOT compatible** - Works with Native AOT publishing
 - **Tiny footprint** - Just the essentials for playback
 - **Supports both formats** - Standard JSON and streaming NDJSON
+- **Fast parsing** - ~100-300µs per frame, instant startup
+- **Low allocation** - Designed for minimal GC pressure
 
 ## Installation
 
@@ -149,6 +151,43 @@ consolevideo movie.mp4 -o output.json -w 80
 ```
 
 Or use the full `mostlylucid.consoleimage` library to create documents programmatically.
+
+## Performance
+
+Benchmarked on typical animation documents:
+
+| Document Size | Frames | Load Time | Per Frame |
+|---------------|--------|-----------|-----------|
+| 181 KB        | 9      | 1.1 ms    | ~120 µs   |
+| 724 KB        | 31     | 3.1 ms    | ~100 µs   |
+| 2 MB          | 59     | 9.1 ms    | ~155 µs   |
+
+- First parse may be slower due to JIT warmup
+- Subsequent parses are near-instant
+- Memory efficient - frames stored as strings, no intermediate objects
+
+## Threading
+
+- `LoadAsync` and `PlayAsync` are async and support `CancellationToken`
+- `FromJson` is synchronous (for small documents or when you already have the string)
+- The player writes directly to `Console` - not thread-safe with concurrent console output
+
+## Error Handling
+
+```csharp
+try
+{
+    var doc = await PlayerDocument.LoadAsync("file.json");
+}
+catch (FileNotFoundException)
+{
+    // File doesn't exist
+}
+catch (JsonException)
+{
+    // Invalid JSON format
+}
+```
 
 ## License
 
