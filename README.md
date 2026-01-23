@@ -18,9 +18,15 @@
 - **Smart Keyframes** - Scene detection for representative frame extraction
 - **Memory Efficient** - Streaming GIF output, only 1 frame in memory
 
+## What's New in 2.7
+
+- **Unified CLI** - `consoleimage` now handles images, GIFs, videos, AND document playback
+- **Compressed documents (.cidz)** - Save rendered output as compressed documents with delta encoding
+- **Document-to-GIF conversion** - Convert cidz/json documents directly to animated GIFs
+- **FFmpeg-style options** - Use `--ss` for start time, `-t` for duration
+
 ## What's New in 2.0
 
-- **Video superset** - `consolevideo` now handles images AND videos
 - **URL support** - Load images directly from HTTP/HTTPS URLs
 - **Native terminal protocols** - iTerm2, Kitty, Sixel auto-detection
 - **JSON document format** - Save/load rendered output as portable JSON-LD documents
@@ -48,7 +54,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 |---------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif" width="250" alt="Video ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_blocks.gif" width="250" alt="Video Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_braille.gif" width="250" alt="Video Braille"> |
 
-**Video playback with [ConsoleImage.Video](ConsoleImage.Video/README.md)** (FFmpeg-powered, hardware accelerated)
+**Video playback** - `consoleimage movie.mp4` (FFmpeg-powered, hardware accelerated)
 
 ### Still Images
 
@@ -159,38 +165,41 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
 - **Terminal with ANSI support** (Windows Terminal, iTerm2, any modern terminal)
 - **24-bit color** recommended for `--mode blocks` and `--mode braille`
 - **Unicode font** for braille mode (most terminals include this)
+- **FFmpeg** - Only required for video files (auto-downloads on first video use)
+  - Images, GIFs, and cidz/json documents work without FFmpeg
+  - Manual install: `winget install FFmpeg` (Windows), `brew install ffmpeg` (macOS), `apt install ffmpeg` (Linux)
 
 ## Quick Start
 
 ### CLI
 
 ```bash
-# Render an image
-consoleimage photo.jpg
+# === IMAGES ===
+consoleimage photo.jpg                    # Render to terminal
+consoleimage photo.png --blocks           # High-fidelity color blocks (▀▄)
+consoleimage photo.png --braille          # Ultra-high resolution braille
+consoleimage photo.png --matrix           # Matrix digital rain effect
+consoleimage https://example.com/photo.jpg # Load from URL
 
-# Play animated GIF
-consoleimage animation.gif
+# === ANIMATED GIFs ===
+consoleimage animation.gif                # Play animation
+consoleimage animation.gif --speed 1.5    # Speed up playback
+consoleimage animation.gif --loop 3       # Play 3 times
 
-# Load from URL
-consoleimage https://example.com/photo.jpg
+# === VIDEOS (FFmpeg auto-downloads on first use) ===
+consoleimage movie.mp4                    # Play video as ASCII
+consoleimage movie.mkv --blocks -w 120    # Color blocks mode
+consoleimage movie.mp4 --ss 60 -t 30      # Start at 60s, play 30s
 
-# High-fidelity color blocks (2x vertical resolution)
-consoleimage photo.jpg --mode blocks
+# === SAVE & PLAYBACK ===
+consoleimage animation.gif -o output.cidz # Save compressed document
+consoleimage movie.mp4 -o movie.cidz      # Save video as document
+consoleimage output.cidz                  # Play saved document
+consoleimage movie.cidz --speed 2.0       # Playback with options
+consoleimage movie.cidz -o movie.gif      # Convert document to GIF
 
-# Ultra-high resolution braille (2x4 dots per cell)
-consoleimage photo.jpg --mode braille
-
-# Calibrate for your terminal (run once)
+# === CALIBRATION ===
 consoleimage --calibrate --aspect-ratio 0.5 --save
-
-# Save as animated GIF
-consoleimage animation.gif -o gif:output.gif
-
-# Save as JSON document (portable, no source needed)
-consoleimage animation.gif -o json:output.json
-
-# Play back saved JSON document
-consoleimage output.json
 ```
 
 ### MCP Server (AI Tool Integration)
@@ -405,17 +414,22 @@ See [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) for the full specification.
 ### Quick Usage
 
 ```bash
-# Save to JSON while displaying
-consoleimage animation.gif -o json:movie.json
+# Save to compressed document (.cidz) - recommended for animations
+consoleimage animation.gif -o output.cidz
+consoleimage movie.mp4 -o movie.cidz --blocks
 
-# Save braille mode
-consoleimage photo.jpg --braille -o json:photo.json
+# Save to uncompressed JSON
+consoleimage animation.gif -o output.json
 
-# Play back saved document
-consoleimage movie.json
+# Play back saved documents
+consoleimage output.cidz
+consoleimage movie.cidz --speed 2.0
+
+# Convert document to GIF
+consoleimage movie.cidz -o movie.gif
 
 # Stream long video to JSON (frames written incrementally)
-consolevideo long_movie.mp4 -o json:movie.ndjson
+consoleimage long_movie.mp4 -o movie.ndjson
 ```
 
 ### Library API
@@ -453,6 +467,27 @@ await writer.FinalizeAsync();  // Or let dispose auto-finalize
     - **Streaming NDJSON** (`.json` or `.ndjson`) - JSON Lines format, one record per line
 - **Auto-detection** - `LoadAsync()` automatically detects which format
 - **Stop anytime** - Streaming format auto-finalizes on Ctrl+C, always valid
+
+### Embedding in Applications
+
+Use the lightweight **[ConsoleImage.Player](ConsoleImage.Player/README.md)** package to play `.cidz` documents without any dependencies on ImageSharp or FFmpeg. Perfect for animated startup logos:
+
+| ASCII | ColorBlocks | Braille |
+|-------|-------------|---------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_ascii.gif" width="150" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_blocks.gif" width="150" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_braille.gif" width="150" alt="Braille"> |
+
+```bash
+# Create document at build time
+consoleimage logo.gif -w 60 -o logo.cidz
+```
+
+```csharp
+// Play on startup (no ImageSharp, no FFmpeg - just JSON parsing)
+var player = await ConsolePlayer.FromFileAsync("logo.cidz");
+await player.PlayAsync(loopCount: 1);
+```
+
+See [ConsoleImage.Player/README.md](ConsoleImage.Player/README.md) for the complete example.
 
 ## Library API
 
@@ -664,14 +699,14 @@ Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 
 ## Documentation
 
-| Component                          | Description            | Documentation                                                          |
-|------------------------------------|------------------------|------------------------------------------------------------------------|
-| **consoleimage**                   | CLI for images & GIFs  | [ConsoleImage/README.md](ConsoleImage/README.md)                       |
-| **consolevideo**                   | CLI for video playback | [ConsoleImage.Video/README.md](ConsoleImage.Video/README.md)           |
-| **mostlylucid.consoleimage**       | Core library (NuGet)   | [ConsoleImage.Core/README.md](ConsoleImage.Core/README.md)             |
-| **mostlylucid.consoleimage.video** | Video library (NuGet)  | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
-| **JSON Format**                    | Document format spec   | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md)                             |
-| **Changelog**                      | Version history        | [CHANGELOG.md](CHANGELOG.md)                                           |
+| Component                          | Description                                    | Documentation                                                          |
+|------------------------------------|------------------------------------------------|------------------------------------------------------------------------|
+| **consoleimage**                   | Unified CLI for images, GIFs, videos, cidz     | [ConsoleImage/README.md](ConsoleImage/README.md)                       |
+| **mostlylucid.consoleimage**       | Core rendering library (NuGet)                 | [ConsoleImage.Core/README.md](ConsoleImage.Core/README.md)             |
+| **mostlylucid.consoleimage.video** | Video support library (NuGet)                  | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
+| **mostlylucid.consoleimage.player**| Document playback library (NuGet)              | [ConsoleImage.Player/README.md](ConsoleImage.Player/README.md)         |
+| **JSON/CIDZ Format**               | Document format specification                  | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md)                             |
+| **Changelog**                      | Version history                                | [CHANGELOG.md](CHANGELOG.md)                                           |
 
 ## Architecture
 
@@ -683,13 +718,15 @@ ConsoleImage.Core              # Core library (NuGet: mostlylucid.consoleimage)
 ├── MatrixRenderer             # Digital rain effect
 ├── Protocol renderers         # iTerm2, Kitty, Sixel support
 ├── AsciiAnimationPlayer       # Flicker-free GIF playback
+├── ConsoleImageDocument       # JSON/CIDZ document format
+├── DocumentPlayer             # Document playback
 ├── GifWriter                  # Animated GIF output
 └── ConsoleHelper              # Windows ANSI support
 
-ConsoleImage                   # CLI tool (consoleimage)
+ConsoleImage                   # Unified CLI (images, GIFs, videos, documents)
+ConsoleImage.Video.Core        # FFmpeg video decoding (optional, for video files)
+ConsoleImage.Player            # Standalone document playback (NuGet)
 ConsoleImage.Spectre           # Spectre.Console integration
-ConsoleImage.Video.Core        # FFmpeg video decoding
-ConsoleImage.Video             # Video CLI (consolevideo)
 ```
 
 ## How It Works

@@ -52,6 +52,9 @@ public class DocumentPlayer : IDisposable
         // Hide cursor during animation
         Console.Write("\x1b[?25l");
 
+        // Track if this is the very first frame
+        var isFirstFrame = true;
+
         try
         {
             var loopsRemaining = _loopCount == 0 ? int.MaxValue : _loopCount;
@@ -62,9 +65,17 @@ public class DocumentPlayer : IDisposable
                 {
                     var frame = _document.Frames[i];
 
-                    // Move cursor to start position (except for first frame of first loop)
-                    if (i > 0 || loopsRemaining < (_loopCount == 0 ? int.MaxValue : _loopCount))
-                        Console.Write($"\x1b[{maxHeight}A\r");
+                    // Move cursor to start position (except for very first frame)
+                    // Content may or may not end with newline - check and adjust
+                    if (!isFirstFrame)
+                    {
+                        // If content ends with newline, cursor is on next line, so move up maxHeight
+                        // If not, cursor is on last line, so move up maxHeight - 1
+                        var endsWithNewline = frame.Content.EndsWith('\n') || frame.Content.EndsWith("\r\n");
+                        var linesToMove = endsWithNewline ? maxHeight : maxHeight - 1;
+                        Console.Write($"\x1b[{linesToMove}A\r");
+                    }
+                    isFirstFrame = false;
 
                     // Use synchronized output if supported
                     Console.Write("\x1b[?2026h");

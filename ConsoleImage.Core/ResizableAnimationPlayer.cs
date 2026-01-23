@@ -516,6 +516,40 @@ public class ResizableAnimationPlayer
 
         if (currentWidth != _lastConsoleWidth || currentHeight != _lastConsoleHeight)
         {
+            // Debounce: wait for resize to stabilize before re-rendering
+            // This prevents expensive re-renders during active resizing
+            var stableWidth = currentWidth;
+            var stableHeight = currentHeight;
+            var debounceMs = 150; // Wait 150ms for resize to stabilize
+
+            // Show "Resizing..." message
+            Console.Write("\x1b[2J\x1b[H\x1b[0mResizing...");
+            Console.Out.Flush();
+
+            // Wait for size to stabilize
+            Thread.Sleep(debounceMs);
+
+            // Keep checking until size stops changing
+            while (true)
+            {
+                try
+                {
+                    currentWidth = Console.WindowWidth - 1;
+                    currentHeight = Console.WindowHeight - 2;
+                }
+                catch
+                {
+                    break;
+                }
+
+                if (currentWidth == stableWidth && currentHeight == stableHeight)
+                    break;
+
+                stableWidth = currentWidth;
+                stableHeight = currentHeight;
+                Thread.Sleep(debounceMs);
+            }
+
             // Clear screen before re-rendering
             Console.Write("\x1b[2J\x1b[H");
             Console.Out.Flush();

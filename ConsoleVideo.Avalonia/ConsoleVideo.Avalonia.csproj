@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" Version="11.3.2" />
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.2" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.2" />
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.2" />
+        <PackageReference Include="FluentAvaloniaUI" Version="2.2.0" />
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+        <!-- Docking layout system -->
+        <PackageReference Include="Dock.Avalonia" Version="11.3.2.2" />
+        <PackageReference Include="Dock.Model.Mvvm" Version="11.3.2.2" />
+        <!-- Whisper speech recognition -->
+        <PackageReference Include="Whisper.net" Version="1.9.0" />
+        <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
+        <!-- Text rendering for subtitles -->
+        <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+        <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj" />
+    </ItemGroup>
+
+</Project>

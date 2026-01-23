@@ -224,4 +224,142 @@ public class ColorBlockRendererTests : IDisposable
         // Remove ANSI escape sequences
         return Regex.Replace(input, @"\x1b\[[0-9;]*m", "");
     }
+
+    [Fact]
+    public void RenderImage_WithoutColor_ProducesGreyscale()
+    {
+        // Arrange
+        using var renderer = new ColorBlockRenderer(new RenderOptions
+        {
+            MaxWidth = 20,
+            MaxHeight = 10,
+            UseColor = false
+        });
+
+        var image = CreateTestImage(100, 100, Color.Red); // Bright red
+
+        // Act
+        var output = renderer.RenderImage(image);
+
+        // Assert - greyscale output has equal R, G, B values
+        Assert.True(ContainsOnlyGreyscaleColors(output),
+            "Expected greyscale output when UseColor is false");
+    }
+
+    [Fact]
+    public void RenderImage_WithoutColor_RainbowBecomesGreyscale()
+    {
+        // Arrange - create a colorful rainbow image
+        using var renderer = new ColorBlockRenderer(new RenderOptions
+        {
+            MaxWidth = 20,
+            MaxHeight = 10,
+            UseColor = false
+        });
+
+        var image = CreateRainbowImage(100, 100);
+
+        // Act
+        var output = renderer.RenderImage(image);
+
+        // Assert - all colors should be greyscale (R=G=B)
+        Assert.True(ContainsOnlyGreyscaleColors(output),
+            "Rainbow image should become greyscale when UseColor is false");
+    }
+
+    [Fact]
+    public void RenderImage_WithColor_PreservesColorVariation()
+    {
+        // Arrange - create a solid red image (definitely not grey)
+        // Use Gamma=1.0 to avoid color transformation
+        using var renderer = new ColorBlockRenderer(new RenderOptions
+        {
+            MaxWidth = 20,
+            MaxHeight = 10,
+            UseColor = true,
+            Gamma = 1.0f  // No gamma correction
+        });
+
+        var image = CreateTestImage(100, 100, new Rgba32(255, 0, 0)); // Pure red
+
+        // Act
+        var output = renderer.RenderImage(image);
+
+        // Assert - pure red should NOT be detected as greyscale
+        Assert.False(ContainsOnlyGreyscaleColors(output),
+            "Pure red image should preserve color when UseColor is true");
+    }
+
+    private Image<Rgba32> CreateRainbowImage(int width, int height)
+    {
+        var image = new Image<Rgba32>(width, height);
+        _disposableImages.Add(image);
+
+        var colors = new[]
+        {
+            new Rgba32(255, 0, 0),   // Red
+            new Rgba32(0, 255, 0),   // Green
+            new Rgba32(0, 0, 255),   // Blue
+            new Rgba32(255, 255, 0), // Yellow
+            new Rgba32(255, 0, 255), // Magenta
+        };
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                image[x, y] = colors[(x + y) % colors.Length];
+            }
+        }
+        return image;
+    }
+
+    private Image<Rgba32> CreateColorBandsImage(int width, int height)
+    {
+        // Create horizontal bands of solid colors (won't average to grey when downsampled)
+        var image = new Image<Rgba32>(width, height);
+        _disposableImages.Add(image);
+
+        var colors = new[]
+        {
+            new Rgba32(255, 0, 0),   // Red
+            new Rgba32(0, 255, 0),   // Green
+            new Rgba32(0, 0, 255),   // Blue
+        };
+
+        var bandHeight = height / colors.Length;
+        for (int y = 0; y < height; y++)
+        {
+            var colorIndex = Math.Min(y / bandHeight, colors.Length - 1);
+            for (int x = 0; x < width; x++)
+            {
+                image[x, y] = colors[colorIndex];
+            }
+        }
+        return image;
+    }
+
+    private static bool ContainsOnlyGreyscaleColors(string ansiOutput)
+    {
+        // Parse ANSI color codes - both foreground (38;2;R;G;B) and background (48;2;R;G;B)
+        // Greyscale means R=G=B
+        var colorPattern = new Regex(@"\x1b\[(?:38|48);2;(\d+);(\d+);(\d+)");
+        var matches = colorPattern.Matches(ansiOutput);
+
+        if (matches.Count == 0)
+            return true; // No colors = grey by default
+
+        foreach (Match match in matches)
+        {
+            var r = int.Parse(match.Groups[1].Value);
+            var g = int.Parse(match.Groups[2].Value);
+            var b = int.Parse(match.Groups[3].Value);
+
+            // Allow small tolerance for rounding during image processing
+            if (Math.Abs(r - g) > 5 || Math.Abs(g - b) > 5 || Math.Abs(r - b) > 5)
+                return false;
+        }
+
+        return true;
+    }
 }

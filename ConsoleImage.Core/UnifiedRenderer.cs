@@ -1,39 +1,176 @@
-using ConsoleImage.Core.ProtocolRenderers;
+// UnifiedRenderer - Single entry point for all rendering operations
+// Eliminates duplicate code paths for different modes and output formats
+
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-///     Unified image renderer that can automatically select the best protocol
-///     for the current terminal, or use a specific protocol if requested.
+/// Unified renderer that handles all render modes with a consistent interface.
 /// </summary>
 public class UnifiedRenderer : IDisposable
 {
     private readonly RenderOptions _options;
+    private readonly RenderMode _mode;
     private bool _disposed;
 
-    /// <summary>
-    ///     Create a renderer that automatically detects the best protocol.
-    /// </summary>
-    public UnifiedRenderer(RenderOptions? options = null)
-        : this(TerminalCapabilities.DetectBestProtocol(), options)
+    public UnifiedRenderer(RenderOptions options, RenderMode mode)
     {
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _mode = mode;
+    }
+
+    public RenderMode Mode => _mode;
+
+    /// <summary>
+    /// Render a single image file to a frame.
+    /// </summary>
+    public IAnimationFrame RenderFile(string path)
+    {
+        return _mode switch
+        {
+            RenderMode.Braille => new BrailleRenderer(_options).RenderFileToFrame(path),
+            RenderMode.ColorBlocks => new ColorBlockRenderer(_options).RenderFileToFrame(path),
+            _ => RenderAsciiFile(path)
+        };
     }
 
     /// <summary>
-    ///     Create a renderer using a specific protocol.
+    /// Render a single image to a frame.
     /// </summary>
-    public UnifiedRenderer(TerminalProtocol protocol, RenderOptions? options = null)
+    public IAnimationFrame RenderImage(Image<Rgba32> image)
     {
-        Protocol = protocol;
-        _options = options ?? RenderOptions.Default;
+        return _mode switch
+        {
+            RenderMode.Braille => new BrailleFrame(new BrailleRenderer(_options).RenderImage(image), 0),
+            RenderMode.ColorBlocks => new ColorBlockFrame(new ColorBlockRenderer(_options).RenderImage(image), 0),
+            _ => RenderAsciiImage(image)
+        };
     }
 
     /// <summary>
-    ///     The protocol being used for rendering.
+    /// Render an animated GIF file to a list of frames.
     /// </summary>
-    public TerminalProtocol Protocol { get; }
+    public List<IAnimationFrame> RenderGif(string path)
+    {
+        return _mode switch
+        {
+            RenderMode.Braille => RenderBrailleGif(path),
+            RenderMode.ColorBlocks => RenderBlocksGif(path),
+            _ => RenderAsciiGif(path)
+        };
+    }
+
+    private IAnimationFrame RenderAsciiFile(string path)
+    {
+        using var renderer = new AsciiRenderer(_options);
+        var frame = renderer.RenderFile(path);
+        var darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
+        var lightThreshold = !_options.Invert ? _options.LightTerminalBrightnessThreshold : null;
+        return new GenericFrame(
+            _options.UseColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString(),
+            0);
+    }
+
+    private IAnimationFrame RenderAsciiImage(Image<Rgba32> image)
+    {
+        using var renderer = new AsciiRenderer(_options);
+        var frame = renderer.RenderImage(image);
+        var darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
+        var lightThreshold = !_options.Invert ? _options.LightTerminalBrightnessThreshold : null;
+        return new GenericFrame(
+            _options.UseColor ? frame.ToAnsiString(darkThreshold, lightThreshold) : frame.ToString(),
+            0);
+    }
+
+    private List<IAnimationFrame> RenderBrailleGif(string path)
+    {
+        using var renderer = new BrailleRenderer(_options);
+        return renderer.RenderGifFrames(path).Cast<IAnimationFrame>().ToList();
+    }
+
+    private List<IAnimationFrame> RenderBlocksGif(string path)
+    {
+        using var renderer = new ColorBlockRenderer(_options);
+        return renderer.RenderGifFrames(path).Cast<IAnimationFrame>().ToList();
+    }
+
+    private List<IAnimationFrame> RenderAsciiGif(string path)
+    {
+        using var renderer = new AsciiRenderer(_options);
+        var frames = renderer.RenderGif(path);
+        var darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
+        var lightThreshold = !_options.Invert ? _options.LightTerminalBrightnessThreshold : null;
+
+        return frames.Select(f => (IAnimationFrame)new GenericFrame(
+            _options.UseColor ? f.ToAnsiString(darkThreshold, lightThreshold) : f.ToString(),
+            f.DelayMs)).ToList();
+    }
+
+    /// <summary>
+    /// Save frames to a document (cidz or json).
+    /// </summary>
+    public static async Task SaveToDocumentAsync(
+        IReadOnlyList<IAnimationFrame> frames,
+        RenderOptions options,
+        RenderMode mode,
+        string outputPath,
+        string? sourceFile = null,
+        CancellationToken ct = default)
+    {
+        var doc = new ConsoleImageDocument
+        {
+            RenderMode = mode.ToString(),
+            SourceFile = sourceFile,
+            Settings = DocumentRenderSettings.FromRenderOptions(options)
+        };
+
+        foreach (var frame in frames)
+        {
+            var lines = frame.Content.Split('\n');
+            doc.Frames.Add(new DocumentFrame
+            {
+                Content = frame.Content,
+                DelayMs = frame.DelayMs,
+                Width = lines.Length > 0 ? lines[0].Length : 0,
+                Height = lines.Length
+            });
+        }
+
+        await doc.SaveAsync(outputPath, ct);
+    }
+
+    /// <summary>
+    /// Save frames to an animated GIF.
+    /// </summary>
+    public static async Task SaveToGifAsync(
+        IReadOnlyList<IAnimationFrame> frames,
+        RenderMode mode,
+        string outputPath,
+        GifWriterOptions? options = null,
+        CancellationToken ct = default)
+    {
+        using var writer = new GifWriter(options ?? new GifWriterOptions());
+
+        foreach (var frame in frames)
+        {
+            switch (mode)
+            {
+                case RenderMode.Braille when frame is BrailleFrame bf:
+                    writer.AddBrailleFrame(bf, bf.DelayMs);
+                    break;
+                case RenderMode.ColorBlocks when frame is ColorBlockFrame cbf:
+                    writer.AddColorBlockFrame(cbf, cbf.DelayMs);
+                    break;
+                default:
+                    writer.AddFrame(frame.Content, frame.DelayMs);
+                    break;
+            }
+        }
+
+        await writer.SaveAsync(outputPath, ct);
+    }
 
     public void Dispose()
     {
@@ -41,175 +178,19 @@ public class UnifiedRenderer : IDisposable
         _disposed = true;
         GC.SuppressFinalize(this);
     }
-
-    /// <summary>
-    ///     Render an image file.
-    /// </summary>
-    public string RenderFile(string path)
-    {
-        using var image = Image.Load<Rgba32>(path);
-        return RenderImage(image);
-    }
-
-    /// <summary>
-    ///     Render an image from a stream.
-    /// </summary>
-    public string RenderStream(Stream stream)
-    {
-        using var image = Image.Load<Rgba32>(stream);
-        return RenderImage(image);
-    }
-
-    /// <summary>
-    ///     Render an image using the configured protocol.
-    /// </summary>
-    public string RenderImage(Image<Rgba32> image)
-    {
-        return Protocol switch
-        {
-            TerminalProtocol.Kitty => RenderWithKitty(image),
-            TerminalProtocol.ITerm2 => RenderWithITerm2(image),
-            TerminalProtocol.Sixel => RenderWithSixel(image),
-            TerminalProtocol.ColorBlocks => RenderWithColorBlocks(image),
-            TerminalProtocol.Braille => RenderWithBraille(image),
-            _ => RenderWithAscii(image)
-        };
-    }
-
-    /// <summary>
-    ///     Render a local file or remote URL.
-    /// </summary>
-    public string RenderAny(string pathOrUrl)
-    {
-        if (UrlHelper.IsUrl(pathOrUrl))
-        {
-            using var stream = UrlHelper.Download(pathOrUrl);
-            return RenderStream(stream);
-        }
-
-        return RenderFile(pathOrUrl);
-    }
-
-    /// <summary>
-    ///     Render a local file or remote URL asynchronously.
-    /// </summary>
-    public async Task<string> RenderAnyAsync(
-        string pathOrUrl,
-        Action<long, long>? progress = null,
-        CancellationToken cancellationToken = default)
-    {
-        if (UrlHelper.IsUrl(pathOrUrl))
-        {
-            using var stream = await UrlHelper.DownloadAsync(pathOrUrl, progress, cancellationToken);
-            return RenderStream(stream);
-        }
-
-        return RenderFile(pathOrUrl);
-    }
-
-    private string RenderWithKitty(Image<Rgba32> image)
-    {
-        using var renderer = new KittyRenderer(_options);
-        return renderer.RenderImage(image);
-    }
-
-    private string RenderWithITerm2(Image<Rgba32> image)
-    {
-        using var renderer = new ITerm2Renderer(_options);
-        return renderer.RenderImage(image);
-    }
-
-    private string RenderWithSixel(Image<Rgba32> image)
-    {
-        using var renderer = new SixelRenderer(_options);
-        return renderer.RenderImage(image);
-    }
-
-    private string RenderWithColorBlocks(Image<Rgba32> image)
-    {
-        using var renderer = new ColorBlockRenderer(_options);
-        return renderer.RenderImage(image);
-    }
-
-    private string RenderWithBraille(Image<Rgba32> image)
-    {
-        using var renderer = new BrailleRenderer(_options);
-        return renderer.RenderImage(image);
-    }
-
-    private string RenderWithAscii(Image<Rgba32> image)
-    {
-        using var renderer = new AsciiRenderer(_options);
-        var frame = renderer.RenderImage(image);
-        return _options.UseColor ? frame.ToAnsiString() : frame.ToString();
-    }
-
-    /// <summary>
-    ///     Get a list of all available protocols with their support status.
-    /// </summary>
-    public static IReadOnlyList<ProtocolInfo> ListProtocols()
-    {
-        return Enum.GetValues<TerminalProtocol>()
-            .Select(p => new ProtocolInfo(
-                p,
-                TerminalCapabilities.SupportsProtocol(p),
-                GetProtocolDescription(p)
-            ))
-            .ToList();
-    }
-
-    /// <summary>
-    ///     Get a formatted string listing all protocols and their status.
-    /// </summary>
-    public static string GetProtocolList()
-    {
-        var protocols = ListProtocols();
-        var best = TerminalCapabilities.DetectBestProtocol();
-
-        var lines = new List<string>
-        {
-            "Available Rendering Modes:",
-            ""
-        };
-
-        foreach (var p in protocols)
-        {
-            var marker = p.Protocol == best ? " (auto)" : "";
-            var status = p.IsSupported ? "Supported" : "Not supported";
-            lines.Add($"  {p.Protocol,-12} {status,-14}{marker}");
-            lines.Add($"               {p.Description}");
-            lines.Add("");
-        }
-
-        return string.Join(Environment.NewLine, lines);
-    }
-
-    private static string GetProtocolDescription(TerminalProtocol protocol)
-    {
-        return protocol switch
-        {
-            TerminalProtocol.Ascii =>
-                "Classic ASCII art using characters. Works everywhere.",
-            TerminalProtocol.ColorBlocks =>
-                "Unicode half-blocks with 24-bit ANSI colors. 2x vertical resolution.",
-            TerminalProtocol.Braille =>
-                "Unicode braille characters. 2x4 dots per cell, highest text-based resolution.",
-            TerminalProtocol.Sixel =>
-                "Sixel graphics protocol. Pixel-perfect, supported by xterm and others.",
-            TerminalProtocol.ITerm2 =>
-                "iTerm2 inline images. Full-color images in iTerm2, WezTerm, Mintty.",
-            TerminalProtocol.Kitty =>
-                "Kitty graphics protocol. Modern protocol with animation support.",
-            _ => "Unknown protocol."
-        };
-    }
 }
 
 /// <summary>
-///     Information about a rendering protocol.
+/// Generic frame implementation for unified rendering.
 /// </summary>
-public record ProtocolInfo(
-    TerminalProtocol Protocol,
-    bool IsSupported,
-    string Description
-);
+public class GenericFrame : IAnimationFrame
+{
+    public GenericFrame(string content, int delayMs)
+    {
+        Content = content;
+        DelayMs = delayMs;
+    }
+
+    public string Content { get; }
+    public int DelayMs { get; }
+}

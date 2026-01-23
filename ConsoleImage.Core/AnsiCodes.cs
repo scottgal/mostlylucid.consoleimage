@@ -168,4 +168,40 @@ public static class AnsiCodes
     {
         return a.R == b.R && a.G == b.G && a.B == b.B;
     }
+
+    /// <summary>
+    ///     Check if two Rgba32 colors are similar within a threshold (for temporal stability).
+    ///     Used to prevent flickering between similar colors in animations.
+    /// </summary>
+    /// <param name="a">First color</param>
+    /// <param name="b">Second color</param>
+    /// <param name="threshold">Per-channel difference threshold (0-255). Default: 15</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ColorsSimilar(Rgba32 a, Rgba32 b, int threshold = 15)
+    {
+        return Math.Abs(a.R - b.R) <= threshold &&
+               Math.Abs(a.G - b.G) <= threshold &&
+               Math.Abs(a.B - b.B) <= threshold;
+    }
+
+    /// <summary>
+    ///     Check if two Rgb24 colors are similar within a threshold (for temporal stability).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ColorsSimilar(Rgb24 a, Rgb24 b, int threshold = 15)
+    {
+        return Math.Abs(a.R - b.R) <= threshold &&
+               Math.Abs(a.G - b.G) <= threshold &&
+               Math.Abs(a.B - b.B) <= threshold;
+    }
+
+    /// <summary>
+    ///     Snap color to previous if similar (for temporal stability).
+    ///     Returns the previous color if similar, otherwise returns current.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Rgba32 StabilizeColor(Rgba32 current, Rgba32 previous, int threshold)
+    {
+        return ColorsSimilar(current, previous, threshold) ? previous : current;
+    }
 }

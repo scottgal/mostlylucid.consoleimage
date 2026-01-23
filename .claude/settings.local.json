@@ -79,7 +79,12 @@
       "mcp__consoleimage__list_render_modes",
       "mcp__consoleimage__get_gif_info",
       "Bash(powershell -ExecutionPolicy Bypass -Command \"& ''E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Mcp\\\\build-aot.ps1''\")",
-      "mcp__consoleimage__get_video_info"
+      "mcp__consoleimage__get_video_info",
+      "Bash(powershell:*)",
+      "Bash(git worktree:*)",
+      "Bash(tasklist:*)",
+      "Bash(Select-String -Pattern \"color\")",
+      "Bash(xxd:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

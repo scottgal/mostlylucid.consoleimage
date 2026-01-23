@@ -174,6 +174,45 @@ public class RenderOptions
     public float? LightTerminalBrightnessThreshold { get; set; }
 
     /// <summary>
+    ///     Enable temporal stability (de-jitter) for animations.
+    ///     When enabled, similar colors and characters between frames are kept stable
+    ///     to prevent visual flickering. Default: false
+    /// </summary>
+    public bool EnableTemporalStability { get; set; }
+
+    /// <summary>
+    ///     Color stability threshold for de-jitter (0-255, per-channel delta).
+    ///     If color change per channel is below this threshold, keep previous frame's color.
+    ///     Higher values = more stability, less accuracy. Default: 15
+    /// </summary>
+    public int ColorStabilityThreshold { get; set; } = 15;
+
+    /// <summary>
+    ///     Character stability bias for de-jitter (0.0-1.0).
+    ///     Weight given to keeping previous character vs choosing optimal match.
+    ///     0.0 = always choose best match, 1.0 = always keep previous if similar.
+    ///     Default: 0.3 (slight preference for stability)
+    /// </summary>
+    public float CharacterStabilityBias { get; set; } = 0.3f;
+
+    /// <summary>
+    ///     For braille mode: use solid full blocks (⣿) instead of variable dot patterns.
+    ///     When enabled, all braille characters are full blocks and color alone carries detail.
+    ///     This produces cleaner output for colored images since ANSI terminals only support
+    ///     one color per character (dots add noise without benefit).
+    ///     Default: false (use dot patterns for brightness detail)
+    /// </summary>
+    public bool BrailleFullBlocks { get; set; }
+
+    /// <summary>
+    ///     Maximum number of colors in the output palette.
+    ///     Null = full 24-bit color, or specify 2, 4, 8, 16, 32, 64, 128, or 256.
+    ///     Lower values create a posterized/retro look, higher values preserve more detail.
+    ///     Default: null (full color)
+    /// </summary>
+    public int? ColorCount { get; set; }
+
+    /// <summary>
     ///     Gets the effective character set, considering presets
     /// </summary>
     [JsonIgnore]
@@ -411,7 +450,12 @@ public class RenderOptions
             EnableDithering = EnableDithering,
             EnableEdgeDirectionChars = EnableEdgeDirectionChars,
             DarkTerminalBrightnessThreshold = DarkTerminalBrightnessThreshold,
-            LightTerminalBrightnessThreshold = LightTerminalBrightnessThreshold
+            LightTerminalBrightnessThreshold = LightTerminalBrightnessThreshold,
+            EnableTemporalStability = EnableTemporalStability,
+            ColorStabilityThreshold = ColorStabilityThreshold,
+            CharacterStabilityBias = CharacterStabilityBias,
+            BrailleFullBlocks = BrailleFullBlocks,
+            ColorCount = ColorCount
         };
     }
 }

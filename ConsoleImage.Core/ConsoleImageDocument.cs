@@ -91,12 +91,34 @@ public class ConsoleImageDocument
     public int TotalDurationMs => Frames.Sum(f => f.DelayMs);
 
     /// <summary>
-    ///     Save this document to a JSON file (AOT-compatible)
+    ///     Save this document to a JSON file (AOT-compatible).
+    ///     Supports compressed formats: .cidz, .cid.7z, .7z (uses optimized palette + compression)
     /// </summary>
     public async Task SaveAsync(string path, CancellationToken ct = default)
     {
+        // Check for compressed format
+        if (CompressedDocumentArchive.IsCompressedDocument(path))
+        {
+            await CompressedDocumentArchive.SaveAsync(this, path, 30, ct);
+            return;
+        }
+
         await using var stream = File.Create(path);
         await JsonSerializer.SerializeAsync(stream, this, ConsoleImageJsonContext.Default.ConsoleImageDocument, ct);
+    }
+
+    /// <summary>
+    ///     Save this document with explicit compression option.
+    /// </summary>
+    public async Task SaveCompressedAsync(string path, CancellationToken ct = default)
+    {
+        // Ensure compressed extension
+        var compressedPath = path;
+        if (!CompressedDocumentArchive.IsCompressedDocument(path))
+        {
+            compressedPath = path + ".cidz";
+        }
+        await CompressedDocumentArchive.SaveAsync(this, compressedPath, 30, ct);
     }
 
     /// <summary>
@@ -110,11 +132,29 @@ public class ConsoleImageDocument
     }
 
     /// <summary>
-    ///     Load a document from a JSON file (AOT-compatible)
-    ///     Auto-detects whether the file is regular JSON or streaming NDJSON format
+    ///     Load a document from a JSON file (AOT-compatible).
+    ///     Auto-detects format: regular JSON, streaming NDJSON, or compressed (.cidz, .7z)
     /// </summary>
     public static async Task<ConsoleImageDocument> LoadAsync(string path, CancellationToken ct = default)
     {
+        // Check for compressed format first
+        if (CompressedDocumentArchive.IsCompressedDocument(path))
+            return await CompressedDocumentArchive.LoadAsync(path, null, ct);
+
+        // Check magic bytes for compression even without extension
+        await using var checkStream = File.OpenRead(path);
+        var magic = new byte[2];
+        var read = await checkStream.ReadAsync(magic, ct);
+        checkStream.Close();
+
+        // GZip magic: 0x1F 0x8B
+        if (read >= 2 && magic[0] == 0x1F && magic[1] == 0x8B)
+            return await CompressedDocumentArchive.LoadAsync(path, null, ct);
+
+        // 7z magic starts with "7z"
+        if (read >= 2 && magic[0] == 0x37 && magic[1] == 0x7A)
+            return await CompressedDocumentArchive.LoadAsync(path, null, ct);
+
         // Check if this is a streaming document (NDJSON format)
         if (await StreamingDocumentReader.IsStreamingDocumentAsync(path, ct))
             return await StreamingDocumentReader.LoadAsync(path, ct);
@@ -218,6 +258,26 @@ public class ConsoleImageDocument
     }
 
     /// <summary>
+    ///     Create a document from Matrix frames
+    /// </summary>
+    public static ConsoleImageDocument FromMatrixFrames(
+        IEnumerable<MatrixFrame> frames,
+        RenderOptions options,
+        string? sourceFile = null)
+    {
+        var doc = new ConsoleImageDocument
+        {
+            RenderMode = "Matrix",
+            SourceFile = sourceFile,
+            Settings = DocumentRenderSettings.FromRenderOptions(options)
+        };
+
+        foreach (var frame in frames) doc.Frames.Add(DocumentFrame.FromMatrixFrame(frame));
+
+        return doc;
+    }
+
+    /// <summary>
     ///     Create a document from a single static image
     /// </summary>
     public static ConsoleImageDocument FromSingleFrame(
@@ -256,6 +316,14 @@ public class DocumentRenderSettings
     public string? CharacterSetPreset { get; set; }
     public float AnimationSpeedMultiplier { get; set; } = 1.0f;
     public int LoopCount { get; set; }
+    public bool EnableTemporalStability { get; set; }
+    public int ColorStabilityThreshold { get; set; } = 15;
+
+    /// <summary>
+    ///     Maximum number of colors in the palette.
+    ///     Null = full 24-bit color, otherwise reduced palette (e.g., 4, 16, 256).
+    /// </summary>
+    public int? ColorCount { get; set; }
 
     /// <summary>
     ///     Create settings from RenderOptions
@@ -275,7 +343,10 @@ public class DocumentRenderSettings
             Invert = options.Invert,
             CharacterSetPreset = options.CharacterSetPreset,
             AnimationSpeedMultiplier = options.AnimationSpeedMultiplier,
-            LoopCount = options.LoopCount
+            LoopCount = options.LoopCount,
+            EnableTemporalStability = options.EnableTemporalStability,
+            ColorStabilityThreshold = options.ColorStabilityThreshold,
+            ColorCount = options.ColorCount
         };
     }
 
@@ -297,7 +368,10 @@ public class DocumentRenderSettings
             Invert = overrides?.Invert ?? Invert,
             CharacterSetPreset = overrides?.CharacterSetPreset ?? CharacterSetPreset,
             AnimationSpeedMultiplier = overrides?.AnimationSpeedMultiplier ?? AnimationSpeedMultiplier,
-            LoopCount = overrides?.LoopCount ?? LoopCount
+            LoopCount = overrides?.LoopCount ?? LoopCount,
+            EnableTemporalStability = overrides?.EnableTemporalStability ?? EnableTemporalStability,
+            ColorStabilityThreshold = overrides?.ColorStabilityThreshold ?? ColorStabilityThreshold,
+            ColorCount = overrides?.ColorCount ?? ColorCount
         };
 
         return options;
@@ -366,6 +440,18 @@ public class DocumentFrame
     ///     Create from BrailleFrame
     /// </summary>
     public static DocumentFrame FromBrailleFrame(BrailleFrame frame)
+    {
+        var lines = frame.Content.Split('\n');
+        return new DocumentFrame
+        {
+            Content = frame.Content,
+            DelayMs = frame.DelayMs,
+            Width = lines.Length > 0 ? lines[0].Length : 0,
+            Height = lines.Length
+        };
+    }
+
+    public static DocumentFrame FromMatrixFrame(MatrixFrame frame)
     {
         var lines = frame.Content.Split('\n');
         return new DocumentFrame

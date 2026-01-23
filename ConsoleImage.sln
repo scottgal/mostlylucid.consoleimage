@@ -1,7 +1,5 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage", "ConsoleImage\ConsoleImage.csproj", "{7A8183CE-E899-422B-87A8-79DF1292F7B7}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage.Core", "ConsoleImage.Core\ConsoleImage.Core.csproj", "{A3F7117F-8B53-4F21-A347-5472A84124FB}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "solution", "solution", "{943FC0A3-EAB3-431D-BB4D-B1B852B3E69C}"
@@ -20,7 +18,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage.SpectreDemo", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage.Video.Core", "ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj", "{B2C4E8A1-3D5F-4A2B-9E7C-1F8D0A6B5C4E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage.Video", "ConsoleImage.Video\ConsoleImage.Video.csproj", "{D3E5F7A2-4B6C-5D8E-0F1A-2B3C4D5E6F7A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage", "ConsoleImage\ConsoleImage.csproj", "{D3E5F7A2-4B6C-5D8E-0F1A-2B3C4D5E6F7A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage.Core.Tests", "ConsoleImage.Core.Tests\ConsoleImage.Core.Tests.csproj", "{42C16D00-D183-478D-BCDB-D01AD2CD3A79}"
 EndProject
@@ -50,18 +48,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Debug|x64.Build.0 = Debug|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Debug|x86.Build.0 = Debug|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Release|Any CPU.Build.0 = Release|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Release|x64.ActiveCfg = Release|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Release|x64.Build.0 = Release|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Release|x86.ActiveCfg = Release|Any CPU
-		{7A8183CE-E899-422B-87A8-79DF1292F7B7}.Release|x86.Build.0 = Release|Any CPU
 		{A3F7117F-8B53-4F21-A347-5472A84124FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A3F7117F-8B53-4F21-A347-5472A84124FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A3F7117F-8B53-4F21-A347-5472A84124FB}.Debug|x64.ActiveCfg = Debug|Any CPU

@@ -23,11 +23,25 @@ public static class UrlHelper
     /// <summary>
     ///     Check if the given path is a URL (http:// or https://).
     /// </summary>
-    public static bool IsUrl(string path)
+    public static bool IsUrl(string? path)
     {
-        return !string.IsNullOrWhiteSpace(path) &&
-               (path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        // Trim any whitespace or quotes that might be present
+        path = path.Trim().Trim('"', '\'');
+
+        // Check for http:// or https:// prefix (case-insensitive)
+        return path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    ///     Normalize a URL input by trimming whitespace and quotes.
+    /// </summary>
+    public static string NormalizeUrl(string url)
+    {
+        return url.Trim().Trim('"', '\'');
     }
 
     /// <summary>

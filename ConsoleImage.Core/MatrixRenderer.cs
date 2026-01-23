@@ -693,18 +693,48 @@ public class MatrixRenderer : IDisposable
     ///     Calculate the color for a rain cell based on mode and position.
     ///     Uses authentic Matrix color scheme: white head -> bright green -> dark green
     ///     Based on analysis from https://carlnewton.github.io/digital-rain-analysis/
+    ///
+    ///     In full-color/reveal mode: dark areas use base color (green), bright/colored
+    ///     areas "reveal" the source image by blending toward source color based on brightness.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Rgba32 CalculateRainColor(int distFromHead, float normalizedDist, float imageBrightness, Rgba32 sourceColor)
     {
-        // Determine base color based on mode
+        // Base color is always used as the starting point
+        var matrixBaseColor = _matrixOptions.BaseColor ?? new Rgba32(0, 255, 65, 255); // #00FF41 Malachite
+
+        // Determine effective color based on mode
         Rgba32 baseColor;
         if (_matrixOptions.UseFullColor)
-            // Full color mode - use source image color
-            baseColor = sourceColor;
+        {
+            // Full color "reveal" mode: blend from base color to source color based on brightness
+            // Dark areas (black) = show normal matrix rain (base color)
+            // Bright/colored areas = reveal the source image color
+            //
+            // Use a power curve to make the reveal more dramatic - bright areas pop more
+            var revealFactor = MathF.Pow(imageBrightness, 0.7f); // Power < 1 makes brights reveal faster
+
+            // Also consider source color saturation - colorful areas should reveal more
+            var srcMax = Math.Max(sourceColor.R, Math.Max(sourceColor.G, sourceColor.B));
+            var srcMin = Math.Min(sourceColor.R, Math.Min(sourceColor.G, sourceColor.B));
+            var saturation = srcMax > 0 ? (srcMax - srcMin) / (float)srcMax : 0;
+
+            // Boost reveal factor for saturated colors
+            revealFactor = Math.Min(1.0f, revealFactor + saturation * 0.3f);
+
+            // Blend between base color and source color
+            baseColor = new Rgba32(
+                (byte)(matrixBaseColor.R + (sourceColor.R - matrixBaseColor.R) * revealFactor),
+                (byte)(matrixBaseColor.G + (sourceColor.G - matrixBaseColor.G) * revealFactor),
+                (byte)(matrixBaseColor.B + (sourceColor.B - matrixBaseColor.B) * revealFactor),
+                255
+            );
+        }
         else
+        {
             // Single color mode - use configured base color
-            baseColor = _matrixOptions.BaseColor ?? new Rgba32(0, 255, 65, 255); // #00FF41 Malachite
+            baseColor = matrixBaseColor;
+        }
 
         // Authentic Matrix color scheme:
         // Head: White/cyan glow (the "phosphor burst")

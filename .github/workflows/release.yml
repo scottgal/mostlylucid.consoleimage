@@ -186,9 +186,7 @@ jobs:
           body: |
             ## ConsoleImage Suite ${{ steps.version.outputs.version }}
 
-            **Combined release** of ConsoleImage CLI tools. High-quality ASCII art renderer using [Alex Harri's shape-matching algorithm](https://alexharri.com/blog/ascii-rendering).
-
-            > **Note:** For video support (`consolevideo`), use the [Publish All NuGet workflow](../../actions/workflows/publish-all-nuget.yml) which builds all CLIs.
+            **Unified CLI** for images, GIFs, videos, and document playback. High-quality ASCII art renderer using [Alex Harri's shape-matching algorithm](https://alexharri.com/blog/ascii-rendering).
 
             ### CLI Downloads
 
@@ -201,31 +199,37 @@ jobs:
 
             ---
 
-            ### consoleimage - Image & GIF to ASCII
+            ### consoleimage - Unified Media to ASCII
+
+            **One CLI for everything**: images, GIFs, videos, and cidz/json document playback.
 
             ```bash
-            # Basic usage - render image to terminal
+            # Images
             consoleimage photo.jpg
+            consoleimage photo.png --blocks      # Unicode color blocks (▀▄)
+            consoleimage photo.png --braille     # Braille patterns
+            consoleimage photo.png --matrix      # Matrix digital rain
 
-            # Render modes
-            consoleimage photo.png --blocks      # Unicode color blocks (▀▄) - highest fidelity
-            consoleimage photo.png --braille     # Braille patterns - ultra-high resolution
-            consoleimage photo.png --matrix      # Matrix digital rain effect
-
-            # Animated GIF playback
-            consoleimage animation.gif
+            # Animated GIFs
             consoleimage animation.gif --speed 1.5 --loop 3
 
-            # Output to file
-            consoleimage animation.gif -o output.gif    # Create animated GIF
-            consoleimage photo.png -o render.json       # Save as JSON document
+            # Videos (requires FFmpeg)
+            consoleimage movie.mp4
+            consoleimage movie.mkv --blocks -w 120
+            consoleimage movie.mp4 --ss 60 -t 30    # Start at 60s, play 30s
 
-            # Size control
-            consoleimage photo.jpg -w 120              # Set width (auto-fits to terminal by default)
-            consoleimage photo.jpg -w 80 -h 40        # Set both dimensions
+            # Save to compressed document (.cidz)
+            consoleimage animation.gif -o output.cidz
+            consoleimage movie.mp4 -o movie.cidz --blocks
 
-            # Aspect ratio calibration
-            consoleimage --calibrate                   # Show calibration circle
+            # Play saved documents
+            consoleimage output.cidz
+            consoleimage movie.cidz --speed 2.0
+
+            # Convert cidz to GIF
+            consoleimage movie.cidz -o movie.gif
+
+            # Calibration
             consoleimage --calibrate --aspect-ratio 0.48 --save
             ```
 

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -31,12 +31,12 @@
 
     <!-- Local development: use ProjectReference -->
     <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
-        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj"/>
+        <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj"/>
     </ItemGroup>
 
-    <!-- CI/Release: use NuGet package -->
+    <!-- CI/Release: use NuGet packages -->
     <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
-        <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)"/>
+        <PackageReference Include="mostlylucid.consoleimage.video" Version="$(VideoPackageVersion)"/>
     </ItemGroup>
 
     <ItemGroup>
@@ -44,9 +44,12 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Update="calibration.json">
+        <Content Include="calibration.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </None>
+        </Content>
+        <Content Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
 </Project>

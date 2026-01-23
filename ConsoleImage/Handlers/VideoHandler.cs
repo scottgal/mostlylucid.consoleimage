@@ -1,0 +1,868 @@
+// Video file handling for consoleimage CLI
+
+using ConsoleImage.Cli.Utilities;
+using ConsoleImage.Core;
+using ConsoleImage.Video.Core;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Gif;
+using SixLabors.ImageSharp.PixelFormats;
+
+namespace ConsoleImage.Cli.Handlers;
+
+/// <summary>
+/// Handles video file processing with FFmpeg.
+/// </summary>
+public static class VideoHandler
+{
+    /// <summary>
+    /// Handle video file playback, info, and output.
+    /// </summary>
+    /// <param name="inputPath">Path to video file or URL (FFmpeg can stream from URLs)</param>
+    /// <param name="inputInfo">FileInfo for metadata (can be dummy for URLs)</param>
+    /// <param name="opts">Handler options</param>
+    /// <param name="ct">Cancellation token</param>
+    public static async Task<int> HandleAsync(
+        string inputPath,
+        FileInfo inputInfo,
+        VideoHandlerOptions opts,
+        CancellationToken ct)
+    {
+        // Resolve FFmpeg path
+        string? ffmpegExe = null;
+        string? ffprobePath = null;
+        if (!string.IsNullOrEmpty(opts.FfmpegPath))
+        {
+            if (Directory.Exists(opts.FfmpegPath))
+            {
+                var exeName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+                var probeName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
+                ffmpegExe = Path.Combine(opts.FfmpegPath, exeName);
+                ffprobePath = Path.Combine(opts.FfmpegPath, probeName);
+            }
+            else if (File.Exists(opts.FfmpegPath))
+            {
+                ffmpegExe = opts.FfmpegPath;
+                var dir = Path.GetDirectoryName(opts.FfmpegPath);
+                if (dir != null)
+                {
+                    var probeName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
+                    ffprobePath = Path.Combine(dir, probeName);
+                }
+            }
+        }
+
+        // Check for FFmpeg with progress reporting
+        using var ffmpeg = new FFmpegService(
+            ffprobePath: ffprobePath,
+            ffmpegPath: ffmpegExe,
+            useHardwareAcceleration: !opts.NoHwAccel);
+
+        // Check FFmpeg availability with interactive prompt
+        if (!FFmpegProvider.IsAvailable(opts.FfmpegPath))
+        {
+            var (needsDownload, statusMsg, downloadUrl) = FFmpegProvider.GetDownloadStatus();
+
+            if (needsDownload)
+            {
+                Console.WriteLine("FFmpeg not found on system.");
+                Console.WriteLine($"Cache location: {FFmpegProvider.CacheDirectory}");
+                Console.WriteLine();
+
+                var shouldDownload = opts.AutoConfirmDownload;
+
+                if (!shouldDownload && !opts.NoAutoDownload)
+                {
+                    Console.Write("Would you like to download FFmpeg automatically? (~100MB) [Y/n]: ");
+                    var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+                    shouldDownload = string.IsNullOrEmpty(response) || response == "y" || response == "yes";
+                }
+                else if (opts.NoAutoDownload && !opts.AutoConfirmDownload)
+                {
+                    Console.WriteLine("FFmpeg is required for video playback.");
+                    Console.WriteLine("Install manually or run with -y to auto-download.");
+                    Console.WriteLine();
+                    Console.WriteLine("Installation options:");
+                    Console.WriteLine("  Windows: winget install ffmpeg");
+                    Console.WriteLine("  macOS:   brew install ffmpeg");
+                    Console.WriteLine("  Linux:   apt install ffmpeg  (or equivalent)");
+                    return 1;
+                }
+
+                if (!shouldDownload)
+                {
+                    Console.WriteLine("FFmpeg is required for video playback. Exiting.");
+                    return 1;
+                }
+
+                Console.WriteLine("Downloading FFmpeg...");
+            }
+        }
+
+        var progress = new Progress<(string Status, double Progress)>(p =>
+        {
+            Console.Write($"\r{p.Status,-50} {p.Progress:P0}".PadRight(60));
+            if (p.Progress >= 1.0) Console.WriteLine();
+        });
+
+        await ffmpeg.InitializeAsync(progress, ct);
+
+        // Show video info if requested
+        if (opts.ShowInfo)
+            return await ShowVideoInfo(ffmpeg, inputPath, ct);
+
+        // Calculate end time from duration if specified
+        var end = opts.End;
+        if (opts.Duration.HasValue && opts.Start.HasValue)
+            end = opts.Start.Value + opts.Duration.Value;
+        else if (opts.Duration.HasValue)
+            end = opts.Duration.Value;
+
+        // Raw mode requires output file
+        if (opts.RawMode && opts.OutputGif == null)
+        {
+            Console.Error.WriteLine("Error: --raw mode requires --output to specify a GIF file.");
+            Console.Error.WriteLine("Example: consolevideo video.mp4 --raw -o keyframes.gif --gif-frames 4");
+            return 1;
+        }
+
+        // GIF output mode
+        if (opts.OutputGif != null)
+            return await HandleGifOutput(ffmpeg, inputPath, inputInfo, opts, end, ct);
+
+        // JSON/CIDZ output mode
+        if (opts.OutputAsJson && !string.IsNullOrEmpty(opts.JsonOutputPath))
+            return await HandleJsonOutput(ffmpeg, inputPath, opts, end, ct);
+
+        // Playback mode
+        return await HandlePlayback(inputPath, opts, end, ct);
+    }
+
+    private static async Task<int> ShowVideoInfo(FFmpegService ffmpeg, string inputPath, CancellationToken ct)
+    {
+        var info = await ffmpeg.GetVideoInfoAsync(inputPath, ct);
+        if (info == null)
+        {
+            Console.Error.WriteLine("Error: Could not read video info. Is FFmpeg installed?");
+            Console.Error.WriteLine("Use --ffmpeg-path to specify the FFmpeg installation directory.");
+            return 1;
+        }
+
+        Console.WriteLine($"File: {Path.GetFileName(inputPath)}");
+        Console.WriteLine($"Duration: {TimeSpan.FromSeconds(info.Duration):hh\\:mm\\:ss\\.fff}");
+        Console.WriteLine($"Resolution: {info.Width}x{info.Height}");
+        Console.WriteLine($"Codec: {info.VideoCodec}");
+        Console.WriteLine($"Frame Rate: {info.FrameRate:F2} fps");
+        Console.WriteLine($"Total Frames: ~{info.TotalFrames}");
+        Console.WriteLine($"Bitrate: {info.BitRate / 1000} kbps");
+        Console.WriteLine(
+            $"Hardware Accel: {(string.IsNullOrEmpty(ffmpeg.HardwareAccelerationType) ? "none" : ffmpeg.HardwareAccelerationType)}");
+        return 0;
+    }
+
+    private static async Task<int> HandleGifOutput(
+        FFmpegService ffmpeg, string inputPath, FileInfo inputInfo, VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var videoInfo = await ffmpeg.GetVideoInfoAsync(inputPath, ct);
+        if (videoInfo == null)
+        {
+            Console.Error.WriteLine("Error: Could not read video info.");
+            return 1;
+        }
+
+        // RAW MODE - extract actual video frames as GIF
+        if (opts.RawMode)
+            return await HandleRawGifOutput(ffmpeg, inputPath, videoInfo, opts, end, ct);
+
+        // Rendered ASCII/Blocks/Braille to GIF
+        return await HandleRenderedGifOutput(ffmpeg, inputPath, inputInfo, videoInfo, opts, end, ct);
+    }
+
+    private static async Task<int> HandleRawGifOutput(
+        FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo,
+        VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var targetWidth = opts.RawWidth ?? 320;
+        var targetHeight = opts.RawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+
+        var maxFrames = opts.GifFrames ?? 4;
+        var maxLength = opts.GifLength ?? opts.Duration ?? 10.0;
+        var rawStartTime = opts.Start ?? 0;
+        var rawEndTime = end ?? rawStartTime + maxLength;
+
+        // Smart keyframe mode - use scene detection
+        if (opts.SmartKeyframes)
+            return await HandleSmartKeyframeExtraction(ffmpeg, inputPath, videoInfo, opts,
+                targetWidth, targetHeight, maxFrames, rawStartTime, rawEndTime, ct);
+
+        // Regular raw mode - uniform frame extraction using FFmpeg streaming
+        var uniformTargetFps = opts.Fps ?? Math.Min(videoInfo.FrameRate, 10.0);
+        var uniformFpsInt = Math.Max(1, (int)uniformTargetFps);
+
+        Console.WriteLine("Extracting video frames to GIF (streaming mode)...");
+        Console.WriteLine($"  Output: {opts.OutputGif!.FullName}");
+        Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+        Console.WriteLine($"  Target: {targetWidth}x{targetHeight} @ {uniformTargetFps:F1} fps, step {opts.FrameStep}");
+        Console.WriteLine("  Memory: streaming (1 frame at a time)");
+
+        await using var streamingGif = new FFmpegGifWriter(
+            opts.OutputGif.FullName,
+            targetWidth,
+            targetHeight,
+            uniformFpsInt,
+            opts.Loop != 1 ? opts.Loop : 0,
+            opts.GifColors,
+            maxLength,
+            maxFrames > 0 ? maxFrames : null);
+
+        await streamingGif.StartAsync(null, ct);
+
+        var uniformFrameCount = 0;
+
+        await foreach (var frameImage in ffmpeg.StreamFramesAsync(
+                           inputPath, targetWidth, targetHeight,
+                           rawStartTime, rawEndTime, opts.FrameStep, uniformTargetFps, ct))
+        {
+            if (streamingGif.ShouldStop)
+            {
+                frameImage.Dispose();
+                break;
+            }
+
+            await streamingGif.AddFrameAsync(frameImage, ct);
+            frameImage.Dispose();
+            uniformFrameCount++;
+
+            Console.Write($"\rStreaming frame {uniformFrameCount}...");
+        }
+
+        Console.WriteLine($" Done! ({uniformFrameCount} frames)");
+        Console.Write("Finalizing GIF...");
+        await streamingGif.FinishAsync(ct);
+        Console.WriteLine($" Saved to {opts.OutputGif.FullName}");
+
+        return 0;
+    }
+
+    private static async Task<int> HandleSmartKeyframeExtraction(
+        FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo, VideoHandlerOptions opts,
+        int targetWidth, int targetHeight, int maxFrames, double rawStartTime, double rawEndTime,
+        CancellationToken ct)
+    {
+        Console.WriteLine("Smart keyframe extraction (scene detection)...");
+        Console.WriteLine($"  Output: {opts.OutputGif!.FullName}");
+        Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+        Console.WriteLine($"  Target: {targetWidth}x{targetHeight}, max {maxFrames} keyframes");
+        Console.WriteLine();
+
+        Console.Write("Detecting scene changes...");
+        var sceneTimestamps = await ffmpeg.DetectSceneChangesAsync(
+            inputPath,
+            opts.SceneThreshold,
+            rawStartTime,
+            rawEndTime > rawStartTime ? rawEndTime : null,
+            ct);
+        Console.WriteLine($" found {sceneTimestamps.Count} scene changes");
+
+        List<double> keyframeTimes;
+        if (sceneTimestamps.Count == 0)
+        {
+            Console.WriteLine("No scene changes detected, using uniform sampling...");
+            keyframeTimes = new List<double>();
+            var interval = (rawEndTime - rawStartTime) / (maxFrames - 1);
+            for (var i = 0; i < maxFrames; i++)
+                keyframeTimes.Add(rawStartTime + i * interval);
+        }
+        else
+        {
+            keyframeTimes = new List<double> { rawStartTime };
+            keyframeTimes.AddRange(sceneTimestamps);
+
+            if (keyframeTimes.Count > 0 && rawEndTime - keyframeTimes.Last() > 1.0)
+                keyframeTimes.Add(rawEndTime - 0.5);
+
+            if (keyframeTimes.Count > maxFrames)
+            {
+                var first = keyframeTimes.First();
+                var last = keyframeTimes.Last();
+                var middle = keyframeTimes.Skip(1).Take(keyframeTimes.Count - 2)
+                    .OrderBy(t => t)
+                    .Take(maxFrames - 2)
+                    .ToList();
+                keyframeTimes = new List<double> { first };
+                keyframeTimes.AddRange(middle);
+                keyframeTimes.Add(last);
+                keyframeTimes = keyframeTimes.Distinct().OrderBy(t => t).ToList();
+            }
+        }
+
+        Console.WriteLine(
+            $"Extracting {keyframeTimes.Count} keyframes at: {string.Join(", ", keyframeTimes.Select(t => $"{t:F1}s"))}");
+
+        var targetFps = opts.Fps ?? 2.0;
+        var rawDelayMs = (int)(1000.0 / targetFps);
+
+        using var rawGif = new Image<Rgba32>(targetWidth, targetHeight);
+        var gifMetaData = rawGif.Metadata.GetGifMetadata();
+        gifMetaData.RepeatCount = (ushort)(opts.Loop != 1 ? opts.Loop : 0);
+
+        var frameCount = 0;
+        foreach (var timestamp in keyframeTimes)
+        {
+            Console.Write($"\rExtracting frame at {timestamp:F1}s...");
+            var frameImage = await ffmpeg.ExtractFrameAsync(
+                inputPath, timestamp, targetWidth, targetHeight, ct);
+
+            if (frameImage != null)
+            {
+                var gifFrameMetadata = frameImage.Frames.RootFrame.Metadata.GetGifMetadata();
+                gifFrameMetadata.FrameDelay = rawDelayMs / 10;
+                rawGif.Frames.AddFrame(frameImage.Frames.RootFrame);
+                frameImage.Dispose();
+                frameCount++;
+            }
+        }
+
+        if (rawGif.Frames.Count > 1)
+            rawGif.Frames.RemoveFrame(0);
+
+        Console.WriteLine($" Done! ({frameCount} frames)");
+
+        Console.Write("Saving GIF...");
+        var encoder = new GifEncoder { ColorTableMode = GifColorTableMode.Local };
+        await rawGif.SaveAsGifAsync(opts.OutputGif.FullName, encoder, ct);
+        Console.WriteLine($" Saved to {opts.OutputGif.FullName}");
+
+        return 0;
+    }
+
+    private static async Task<int> HandleRenderedGifOutput(
+        FFmpegService ffmpeg, string inputPath, FileInfo inputInfo, VideoInfo videoInfo,
+        VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var renderMode = opts.UseBraille ? RenderMode.Braille
+            : opts.UseBlocks ? RenderMode.ColorBlocks
+            : RenderMode.Ascii;
+
+        var effectiveAspect = RenderHelpers.GetEffectiveAspectRatio(
+            opts.CharAspect, opts.SavedCalibration, renderMode);
+
+        var gifTargetFps = opts.Fps ?? Math.Min(videoInfo.FrameRate, 15.0);
+        var frameDelayMs = (int)(1000.0 / gifTargetFps / opts.Speed);
+
+        Console.WriteLine("Rendering video to animated GIF...");
+        Console.WriteLine($"  Output: {opts.OutputGif!.FullName}");
+        Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+        Console.WriteLine($"  Target: {gifTargetFps:F1} fps, frame step {opts.FrameStep}");
+
+        var gifLoopCount = opts.Loop != 1 ? opts.Loop : 0;
+
+        var gifOptions = new GifWriterOptions
+        {
+            FontSize = opts.GifFontSize,
+            Scale = opts.GifScale,
+            MaxColors = Math.Clamp(opts.GifColors, 16, 256),
+            LoopCount = gifLoopCount,
+            MaxLengthSeconds = opts.Duration ?? end - opts.Start
+        };
+        using var gifWriter = new GifWriter(gifOptions);
+
+        var tempOptions = new RenderOptions
+        {
+            Width = opts.Width,
+            Height = opts.Height,
+            MaxWidth = opts.MaxWidth,
+            MaxHeight = Math.Max(80, opts.MaxHeight),
+            CharacterAspectRatio = effectiveAspect
+        };
+
+        var pixelsPerCharWidth = opts.UseBraille ? 2 : 1;
+        var pixelsPerCharHeight = opts.UseBraille ? 4 : opts.UseBlocks ? 2 : 1;
+        var (pixelWidth, pixelHeight) = tempOptions.CalculateVisualDimensions(
+            videoInfo.Width, videoInfo.Height, pixelsPerCharWidth, pixelsPerCharHeight);
+
+        var charWidth = pixelWidth / pixelsPerCharWidth;
+        var charHeight = pixelHeight / pixelsPerCharHeight;
+
+        Console.WriteLine($"  Output: {charWidth}x{charHeight} chars ({pixelWidth}x{pixelHeight} pixels)");
+        Console.WriteLine();
+
+        var gifRenderOptions = CreateRenderOptions(opts, charWidth, charHeight, effectiveAspect);
+
+        var effectiveStart = opts.Start ?? 0;
+        var effectiveEnd = end ?? videoInfo.Duration;
+        var effectiveDuration = effectiveEnd - effectiveStart;
+        var estimatedTotalFrames = (int)(effectiveDuration * gifTargetFps / opts.FrameStep);
+
+        var statusRenderer = opts.ShowStatus ? new StatusLine(charWidth, !opts.NoColor) : null;
+        var renderModeName = opts.UseBraille ? "Braille" : opts.UseBlocks ? "Blocks" : "ASCII";
+
+        if (opts.ShowStatus && (opts.UseBraille || opts.UseBlocks))
+        {
+            Console.WriteLine("Note: Status line in GIF output is only supported for ASCII mode.");
+            statusRenderer = null;
+        }
+
+        var renderedCount = 0;
+        var gifStartTime = opts.Start ?? 0;
+
+        await foreach (var frameImage in ffmpeg.StreamFramesAsync(
+                           inputPath,
+                           pixelWidth,
+                           pixelHeight,
+                           gifStartTime > 0 ? gifStartTime : null,
+                           end,
+                           opts.FrameStep,
+                           gifTargetFps,
+                           ct))
+        {
+            if (opts.UseBraille)
+            {
+                using var renderer = new BrailleRenderer(gifRenderOptions);
+                var content = renderer.RenderImage(frameImage);
+                var frame = new BrailleFrame(content, frameDelayMs);
+                gifWriter.AddBrailleFrame(frame, frameDelayMs);
+            }
+            else if (opts.UseBlocks)
+            {
+                using var renderer = new ColorBlockRenderer(gifRenderOptions);
+                var content = renderer.RenderImage(frameImage);
+                var frame = new ColorBlockFrame(content, frameDelayMs);
+                gifWriter.AddColorBlockFrame(frame, frameDelayMs);
+            }
+            else
+            {
+                using var renderer = new AsciiRenderer(gifRenderOptions);
+                var asciiFrame = renderer.RenderImage(frameImage);
+                var content = asciiFrame.ToAnsiString();
+
+                if (statusRenderer != null)
+                {
+                    var statusInfo = new StatusLine.StatusInfo
+                    {
+                        FileName = inputInfo.Name,
+                        SourceWidth = videoInfo.Width,
+                        SourceHeight = videoInfo.Height,
+                        OutputWidth = charWidth,
+                        OutputHeight = charHeight,
+                        RenderMode = renderModeName,
+                        CurrentFrame = renderedCount + 1,
+                        TotalFrames = estimatedTotalFrames,
+                        CurrentTime = TimeSpan.FromSeconds(effectiveStart + renderedCount * opts.FrameStep / gifTargetFps),
+                        TotalDuration = TimeSpan.FromSeconds(effectiveDuration),
+                        Fps = gifTargetFps
+                    };
+                    content += "\n" + statusRenderer.Render(statusInfo);
+                }
+
+                gifWriter.AddFrame(content, frameDelayMs);
+            }
+
+            frameImage.Dispose();
+            renderedCount++;
+            Console.Write($"\rRendering frames to GIF: {renderedCount}/{estimatedTotalFrames} processed");
+        }
+
+        Console.WriteLine($"\rRendering frames to GIF: {renderedCount} frames completed");
+        Console.Write("Encoding and saving GIF file...");
+        await gifWriter.SaveAsync(opts.OutputGif.FullName, ct);
+        Console.WriteLine($" Saved to {opts.OutputGif.FullName}");
+        return 0;
+    }
+
+    private static async Task<int> HandleJsonOutput(
+        FFmpegService ffmpeg, string inputPath, VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var videoInfo = await ffmpeg.GetVideoInfoAsync(inputPath, ct);
+        if (videoInfo == null)
+        {
+            Console.Error.WriteLine("Error: Could not read video info.");
+            return 1;
+        }
+
+        var renderMode = opts.UseBraille ? RenderMode.Braille
+            : opts.UseBlocks ? RenderMode.ColorBlocks
+            : RenderMode.Ascii;
+
+        var effectiveAspect = RenderHelpers.GetEffectiveAspectRatio(
+            opts.CharAspect, opts.SavedCalibration, renderMode);
+
+        var jsonTargetFps = opts.Fps ?? Math.Min(videoInfo.FrameRate, 30.0);
+        var frameDelayMs = (int)(1000.0 / jsonTargetFps / opts.Speed);
+
+        var formatName = opts.OutputAsCompressed ? "compressed document" : "streaming JSON";
+        Console.WriteLine($"Rendering video to {formatName}...");
+        Console.WriteLine($"  Output: {opts.JsonOutputPath}");
+        Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+        Console.WriteLine($"  Target: {jsonTargetFps:F1} fps, frame step {opts.FrameStep}");
+        if (!opts.OutputAsCompressed)
+            Console.WriteLine("  Press Ctrl+C to stop (document will auto-finalize)");
+
+        var tempOptions = new RenderOptions
+        {
+            Width = opts.Width,
+            Height = opts.Height,
+            MaxWidth = opts.MaxWidth,
+            MaxHeight = opts.MaxHeight,
+            CharacterAspectRatio = effectiveAspect
+        };
+
+        var pixelsPerCharWidth = opts.UseBraille ? 2 : 1;
+        var pixelsPerCharHeight = opts.UseBraille ? 4 : opts.UseBlocks ? 2 : 1;
+        var (pixelWidth, pixelHeight) = tempOptions.CalculateVisualDimensions(
+            videoInfo.Width, videoInfo.Height, pixelsPerCharWidth, pixelsPerCharHeight);
+
+        var charWidth = pixelWidth / pixelsPerCharWidth;
+        var charHeight = pixelHeight / pixelsPerCharHeight;
+
+        Console.WriteLine($"  Output: {charWidth}x{charHeight} chars");
+        Console.WriteLine();
+
+        var jsonRenderOptions = CreateRenderOptions(opts, charWidth, charHeight, effectiveAspect);
+        var renderModeName = opts.UseBraille ? "Braille" : opts.UseBlocks ? "ColorBlocks" : "ASCII";
+
+        if (opts.OutputAsCompressed)
+            return await HandleCompressedJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts,
+                pixelWidth, pixelHeight, charWidth, charHeight, frameDelayMs, jsonTargetFps, end, renderModeName, ct);
+
+        return await HandleStreamingJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts,
+            pixelWidth, pixelHeight, frameDelayMs, jsonTargetFps, end, renderModeName, ct);
+    }
+
+    private static async Task<int> HandleCompressedJsonOutput(
+        FFmpegService ffmpeg, string inputPath, RenderOptions jsonRenderOptions, VideoHandlerOptions opts,
+        int pixelWidth, int pixelHeight, int charWidth, int charHeight,
+        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName,
+        CancellationToken ct)
+    {
+        var doc = new ConsoleImageDocument
+        {
+            RenderMode = renderModeName,
+            SourceFile = inputPath,
+            Settings = DocumentRenderSettings.FromRenderOptions(jsonRenderOptions)
+        };
+
+        var renderedCount = 0;
+        var jsonStartTime = opts.Start ?? 0;
+
+        try
+        {
+            await foreach (var frameImage in ffmpeg.StreamFramesAsync(
+                               inputPath,
+                               pixelWidth,
+                               pixelHeight,
+                               jsonStartTime > 0 ? jsonStartTime : null,
+                               end,
+                               opts.FrameStep,
+                               jsonTargetFps,
+                               ct))
+            {
+                string content;
+                if (opts.UseBraille)
+                {
+                    using var renderer = new BrailleRenderer(jsonRenderOptions);
+                    content = renderer.RenderImage(frameImage);
+                }
+                else if (opts.UseBlocks)
+                {
+                    using var renderer = new ColorBlockRenderer(jsonRenderOptions);
+                    content = renderer.RenderImage(frameImage);
+                }
+                else
+                {
+                    using var renderer = new AsciiRenderer(jsonRenderOptions);
+                    var asciiFrame = renderer.RenderImage(frameImage);
+                    content = asciiFrame.ToAnsiString();
+                }
+
+                doc.AddFrame(content, frameDelayMs, charWidth, charHeight);
+                frameImage.Dispose();
+                renderedCount++;
+                Console.Write($"\rRendering frames: {renderedCount} processed");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine($"\rRendering frames: stopped at frame {renderedCount}");
+        }
+
+        Console.Write("\rSaving compressed document...                    ");
+        await doc.SaveAsync(opts.JsonOutputPath!, ct);
+        Console.WriteLine($"\rSaved {renderedCount} frames to {opts.JsonOutputPath}              ");
+        return 0;
+    }
+
+    private static async Task<int> HandleStreamingJsonOutput(
+        FFmpegService ffmpeg, string inputPath, RenderOptions jsonRenderOptions, VideoHandlerOptions opts,
+        int pixelWidth, int pixelHeight,
+        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName,
+        CancellationToken ct)
+    {
+        await using var docWriter = new StreamingDocumentWriter(
+            opts.JsonOutputPath!,
+            renderModeName,
+            jsonRenderOptions,
+            inputPath);
+
+        await docWriter.WriteHeaderAsync(ct);
+
+        var streamRenderedCount = 0;
+        var streamStartTime = opts.Start ?? 0;
+
+        try
+        {
+            await foreach (var frameImage in ffmpeg.StreamFramesAsync(
+                               inputPath,
+                               pixelWidth,
+                               pixelHeight,
+                               streamStartTime > 0 ? streamStartTime : null,
+                               end,
+                               opts.FrameStep,
+                               jsonTargetFps,
+                               ct))
+            {
+                if (opts.UseBraille)
+                {
+                    using var renderer = new BrailleRenderer(jsonRenderOptions);
+                    var content = renderer.RenderImage(frameImage);
+                    await docWriter.WriteFrameAsync(content, frameDelayMs, ct: ct);
+                }
+                else if (opts.UseBlocks)
+                {
+                    using var renderer = new ColorBlockRenderer(jsonRenderOptions);
+                    var content = renderer.RenderImage(frameImage);
+                    await docWriter.WriteFrameAsync(content, frameDelayMs, ct: ct);
+                }
+                else
+                {
+                    using var renderer = new AsciiRenderer(jsonRenderOptions);
+                    var frame = renderer.RenderImage(frameImage);
+                    await docWriter.WriteFrameAsync(frame, jsonRenderOptions, ct);
+                }
+
+                frameImage.Dispose();
+                streamRenderedCount++;
+                Console.Write($"\rRendering frames to JSON: {streamRenderedCount} written");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine($"\rRendering frames to JSON: stopped at frame {streamRenderedCount}");
+        }
+
+        Console.Write("\rFinalizing JSON document...                    ");
+        await docWriter.FinalizeAsync(!ct.IsCancellationRequested, ct);
+        Console.WriteLine($"\rSaved {streamRenderedCount} frames to {opts.JsonOutputPath}              ");
+        return 0;
+    }
+
+    private static async Task<int> HandlePlayback(
+        string inputPath, VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var characterSet = opts.Charset;
+        if (string.IsNullOrEmpty(characterSet))
+            characterSet = opts.Preset?.ToLowerInvariant() switch
+            {
+                "simple" => CharacterMap.SimpleCharacterSet,
+                "block" => CharacterMap.BlockCharacterSet,
+                "classic" => CharacterMap.DefaultCharacterSet,
+                _ => CharacterMap.ExtendedCharacterSet
+            };
+
+        var renderMode = opts.UseBraille ? VideoRenderMode.Braille
+            : opts.UseBlocks ? VideoRenderMode.ColorBlocks
+            : VideoRenderMode.Ascii;
+
+        var coreRenderMode = renderMode switch
+        {
+            VideoRenderMode.Braille => RenderMode.Braille,
+            VideoRenderMode.ColorBlocks => RenderMode.ColorBlocks,
+            _ => RenderMode.Ascii
+        };
+        var effectiveAspect = RenderHelpers.GetEffectiveAspectRatio(
+            opts.CharAspect, opts.SavedCalibration, coreRenderMode);
+
+        var samplingStrategy = opts.Sampling?.ToLowerInvariant() switch
+        {
+            "keyframe" or "key" => FrameSamplingStrategy.Keyframe,
+            "scene" or "sceneaware" => FrameSamplingStrategy.SceneAware,
+            "adaptive" => FrameSamplingStrategy.Adaptive,
+            _ => FrameSamplingStrategy.Uniform
+        };
+
+        var options = new VideoRenderOptions
+        {
+            RenderOptions = new RenderOptions
+            {
+                Width = opts.Width,
+                Height = opts.Height,
+                MaxWidth = opts.MaxWidth,
+                MaxHeight = opts.MaxHeight,
+                CharacterSet = characterSet,
+                CharacterAspectRatio = effectiveAspect,
+                ContrastPower = opts.Contrast,
+                Gamma = opts.Gamma,
+                UseColor = !opts.NoColor,
+                ColorCount = opts.ColorCount,
+                Invert = !opts.NoInvert,
+                UseParallelProcessing = !opts.NoParallel,
+                EnableEdgeDetection = opts.EnableEdge,
+                BackgroundThreshold = opts.BgThreshold,
+                DarkBackgroundThreshold = opts.DarkBgThreshold,
+                AutoBackgroundSuppression = opts.AutoBg,
+                EnableDithering = !opts.NoDither,
+                EnableEdgeDirectionChars = !opts.NoEdgeChars,
+                DarkTerminalBrightnessThreshold = opts.DarkCutoff,
+                LightTerminalBrightnessThreshold = opts.LightCutoff
+            },
+            StartTime = opts.Start,
+            EndTime = end,
+            TargetFps = opts.Fps,
+            FrameStep = Math.Max(1, opts.FrameStep),
+            SamplingStrategy = samplingStrategy,
+            SceneThreshold = opts.SceneThreshold,
+            BufferAheadFrames = Math.Clamp(opts.Buffer, 2, 10),
+            SpeedMultiplier = opts.Speed,
+            LoopCount = opts.Loop,
+            UseAltScreen = !opts.NoAltScreen,
+            UseHardwareAcceleration = !opts.NoHwAccel,
+            RenderMode = renderMode,
+            ShowStatus = opts.ShowStatus,
+            SourceFileName = inputPath
+        };
+
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            Console.CancelKeyPress += (s, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+            };
+
+            using var player = new VideoAnimationPlayer(inputPath, options);
+            await player.PlayAsync(cts.Token);
+
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static RenderOptions CreateRenderOptions(
+        VideoHandlerOptions opts, int charWidth, int charHeight, float effectiveAspect)
+    {
+        return new RenderOptions
+        {
+            Width = charWidth,
+            Height = charHeight,
+            MaxWidth = charWidth,
+            MaxHeight = charHeight,
+            CharacterAspectRatio = effectiveAspect,
+            ContrastPower = opts.Contrast,
+            Gamma = opts.Gamma,
+            UseColor = !opts.NoColor,
+            ColorCount = opts.ColorCount,
+            Invert = !opts.NoInvert,
+            UseParallelProcessing = !opts.NoParallel,
+            EnableEdgeDetection = opts.EnableEdge,
+            BackgroundThreshold = opts.BgThreshold,
+            DarkBackgroundThreshold = opts.DarkBgThreshold,
+            AutoBackgroundSuppression = opts.AutoBg,
+            EnableDithering = !opts.NoDither,
+            EnableEdgeDirectionChars = !opts.NoEdgeChars,
+            DarkTerminalBrightnessThreshold = opts.DarkCutoff,
+            LightTerminalBrightnessThreshold = opts.LightCutoff
+        };
+    }
+}
+
+/// <summary>
+/// Options for video handling.
+/// </summary>
+public class VideoHandlerOptions
+{
+    // Input/Output
+    public FileInfo? OutputGif { get; init; }
+    public bool OutputAsJson { get; init; }
+    public bool OutputAsCompressed { get; init; }
+    public string? JsonOutputPath { get; init; }
+
+    // Dimensions
+    public int? Width { get; init; }
+    public int? Height { get; init; }
+    public int MaxWidth { get; init; }
+    public int MaxHeight { get; init; }
+
+    // Time range
+    public double? Start { get; init; }
+    public double? End { get; init; }
+    public double? Duration { get; init; }
+
+    // Playback
+    public float Speed { get; init; } = 1.0f;
+    public int Loop { get; init; } = 1;
+    public double? Fps { get; init; }
+    public int FrameStep { get; init; } = 1;
+    public string? Sampling { get; init; }
+    public double SceneThreshold { get; init; } = 0.4;
+
+    // Render modes
+    public bool UseBlocks { get; init; }
+    public bool UseBraille { get; init; }
+
+    // Color/rendering
+    public bool NoColor { get; init; }
+    public int? ColorCount { get; init; }
+    public float Contrast { get; init; } = 2.5f;
+    public float Gamma { get; init; } = 0.65f;
+    public float? CharAspect { get; init; }
+    public string? Charset { get; init; }
+    public string? Preset { get; init; }
+    public CalibrationSettings? SavedCalibration { get; init; }
+
+    // Performance
+    public int Buffer { get; init; } = 3;
+    public bool NoHwAccel { get; init; }
+    public bool NoAltScreen { get; init; }
+    public bool NoParallel { get; init; }
+    public bool NoDither { get; init; }
+    public bool NoEdgeChars { get; init; }
+
+    // FFmpeg
+    public string? FfmpegPath { get; init; }
+    public bool NoAutoDownload { get; init; }
+    public bool AutoConfirmDownload { get; init; }
+
+    // Info/status
+    public bool ShowInfo { get; init; }
+    public bool ShowStatus { get; init; }
+
+    // GIF output
+    public int GifFontSize { get; init; } = 10;
+    public float GifScale { get; init; } = 1.0f;
+    public int GifColors { get; init; } = 64;
+    public double? GifLength { get; init; }
+    public int? GifFrames { get; init; }
+
+    // Raw/extract mode
+    public bool RawMode { get; init; }
+    public int? RawWidth { get; init; }
+    public int? RawHeight { get; init; }
+    public bool SmartKeyframes { get; init; }
+
+    // Image adjustments
+    public bool NoInvert { get; init; }
+    public bool EnableEdge { get; init; }
+    public float? BgThreshold { get; init; }
+    public float? DarkBgThreshold { get; init; }
+    public bool AutoBg { get; init; }
+    public float? DarkCutoff { get; init; }
+    public float? LightCutoff { get; init; }
+}

@@ -56,8 +56,55 @@ public sealed class FFmpegService : IDisposable
 
         _ffmpegPath = await FFmpegProvider.GetFFmpegPathAsync(null, progress, ct);
         _ffprobePath = await FFmpegProvider.GetFFprobePathAsync(null, progress, ct);
+
+        // Verify FFmpeg can actually execute (important for Linux where permissions or library issues can occur)
+        await VerifyFFmpegAsync(ct);
+
         _hwAccelType = _useHardwareAcceleration ? DetectHardwareAcceleration() : "";
         _initialized = true;
+    }
+
+    /// <summary>
+    /// Verify FFmpeg can execute by running a simple version check.
+    /// </summary>
+    private async Task VerifyFFmpegAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = _ffmpegPath,
+                    Arguments = "-version",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+            var output = await process.StandardOutput.ReadToEndAsync(ct);
+            var stderr = await process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+            {
+                var errorDetail = !string.IsNullOrWhiteSpace(stderr) ? stderr.Trim() : "No output";
+                throw new InvalidOperationException(
+                    $"FFmpeg binary at '{_ffmpegPath}' cannot execute properly.\n" +
+                    $"Exit code: {process.ExitCode}\n" +
+                    $"Error: {errorDetail}\n" +
+                    "On Linux, this may indicate missing libraries. Try: ldd " + _ffmpegPath);
+            }
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            throw new InvalidOperationException(
+                $"Failed to execute FFmpeg at '{_ffmpegPath}': {ex.Message}\n" +
+                "On Linux, ensure the binary has execute permissions (chmod +x) and required libraries are installed.");
+        }
     }
 
     /// <summary>
@@ -410,10 +457,11 @@ public sealed class FFmpegService : IDisposable
 
         process.Start();
 
-        // Read stderr asynchronously to prevent blocking
-        _ = process.StandardError.ReadToEndAsync(ct);
+        // Capture stderr for error reporting
+        var stderrTask = process.StandardError.ReadToEndAsync(ct);
 
         var stream = process.StandardOutput.BaseStream;
+        var framesProduced = 0;
 
         while (!ct.IsCancellationRequested)
         {
@@ -421,12 +469,30 @@ public sealed class FFmpegService : IDisposable
             while (bytesRead < frameSize)
             {
                 var read = await stream.ReadAsync(buffer.AsMemory(bytesRead, frameSize - bytesRead), ct);
-                if (read == 0) yield break; // End of stream
+                if (read == 0)
+                {
+                    // End of stream - check if this is an error
+                    if (framesProduced == 0)
+                    {
+                        // No frames produced - likely an error
+                        await process.WaitForExitAsync(ct);
+                        var stderr = await stderrTask;
+                        if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(stderr))
+                        {
+                            var errorMsg = !string.IsNullOrWhiteSpace(stderr)
+                                ? $"FFmpeg error: {stderr.Trim()}"
+                                : $"FFmpeg exited with code {process.ExitCode} without producing any frames";
+                            throw new InvalidOperationException(errorMsg);
+                        }
+                    }
+                    yield break;
+                }
                 bytesRead += read;
             }
 
             // Create image from raw RGBA data
             var image = Image.LoadPixelData<Rgba32>(buffer, outputWidth, outputHeight);
+            framesProduced++;
 
             yield return image;
         }
@@ -523,6 +589,181 @@ public sealed class FFmpegService : IDisposable
         if (bytesRead < frameSize) return null;
 
         return Image.LoadPixelData<Rgba32>(buffer, outputWidth, outputHeight);
+    }
+
+    /// <summary>
+    /// Extract a single frame very fast by seeking to nearest keyframe only.
+    /// Useful for thumbnail generation where exact timestamp accuracy is not required.
+    /// Uses -skip_frame nokey for ~100x faster extraction.
+    /// </summary>
+    public async Task<Image<Rgba32>?> ExtractFrameFastAsync(
+        string videoPath,
+        double timestamp,
+        int? width = null,
+        int? height = null,
+        CancellationToken ct = default)
+    {
+        await EnsureInitializedAsync(ct);
+
+        // Get video dimensions if not specified
+        int outputWidth = width ?? 0;
+        int outputHeight = height ?? 0;
+
+        if (outputWidth == 0 || outputHeight == 0)
+        {
+            var info = await GetVideoInfoAsync(videoPath, ct);
+            if (info == null) return null;
+
+            if (outputWidth == 0 && outputHeight == 0)
+            {
+                outputWidth = info.Width;
+                outputHeight = info.Height;
+            }
+            else if (outputWidth == 0)
+            {
+                outputWidth = (int)(info.Width * ((double)outputHeight / info.Height));
+            }
+            else
+            {
+                outputHeight = (int)(info.Height * ((double)outputWidth / info.Width));
+            }
+        }
+
+        var filters = $"scale={outputWidth}:{outputHeight}:flags=fast_bilinear";
+
+        // Use -skip_frame nokey to only decode keyframes (much faster)
+        // -vsync passthrough avoids frame duplication
+        var args = $"-loglevel error -skip_frame nokey -ss {timestamp:F3} -i \"{videoPath}\" -vf \"{filters}\" -vsync passthrough -frames:v 1 -f rawvideo -pix_fmt rgba -";
+
+        var frameSize = outputWidth * outputHeight * 4;
+        var buffer = new byte[frameSize];
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = _ffmpegPath,
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+
+        process.Start();
+        _ = process.StandardError.ReadToEndAsync(ct);
+
+        var pStream = process.StandardOutput.BaseStream;
+        var bytesRead = 0;
+
+        while (bytesRead < frameSize)
+        {
+            var read = await pStream.ReadAsync(buffer.AsMemory(bytesRead, frameSize - bytesRead), ct);
+            if (read == 0) break;
+            bytesRead += read;
+        }
+
+        await process.WaitForExitAsync(ct);
+
+        if (bytesRead < frameSize) return null;
+
+        return Image.LoadPixelData<Rgba32>(buffer, outputWidth, outputHeight);
+    }
+
+    /// <summary>
+    /// Extract all I-frames (keyframes) from a video segment very quickly.
+    /// Uses select filter with I-frame detection - much faster than scene detection.
+    /// Great for generating scrub bar thumbnails.
+    /// </summary>
+    public async IAsyncEnumerable<(double Timestamp, Image<Rgba32> Frame)> ExtractKeyframeThumbnailsAsync(
+        string videoPath,
+        int outputWidth,
+        int outputHeight,
+        double? startTime = null,
+        double? endTime = null,
+        int maxCount = 60,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await EnsureInitializedAsync(ct);
+
+        // Build input args for seeking
+        var inputArgs = "";
+        if (startTime.HasValue)
+            inputArgs = $"-ss {startTime.Value:F3} ";
+
+        inputArgs += $"-i \"{videoPath}\" ";
+
+        if (endTime.HasValue && startTime.HasValue)
+            inputArgs += $"-t {(endTime.Value - startTime.Value):F3} ";
+        else if (endTime.HasValue)
+            inputArgs += $"-t {endTime.Value:F3} ";
+
+        // Select only I-frames, scale down, limit count
+        // The showinfo filter gives us the timestamp
+        var filters = $"select='eq(pict_type,I)',scale={outputWidth}:{outputHeight}:flags=fast_bilinear,showinfo";
+
+        // Output raw frames - limit to maxCount
+        var args = $"-loglevel error {inputArgs}-vf \"{filters}\" -vsync vfr -frames:v {maxCount} -f rawvideo -pix_fmt rgba -";
+
+        var frameSize = outputWidth * outputHeight * 4;
+        var buffer = new byte[frameSize];
+        var offset = startTime ?? 0;
+        var count = 0;
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = _ffmpegPath,
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+
+        process.Start();
+
+        // Capture stderr for timestamp info
+        var stderrTask = process.StandardError.ReadToEndAsync(ct);
+        var stream = process.StandardOutput.BaseStream;
+
+        while (!ct.IsCancellationRequested && count < maxCount)
+        {
+            var bytesRead = 0;
+            while (bytesRead < frameSize)
+            {
+                var read = await stream.ReadAsync(buffer.AsMemory(bytesRead, frameSize - bytesRead), ct);
+                if (read == 0)
+                {
+                    yield break;
+                }
+                bytesRead += read;
+            }
+
+            // Create image from raw RGBA data
+            var image = Image.LoadPixelData<Rgba32>(buffer, outputWidth, outputHeight);
+
+            // Estimate timestamp based on position (we can't easily parse showinfo from pipe)
+            // For thumbnails, uniform distribution is fine
+            var info = await GetVideoInfoAsync(videoPath, ct);
+            var duration = info?.Duration ?? 60;
+            var timestamp = offset + (count * (duration - offset) / maxCount);
+
+            yield return (timestamp, image);
+            count++;
+        }
+
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill();
+            }
+        }
+        catch { }
     }
 
     /// <summary>

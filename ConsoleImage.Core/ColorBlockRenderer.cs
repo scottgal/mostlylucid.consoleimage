@@ -98,6 +98,7 @@ public class ColorBlockRenderer : IDisposable
     private string RenderPixels(Image<Rgba32> image)
     {
         var charRows = image.Height / 2;
+        var width = image.Width;
 
         // Get brightness thresholds based on terminal mode
         var darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
@@ -107,6 +108,32 @@ public class ColorBlockRenderer : IDisposable
         var gamma = _options.Gamma;
         var applyGamma = gamma != 1.0f;
 
+        // Color mode - when disabled, output greyscale
+        var useColor = _options.UseColor;
+
+        // Color quantization - explicit color count takes priority
+        var colorCount = _options.ColorCount;
+        var quantStep = 1;
+        var quantize = false;
+
+        if (colorCount.HasValue && colorCount.Value > 0)
+        {
+            // Calculate step size for color reduction
+            // e.g., 4 colors = 64 step (256/4), 16 colors = 16 step
+            quantStep = Math.Max(1, 256 / colorCount.Value);
+            quantize = true;
+        }
+        else if (_options.EnableTemporalStability)
+        {
+            // Fallback to temporal stability quantization
+            quantStep = Math.Max(1, _options.ColorStabilityThreshold / 2);
+            quantize = true;
+        }
+
+        // Pre-extract all pixel data for faster access
+        var pixelData = new Rgba32[width * image.Height];
+        image.CopyPixelDataTo(pixelData);
+
         // Parallel row rendering for performance
         if (_options.UseParallelProcessing && charRows > 4)
         {
@@ -114,20 +141,36 @@ public class ColorBlockRenderer : IDisposable
 
             Parallel.For(0, charRows, row =>
             {
-                var rowSb = new StringBuilder(image.Width * 30); // Pre-size for ANSI codes
+                var rowSb = new StringBuilder(width * 30); // Pre-size for ANSI codes
                 var y1 = row * 2; // Upper pixel row
                 var y2 = row * 2 + 1; // Lower pixel row
+                var offset1 = y1 * width;
+                var offset2 = y2 * width;
 
-                for (var x = 0; x < image.Width; x++)
+                for (var x = 0; x < width; x++)
                 {
-                    var upper = image[x, y1];
-                    var lower = image[x, y2];
+                    var upper = pixelData[offset1 + x];
+                    var lower = pixelData[offset2 + x];
 
                     // Apply gamma correction
                     if (applyGamma)
                     {
                         upper = ApplyGamma(upper, gamma);
                         lower = ApplyGamma(lower, gamma);
+                    }
+
+                    // Convert to greyscale if color disabled
+                    if (!useColor)
+                    {
+                        upper = ToGreyscale(upper);
+                        lower = ToGreyscale(lower);
+                    }
+
+                    // Quantize colors for palette reduction or temporal stability
+                    if (quantize)
+                    {
+                        upper = QuantizeColor(upper, quantStep);
+                        lower = QuantizeColor(lower, quantStep);
                     }
 
                     AppendColoredBlock(rowSb, upper, lower, darkThreshold, lightThreshold);
@@ -146,17 +189,33 @@ public class ColorBlockRenderer : IDisposable
         {
             var y1 = row * 2; // Upper pixel row
             var y2 = row * 2 + 1; // Lower pixel row
+            var offset1 = y1 * width;
+            var offset2 = y2 * width;
 
-            for (var x = 0; x < image.Width; x++)
+            for (var x = 0; x < width; x++)
             {
-                var upper = image[x, y1];
-                var lower = image[x, y2];
+                var upper = pixelData[offset1 + x];
+                var lower = pixelData[offset2 + x];
 
                 // Apply gamma correction
                 if (applyGamma)
                 {
                     upper = ApplyGamma(upper, gamma);
                     lower = ApplyGamma(lower, gamma);
+                }
+
+                // Convert to greyscale if color disabled
+                if (!useColor)
+                {
+                    upper = ToGreyscale(upper);
+                    lower = ToGreyscale(lower);
+                }
+
+                // Quantize colors for palette reduction or temporal stability
+                if (quantize)
+                {
+                    upper = QuantizeColor(upper, quantStep);
+                    lower = QuantizeColor(lower, quantStep);
                 }
 
                 AppendColoredBlock(sb, upper, lower, darkThreshold, lightThreshold);
@@ -170,12 +229,37 @@ public class ColorBlockRenderer : IDisposable
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Convert a color to greyscale using luminance formula.
+    /// </summary>
+    private static Rgba32 ToGreyscale(Rgba32 pixel)
+    {
+        // Use ITU-R BT.709 luminance formula
+        var grey = (byte)(0.2126f * pixel.R + 0.7152f * pixel.G + 0.0722f * pixel.B);
+        return new Rgba32(grey, grey, grey, pixel.A);
+    }
+
     private static Rgba32 ApplyGamma(Rgba32 pixel, float gamma)
     {
         return new Rgba32(
             (byte)Math.Clamp(MathF.Pow(pixel.R / 255f, gamma) * 255f, 0, 255),
             (byte)Math.Clamp(MathF.Pow(pixel.G / 255f, gamma) * 255f, 0, 255),
             (byte)Math.Clamp(MathF.Pow(pixel.B / 255f, gamma) * 255f, 0, 255),
+            pixel.A
+        );
+    }
+
+    /// <summary>
+    /// Quantize color to reduce noise and improve temporal stability.
+    /// Rounds each channel to the nearest multiple of step.
+    /// </summary>
+    private static Rgba32 QuantizeColor(Rgba32 pixel, int step)
+    {
+        if (step <= 1) return pixel;
+        return new Rgba32(
+            (byte)(pixel.R / step * step),
+            (byte)(pixel.G / step * step),
+            (byte)(pixel.B / step * step),
             pixel.A
         );
     }

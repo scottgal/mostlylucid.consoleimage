@@ -71,9 +71,11 @@ All configuration in one class. Key properties:
 - `Width/Height/MaxWidth/MaxHeight` - Output dimensions
 - `CharacterAspectRatio` - Terminal font compensation (default 0.5)
 - `ContrastPower` - Contrast enhancement (2.0-4.0 recommended)
-- `UseColor` - Enable ANSI color codes
+- `UseColor` - Enable ANSI color codes (when false, outputs greyscale)
 - `FrameSampleRate` - Skip frames for efficiency (1 = all, 2 = every 2nd, etc.)
 - `EnableDithering/EnableEdgeDirectionChars` - Experimental features
+- `EnableTemporalStability` - De-jitter for animations (reduces color flickering)
+- `ColorStabilityThreshold` - Color similarity threshold for de-jitter (0-255, default: 15)
 
 ### ConsoleImageDocument
 Self-contained JSON document format for saving/loading rendered ASCII art.
@@ -82,6 +84,16 @@ Self-contained JSON document format for saving/loading rendered ASCII art.
 - JSON-LD compatible (`@context`, `@type` fields)
 - AOT-compatible using System.Text.Json source generation
 - Auto-detects standard JSON vs streaming NDJSON format on load
+- **Compressed format (.cidz)** - GZip compressed with delta encoding for animations
+
+### CompressedDocumentArchive
+Optimized compressed format for animations with delta encoding.
+- **Global color palette** - Colors stored once, referenced by index
+- **Delta frames (P-frames)** - Only changed cells stored between keyframes
+- **Keyframe interval** - Full frames stored every N frames (default: 30)
+- **Temporal stability (de-jitter)** - Stabilizes similar colors between frames
+- **Loop count in metadata** - Frames NOT duplicated for loops
+- File extension: `.cidz` (or `.cid.7z`)
 
 ### StreamingDocumentWriter
 Writes frames incrementally to NDJSON (JSON Lines) format for long videos.
@@ -195,25 +207,42 @@ consoleimage big.gif --frame-sample 2  # Every 2nd frame
 consolevideo movie.mp4 -o output.gif -w 100
 consoleimage animation.gif -o converted.gif
 
-# Output to JSON (auto-detected from .json extension)
-consoleimage animation.gif -o output.json
+# Output to compressed JSON (default for .json extension)
+consoleimage animation.gif -o output.json  # Actually saves as output.cidz
+
+# Explicit compressed format
+consoleimage animation.gif -o output.cidz
+consoleimage animation.gif -o compressed
+
+# Explicit uncompressed JSON (use raw: prefix)
+consoleimage animation.gif -o raw:output.json
+
+# Output with de-jitter (temporal stability for animations)
+consoleimage animation.gif -o output.cidz --dejitter
+consoleimage animation.gif -o output.cidz --dejitter --color-threshold 20
+
+# Greyscale blocks mode (smaller JSON files)
+consoleimage photo.png --blocks --no-color -o output.cidz
 
 # Explicit format prefixes also work
 consolevideo movie.mp4 -o gif:output.gif
 consolevideo movie.mp4 -o json:movie.ndjson
 
-# Play saved JSON document
+# Play saved JSON/compressed document
 consoleimage output.json
-consolevideo output.json
+consoleimage output.cidz
+consolevideo output.cidz
 ```
 
 ### Output Options
 
 The `-o` / `--output` option auto-detects format from file extension:
 - `.gif` → Animated GIF output (loops infinitely by default)
-- `.json` / `.ndjson` → JSON document output
+- `.json` → Compressed format (.cidz) by default (use `raw:path.json` for uncompressed)
+- `.cidz` / `.cid.7z` → Compressed document with delta encoding
+- `.ndjson` → Streaming JSON Lines format (uncompressed)
 
-You can also use explicit prefixes: `gif:path` or `json:path`
+You can also use explicit prefixes: `gif:path`, `json:path`, `raw:path`, or `cidz:path`
 
 GIF output settings:
 - `--gif-font-size` - Font size for text rendering (default: 10)
@@ -271,10 +300,12 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `--matrix-fullcolor` - Use source image colors with Matrix lighting
 - `--matrix-density` - Rain density (0.1-2.0, default 0.5)
 - `--matrix-speed` - Rain speed multiplier (0.5-3.0, default 1.0)
-- `-o, --output` - Output file (auto-detects .gif or .json from extension)
+- `-o, --output` - Output file (.gif, .json→.cidz, .cidz, raw:path.json)
+- `--dejitter, --stabilize` - Enable temporal stability to reduce color flickering
+- `--color-threshold` - Color stability threshold for de-jitter (0-255, default: 15)
 - `--calibrate` - Show aspect ratio calibration pattern
 - `--save` - Save calibration to calibration.json
-- `--no-color` - Disable color output
+- `--no-color` - Disable color output (greyscale for blocks/braille)
 - `--no-animate` - Show first frame only
 
 ## Build
@@ -318,12 +349,21 @@ System.CommandLine's `FileInfo` argument type can have issues resolving paths in
 
 See [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) for the full specification.
 
-**Two formats supported:**
+**Three formats supported:**
+- **Compressed (.cidz)** - GZip compressed with delta encoding (default for animations)
 - **Standard JSON** - Single JSON object with all frames (images, short GIFs)
 - **Streaming NDJSON** - JSON Lines format, one record per line (long videos)
 
 **Key features:**
 - JSON-LD compatible (`@context`, `@type` fields)
 - Self-contained - no source file needed for playback
-- Auto-detects format on load
+- Auto-detects format on load (by extension or magic bytes)
 - Streaming format auto-finalizes on Ctrl+C
+- Compressed format uses delta encoding (P-frames) for efficient storage
+- Loop count stored in metadata - frames NOT duplicated
+
+**Compressed format benefits:**
+- ~7:1 compression ratio vs uncompressed JSON
+- Delta encoding stores only changed cells between frames
+- Global color palette reduces redundancy
+- Optional temporal stability (de-jitter) reduces visual flickering

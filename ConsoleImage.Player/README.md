@@ -1,13 +1,15 @@
 # ConsoleImage.Player
 
-A minimal, zero-dependency player for ConsoleImage JSON documents. Play pre-rendered ASCII art animations in any terminal.
+A minimal, zero-dependency player for ConsoleImage documents (.cidz, .json). Play pre-rendered ASCII art animations in any terminal without needing the full rendering library.
+
+**Use case**: Embed document playback in your own applications without pulling in ImageSharp or FFmpeg dependencies.
 
 ## Features
 
 - **Zero external dependencies** - Only System.Text.Json (built-in)
 - **AOT compatible** - Works with Native AOT publishing
 - **Tiny footprint** - Just the essentials for playback
-- **Supports both formats** - Standard JSON and streaming NDJSON
+- **All formats supported** - Compressed .cidz, standard JSON, and streaming NDJSON
 - **Fast parsing** - ~100-300µs per frame, instant startup
 - **Low allocation** - Designed for minimal GC pressure
 
@@ -24,7 +26,11 @@ dotnet add package mostlylucid.consoleimage.player
 ```csharp
 using ConsoleImage.Player;
 
-// Load and play
+// Load and play (supports .cidz, .json, .ndjson)
+var player = await ConsolePlayer.FromFileAsync("animation.cidz");
+await player.PlayAsync();
+
+// Or from uncompressed JSON
 var player = await ConsolePlayer.FromFileAsync("animation.json");
 await player.PlayAsync();
 ```
@@ -140,17 +146,166 @@ Also supports streaming NDJSON format (one JSON object per line).
 
 ## Creating Documents
 
-Use `consoleimage` or `consolevideo` CLI tools to create documents:
+Use the `consoleimage` CLI to create documents from any source:
 
 ```bash
-# From image/GIF
-consoleimage animation.gif -o output.json
+# From image
+consoleimage photo.png -o output.cidz --blocks
+
+# From animated GIF
+consoleimage animation.gif -o animation.cidz
 
 # From video
-consolevideo movie.mp4 -o output.json -w 80
+consoleimage movie.mp4 -o movie.cidz -w 80
+
+# Uncompressed JSON (larger files)
+consoleimage animation.gif -o output.json
 ```
 
 Or use the full `mostlylucid.consoleimage` library to create documents programmatically.
+
+## Complete Example: Animated Startup Logo
+
+This example shows how to add an animated ASCII logo to your console application using a pre-rendered `.cidz` document. The animation plays once on startup before your app begins.
+
+### Render Modes
+
+| ASCII Mode | ColorBlocks Mode | Braille Mode |
+|------------|------------------|--------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_ascii.gif" width="200" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_blocks.gif" width="200" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_braille.gif" width="200" alt="Braille"> |
+
+### Step 1: Create the Document
+
+First, render your logo or animation to a `.cidz` file using the CLI:
+
+```bash
+# Render animated GIF to compressed document
+consoleimage logo.gif -w 60 -o logo.cidz
+
+# Or with color blocks for higher fidelity
+consoleimage logo.gif -w 60 --blocks -o logo.cidz
+
+# Or braille for maximum resolution
+consoleimage logo.gif -w 60 --braille -o logo.cidz
+```
+
+### Step 2: Add to Your Project
+
+Add the `.cidz` file to your project and mark it as embedded resource or content:
+
+```xml
+<!-- In your .csproj -->
+<ItemGroup>
+  <Content Include="logo.cidz">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+</ItemGroup>
+```
+
+Or embed it as a resource:
+
+```xml
+<ItemGroup>
+  <EmbeddedResource Include="logo.cidz" />
+</ItemGroup>
+```
+
+### Step 3: Play on Startup
+
+```csharp
+using ConsoleImage.Player;
+
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        // Play animated logo once before app starts
+        await PlayStartupLogoAsync();
+
+        // Your app continues here...
+        Console.WriteLine("\nWelcome to MyApp!");
+    }
+
+    static async Task PlayStartupLogoAsync()
+    {
+        try
+        {
+            // Load from file
+            var player = await ConsolePlayer.FromFileAsync("logo.cidz");
+
+            // Play once (loopCount: 1) at normal speed
+            await player.PlayAsync(loopCount: 1);
+        }
+        catch (FileNotFoundException)
+        {
+            // Logo not found - continue without it
+        }
+    }
+}
+```
+
+### Loading from Embedded Resource
+
+If you embedded the `.cidz` as a resource:
+
+```csharp
+using System.Reflection;
+using ConsoleImage.Player;
+
+static async Task PlayEmbeddedLogoAsync()
+{
+    var assembly = Assembly.GetExecutingAssembly();
+    var resourceName = "MyApp.logo.cidz"; // Namespace.filename
+
+    await using var stream = assembly.GetManifestResourceStream(resourceName);
+    if (stream == null) return;
+
+    // Read compressed data
+    using var ms = new MemoryStream();
+    await stream.CopyToAsync(ms);
+    var data = ms.ToArray();
+
+    // Load and play
+    var doc = PlayerDocument.FromCompressedBytes(data);
+    var player = new ConsolePlayer(doc, loopCount: 1);
+    await player.PlayAsync();
+}
+```
+
+### Advanced: Progress Display
+
+Show a loading indicator while the animation plays:
+
+```csharp
+var player = await ConsolePlayer.FromFileAsync("logo.cidz");
+
+player.OnFrameChanged += (current, total) =>
+{
+    // Update progress bar, etc.
+    var percent = (current * 100) / total;
+    Console.Title = $"Loading... {percent}%";
+};
+
+player.OnLoopComplete += (loop) =>
+{
+    Console.Title = "MyApp";
+};
+
+await player.PlayAsync(loopCount: 1);
+```
+
+### Why Use Pre-rendered Documents?
+
+| Approach | Dependencies | Startup Time | File Size |
+|----------|--------------|--------------|-----------|
+| **Player + .cidz** | None (built-in JSON) | ~1-3ms | Small (~50KB) |
+| Full library | ImageSharp (~2MB) | ~50-100ms | Large |
+
+The Player package is ideal for:
+- **Splash screens** - Show animated logo during initialization
+- **CLI tools** - Add visual flair without bloating your binary
+- **AOT apps** - No reflection, works with Native AOT
+- **Embedded systems** - Minimal memory footprint
 
 ## Performance
 
