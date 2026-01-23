@@ -38,6 +38,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage.Player.Tests",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage.Player.Demo", "ConsoleImage.Player.Demo\ConsoleImage.Player.Demo.csproj", "{0D57273B-8FFE-41BE-975A-ACD9C3B96F23}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleVideo.Avalonia", "ConsoleVideo.Avalonia\ConsoleVideo.Avalonia.csproj", "{D63034CF-ECC8-4781-A70F-038AFED65077}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -216,6 +218,18 @@ Global
 		{0D57273B-8FFE-41BE-975A-ACD9C3B96F23}.Release|x64.Build.0 = Release|Any CPU
 		{0D57273B-8FFE-41BE-975A-ACD9C3B96F23}.Release|x86.ActiveCfg = Release|Any CPU
 		{0D57273B-8FFE-41BE-975A-ACD9C3B96F23}.Release|x86.Build.0 = Release|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Debug|x64.Build.0 = Debug|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Debug|x86.Build.0 = Debug|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Release|x64.ActiveCfg = Release|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Release|x64.Build.0 = Release|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Release|x86.ActiveCfg = Release|Any CPU
+		{D63034CF-ECC8-4781-A70F-038AFED65077}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
