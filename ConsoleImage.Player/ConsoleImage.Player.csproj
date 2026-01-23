@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+
+        <!-- AOT Support -->
+        <IsAotCompatible>true</IsAotCompatible>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+        <!-- NuGet Package Properties -->
+        <PackageId>mostlylucid.consoleimage.player</PackageId>
+        <Authors>Scott Galloway</Authors>
+        <MinVerTagPrefix>consoleimage-player-v</MinVerTagPrefix>
+        <Description>Minimal, zero-dependency player for ConsoleImage JSON documents. Play pre-rendered ASCII art animations in any terminal. Perfect for embedding in your own applications - just pass a JSON string or file path.</Description>
+        <PackageTags>ascii;art;image;console;player;gif;animation;rendering;json</PackageTags>
+        <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageIconUrl>https://raw.githubusercontent.com/scottgal/ConsoleImage/master/icon.png</PackageIconUrl>
+        <RepositoryUrl>https://github.com/scottgal/mostlylucid.consoleimage</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="README.md"/>
+        <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')"/>
+    </ItemGroup>
+
+</Project>

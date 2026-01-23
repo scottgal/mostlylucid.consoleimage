@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+
+        <!-- NuGet Package Properties -->
+        <PackageId>mostlylucid.consoleimage.player.spectre</PackageId>
+        <Authors>Scott Galloway</Authors>
+        <MinVerTagPrefix>consoleimage-player-spectre-v</MinVerTagPrefix>
+        <Description>Spectre.Console integration for ConsoleImage.Player. Display pre-rendered ASCII art documents as IRenderable objects within Spectre.Console layouts. Supports animated playback with Live display.</Description>
+        <PackageTags>ascii;art;image;console;player;spectre;spectre.console;animation;rendering</PackageTags>
+        <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageIconUrl>https://raw.githubusercontent.com/scottgal/ConsoleImage/master/icon.png</PackageIconUrl>
+        <RepositoryUrl>https://github.com/scottgal/mostlylucid.consoleimage</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Spectre.Console" Version="0.54.0"/>
+        <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <!-- Use ProjectReference for local dev, PackageReference for NuGet publishing -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
+        <ProjectReference Include="..\ConsoleImage.Player\ConsoleImage.Player.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
+        <PackageReference Include="mostlylucid.consoleimage.player" Version="$(PlayerPackageVersion)"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="README.md"/>
+        <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')"/>
+    </ItemGroup>
+
+</Project>
