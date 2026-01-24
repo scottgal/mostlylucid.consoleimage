@@ -705,6 +705,7 @@ Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 | **mostlylucid.consoleimage.video** | Video support library (NuGet)                  | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
 | **mostlylucid.consoleimage.player**| Document playback library (NuGet)              | [ConsoleImage.Player/README.md](ConsoleImage.Player/README.md)         |
 | **JSON/CIDZ Format**               | Document format specification                  | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md)                             |
+| **Braille Rendering**              | How the 8x resolution braille mode works       | [docs/BRAILLE-RENDERING.md](docs/BRAILLE-RENDERING.md)                 |
 | **Changelog**                      | Version history                                | [CHANGELOG.md](CHANGELOG.md)                                           |
 
 ## Architecture
