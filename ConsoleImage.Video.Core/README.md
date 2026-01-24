@@ -58,16 +58,17 @@ consolevideo cat_wag.gif
 ### Render Modes
 
 ```bash
-# ASCII mode (default) - character-based rendering
-consolevideo video.mp4
+# Braille mode (default in v3.0+) - highest resolution using 2x4 dot patterns
+consoleimage video.mp4
+consoleimage video.mp4 -B
+
+# ASCII mode (-a/--ascii) - character-based rendering (v2.x default)
+consoleimage video.mp4 --ascii
+consoleimage video.mp4 -a
 
 # ColorBlocks mode (-b/--blocks) - Unicode half-blocks for 2x vertical resolution
-consolevideo video.mp4 --blocks
-consolevideo video.mp4 -b
-
-# Braille mode (-B/--braille) - highest resolution using 2x4 dot patterns
-consolevideo video.mp4 --braille
-consolevideo video.mp4 -B
+consoleimage video.mp4 --blocks
+consoleimage video.mp4 -b
 ```
 
 ### Dimension Control

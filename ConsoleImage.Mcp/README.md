@@ -148,9 +148,9 @@ strategies to minimize context usage:
 | Strategy               | How                                  | When to Use                                          |
 |------------------------|--------------------------------------|------------------------------------------------------|
 | **Save to file**       | Use `outputPath` parameter           | When you want to see the image but not waste context |
-| **Braille + no color** | `mode: "braille"`, `useColor: false` | Quick preview with maximum detail, minimal output    |
+| **Braille + no color** | `mode: "braille"`, `useColor: false` | Quick preview with maximum detail, minimal output (DEFAULT mode) |
 | **Reduce size**        | Lower `maxWidth`/`maxHeight`         | When rough preview is sufficient                     |
-| **ASCII mode**         | Use default `mode: "ascii"`          | Fewer bytes than blocks mode, decent detail          |
+| **ASCII mode**         | Use `mode: "ascii"`                  | Widest compatibility, fewer bytes than blocks mode   |
 
 **Quick preview (minimal context):**
 
@@ -190,7 +190,7 @@ Renders an image or GIF frame to ASCII art and returns the result as text with A
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `path` | string | (required) | Path to image file (jpg, png, gif, bmp, webp) |
-| `mode` | string | `"ascii"` | Render mode: `ascii`, `blocks`, `braille`, or `matrix` |
+| `mode` | string | `"braille"` | Render mode: `braille` (default), `ascii`, `blocks`, or `matrix` |
 | `maxWidth` | int | `80` | Maximum width in characters |
 | `maxHeight` | int | `40` | Maximum height in characters |
 | `useColor` | bool | `true` | Enable ANSI color codes in output |
@@ -235,7 +235,7 @@ Creates an animated GIF file from an image or GIF source, rendered in the specif
 |-----------|------|---------|-------------|
 | `inputPath` | string | (required) | Source image or GIF path |
 | `outputPath` | string | (required) | Output GIF file path |
-| `mode` | string | `"ascii"` | Render mode: `ascii`, `blocks`, `braille`, or `matrix` |
+| `mode` | string | `"braille"` | Render mode: `braille` (default), `ascii`, `blocks`, or `matrix` |
 | `maxWidth` | int | `60` | Width in characters |
 | `fontSize` | int | `10` | Font size for text rendering |
 | `maxColors` | int | `64` | GIF palette size (16-256) |

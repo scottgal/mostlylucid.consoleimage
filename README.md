@@ -67,175 +67,32 @@ consoleimage movie.mp4 -o movie.cidz
 
 ## Render Mode Comparison
 
-| ASCII Mode | ColorBlocks Mode | Braille Mode |
-|------------|------------------|--------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> |
-| Shape-matched characters | Unicode half-blocks (▀▄) | 2×4 dot patterns |
-| Widest compatibility | 2x vertical resolution | 8x resolution |
+| Braille (DEFAULT) | ASCII | ColorBlocks |
+|-------------------|-------|-------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> |
+| 2×4 dot patterns (8x resolution) | Shape-matched characters | Unicode half-blocks (▀▄) |
 
-> **Note:** These examples are rendered using `-o gif:` output. Terminal display varies by emulator and font.
+## Video Example
 
-## What's New
-
-<details>
-<summary><strong>Version 3.0</strong> (Breaking Changes)</summary>
-
-- **Braille is now the default** - Maximum resolution out of the box
-- **`-a, --ascii` option** - Use for classic ASCII mode (previous default)
-- **Video width defaults to 50** for braille (CPU intensive)
-- **Easter egg** - Run with no arguments for a surprise!
-- **MPEG-4 and AV1 codec support** - Hardware acceleration fallback
-- **`--colours` alias** - British spelling support
-</details>
-
-<details>
-<summary><strong>Version 2.7</strong></summary>
-
-- **Unified CLI** - `consoleimage` handles images, GIFs, videos, AND document playback
-- **Compressed documents (.cidz)** - Delta encoding with ~7:1 compression
-- **Improved braille** - Atkinson dithering, Otsu's threshold, color boost
-- **Status line** - `--status` shows progress during playback
-- **Temporal stability** - `--dejitter` reduces color flickering
-</details>
-
-<details>
-<summary><strong>Version 2.6</strong></summary>
-
-- **MCP Server** - AI tool integration for Claude Desktop, VS Code
-- **Spectre.Console** - `MatrixImage`, `MultiAnimationPlayer`
-- **VideoPlayer API** - `await VideoPlayer.PlayAsync("video.mp4")`
-</details>
-
-<details>
-<summary><strong>Version 2.5</strong></summary>
-
-- **Matrix Mode** - Digital rain effect with color presets
-- **FFmpeg Auto-Download** - Zero setup for video playback
-- **Memory Efficient** - Streaming GIF output
-</details>
-
-See [CHANGELOG.md](CHANGELOG.md) for full history.
-
-## Examples
-
-### Video - Big Buck Bunny (Blender Open Movie)
-
-| ASCII | ColorBlocks | Braille |
-|-------|-------------|---------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_ascii.gif" width="250" alt="Bunny ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_blocks.gif" width="250" alt="Bunny Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_braille.gif" width="250" alt="Bunny Braille"> |
+| Braille | ASCII | ColorBlocks |
+|---------|-------|-------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_braille.gif" width="250" alt="Bunny Braille"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_ascii.gif" width="250" alt="Bunny ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_blocks.gif" width="250" alt="Bunny Blocks"> |
 
 ```bash
-consoleimage movie.mp4 -B -w 80  # Braille mode for maximum detail
+consoleimage movie.mp4           # Braille by default
+consoleimage movie.mp4 -a -w 120 # ASCII mode, wider
 ```
 
-### Video - Star Trek TNG
+## Matrix Mode
 
-| ASCII | ColorBlocks | Braille |
-|-------|-------------|---------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/startrek_ascii.gif" width="250" alt="Star Trek ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/startrek_blocks.gif" width="250" alt="Star Trek Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/startrek_braille.gif" width="250" alt="Star Trek Braille"> |
-
-### Animation - Futurama
-
-| ASCII | ColorBlocks | Braille |
-|-------|-------------|---------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/futurama_ascii.gif" width="250" alt="Futurama ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/futurama_blocks.gif" width="250" alt="Futurama Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/futurama_braille.gif" width="250" alt="Futurama Braille"> |
+| Classic Green | Full Color |
+|---------------|------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_portrait_final.gif" width="250" alt="Matrix Classic"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_mountain_fullcolor.gif" width="250" alt="Matrix Full Color"> |
 
 ```bash
-consoleimage video.mkv --ss 120 -t 3 -o clip.gif  # Extract 3 seconds starting at 2:00
+consoleimage photo.jpg --matrix              # Classic green
+consoleimage photo.jpg --matrix --matrix-fullcolor  # Source colors
 ```
-
-### Keyframe Extraction (Slideshow)
-
-<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/scene_keyframes.gif" width="400" alt="Keyframe slideshow">
-
-Extract representative frames from a video to create a slow-playing slideshow:
-
-```bash
-consoleimage video.avi --ss 0 -t 300 --smart-keyframes --raw -o slideshow.gif --gif-frames 12 --gif-fps 1
-```
-
-### Classic Animation - Amiga Boing Ball
-
-| ASCII | ColorBlocks | Braille |
-|-------|-------------|---------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_ascii.gif" width="200" alt="Boing ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_blocks.gif" width="200" alt="Boing Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_braille.gif" width="200" alt="Boing Braille"> |
-
-### Animated GIF
-
-| ASCII | ColorBlocks | Braille |
-|-------|-------------|---------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/cat_wag_ascii.gif" width="200" alt="Cat ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/cat_wag_blocks.gif" width="200" alt="Cat Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/cat_wag_braille.gif" width="200" alt="Cat Braille"> |
-
-### Animation Comparison
-
-| ASCII                                                                                                                                 | ColorBlocks                                                                                                                             | Braille                                                                                                                                   |
-|---------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif" width="250" alt="Video ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_blocks.gif" width="250" alt="Video Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_braille.gif" width="250" alt="Video Braille"> |
-
-**Video playback** - `consoleimage movie.mp4` (FFmpeg-powered, hardware accelerated)
-
-### Still Images
-
-| Landscape                                                                                                                                         | Portrait                                                                                                                                |
-|---------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_mountain_blocks.gif" width="350" alt="Mountain Landscape"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_blocks.gif" width="250" alt="Portrait"> |
-
-**High-fidelity ColorBlocks mode** - 2x vertical resolution with 24-bit color
-
-### Edge Detection
-
-| Standard                                                                                                                               | With Edge Detection                                                                                                                         |
-|----------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_ascii.gif" width="250" alt="Standard"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_edge.gif" width="250" alt="Edge Detection"> |
-
-**Enhanced foreground visibility** - `--edge` option uses Sobel edge detection
-
-### Character Set Presets
-
-| Extended (default)                                                                                                                     | Simple                                                                                                                                | Block                                                                                                                               |
-|----------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_ascii.gif" width="200" alt="Extended"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_simple.gif" width="200" alt="Simple"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_block.gif" width="200" alt="Block"> |
-
-**Multiple presets** - `-p simple`, `-p block`, `-p classic`, or `-p extended` (default)
-
-### Gamma Correction (Brightness)
-
-| No Gamma (1.0)                                                                                                                     | Default (0.85)                                                                                                                       | Brighter (0.7)                                                                                                                     |
-|------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_1.0.gif" width="200" alt="Gamma 1.0"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_0.85.gif" width="200" alt="Gamma 0.85"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_gamma_0.7.gif" width="200" alt="Gamma 0.7"> |
-
-**Automatic brightness compensation** - `--gamma` adjusts output brightness. Values < 1.0 brighten, > 1.0 darken.
-Default 0.85 compensates for character/dot density.
-
-### Animated GIF - Earth Rotation
-
-| ASCII                                                                                                                             | ColorBlocks                                                                                                                         | Braille                                                                                                                               |
-|-----------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_ascii.gif" width="200" alt="Earth ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_blocks.gif" width="200" alt="Earth Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/earth_braille.gif" width="200" alt="Earth Braille"> |
-
-**Smooth animation** - DECSET 2026 synchronized output with diff-based rendering
-
-### Matrix Mode (Digital Rain)
-
-| Classic Green                                                                                                                                  | Full Color                                                                                                                                            | Edge Reveal                                                                                                                                     |
-|------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_portrait_final.gif" width="200" alt="Matrix Classic"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_mountain_fullcolor.gif" width="200" alt="Matrix Full Color"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_edge_reveal.gif" width="200" alt="Matrix Edge Reveal"> |
-
-**The Matrix digital rain effect** - `--matrix` option with color presets (green, red, blue, amber, purple) or full
-color from source image.
-
-**Edge Detection Reveal** - `--matrix-edge-detect --matrix-bright-persist` makes rain "flash" brightly when crossing
-image edges, revealing the shape through the rain. Characters slow down and collect on horizontal edges like rain on
-shoulders.
-
-| Binary Rain                                                                                                                           | Custom Alphabet             |
-|---------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_binary.gif" width="200" alt="Matrix Binary"> | `--matrix-alphabet "HELLO"` |
-
-**Custom alphabets** - `--matrix-alphabet "01"` for binary rain, or any custom string like `"HELLO"`.
-
-[![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
-[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
 
 ## Features
 
@@ -257,6 +114,18 @@ shoulders.
 - **Edge-direction characters**: Uses directional chars (/ \ | -) based on detected edges
 - **AOT compatible**: Works with Native AOT compilation
 - **Cross-platform**: Windows, Linux, macOS (x64 and ARM64)
+
+<details>
+<summary><strong>What's New in v3.0</strong></summary>
+
+- **Braille is now the default** - Maximum resolution out of the box
+- **`-a, --ascii` option** - Use for classic ASCII mode (previous default)
+- **Video width defaults to 50** for braille (CPU intensive)
+- **Easter egg** - Run with no arguments for a surprise!
+- **MPEG-4 and AV1 codec support** - Hardware acceleration fallback
+
+See [CHANGELOG.md](CHANGELOG.md) for full history.
+</details>
 
 ## Installation
 
@@ -392,16 +261,16 @@ Console.WriteLine(AsciiArt.Render("photo.jpg"));
 
 ## Render Modes
 
-| Mode            | CLI Option               | Description                                     | Best For                          |
-|-----------------|--------------------------|-------------------------------------------------|-----------------------------------|
-| **ASCII**       | `--mode ascii` (default) | Shape-matched ASCII characters with ANSI colors | General use, widest compatibility |
-| **ColorBlocks** | `--mode blocks` or `-b`  | Unicode half-blocks (▀▄) with 24-bit color      | High fidelity, photos             |
-| **Braille**     | `--mode braille` or `-B` | Braille patterns (2×4 dots per cell)            | Maximum resolution                |
-| **iTerm2**      | `--mode iterm2`          | Native inline image protocol                    | iTerm2, WezTerm                   |
-| **Kitty**       | `--mode kitty`           | Native graphics protocol                        | Kitty terminal                    |
-| **Sixel**       | `--mode sixel`           | DEC Sixel graphics                              | xterm, mlterm, foot               |
+| Mode            | CLI Option                        | Description                                     | Best For                          |
+|-----------------|-----------------------------------|-------------------------------------------------|-----------------------------------|
+| **Braille**     | `--mode braille` or `-B` (default)| Braille patterns (2×4 dots per cell)            | **DEFAULT** - Maximum resolution  |
+| **ASCII**       | `--mode ascii` or `-a`            | Shape-matched ASCII characters with ANSI colors | Widest compatibility              |
+| **ColorBlocks** | `--mode blocks` or `-b`           | Unicode half-blocks (▀▄) with 24-bit color      | High fidelity, photos             |
+| **iTerm2**      | `--mode iterm2`                   | Native inline image protocol                    | iTerm2, WezTerm                   |
+| **Kitty**       | `--mode kitty`                    | Native graphics protocol                        | Kitty terminal                    |
+| **Sixel**       | `--mode sixel`                    | DEC Sixel graphics                              | xterm, mlterm, foot               |
 
-**Note:** Protocol modes (iTerm2, Kitty, Sixel) display true images in supported terminals. Use `--mode list` to see all
+**Note:** Braille mode is now the default (v3.0+). Protocol modes (iTerm2, Kitty, Sixel) display true images in supported terminals. Use `--mode list` to see all
 available modes.
 
 ## CLI Usage

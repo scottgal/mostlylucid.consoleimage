@@ -43,10 +43,10 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
 ## Quick Start
 
 ```bash
-# === IMAGES ===
-consoleimage photo.jpg                    # Render image to terminal
+# === IMAGES (braille mode is default in v3.0+) ===
+consoleimage photo.jpg                    # Braille mode (default)
+consoleimage photo.jpg --ascii            # Classic ASCII characters
 consoleimage photo.png --blocks           # High-fidelity color blocks (▀▄)
-consoleimage photo.png --braille          # Ultra-high resolution braille
 consoleimage photo.png --matrix           # Matrix digital rain effect
 consoleimage https://example.com/img.jpg  # Load from URL
 
@@ -78,9 +78,9 @@ consoleimage movie.cidz -o movie.gif      # Document to GIF
 
 | Mode | CLI Option | Description | Best For |
 |------|------------|-------------|----------|
-| **ASCII** | (default) | Shape-matched ASCII characters | General use, widest compatibility |
+| **Braille** | (default) | Braille patterns (2×4 dots/cell) | **DEFAULT** - Maximum resolution |
+| **ASCII** | `-a, --ascii` | Shape-matched ASCII characters | Widest compatibility |
 | **ColorBlocks** | `-b, --blocks` | Unicode half-blocks (▀▄) | High fidelity, photos |
-| **Braille** | `-B, --braille` | Braille patterns (2×4 dots/cell) | Maximum resolution |
 | **Matrix** | `-M, --matrix` | Digital rain effect | Stylized output |
 
 ## CLI Options
@@ -105,8 +105,9 @@ consoleimage movie.cidz -o movie.gif      # Document to GIF
 
 | Option | Description |
 |--------|-------------|
+| `-a, --ascii` | Use classic ASCII characters (v2.x default) |
 | `-b, --blocks` | Use colored Unicode half-blocks |
-| `-B, --braille` | Use braille characters |
+| `-B, --braille` | Use braille characters (DEFAULT) |
 | `-M, --matrix` | Use Matrix digital rain effect |
 | `--no-color` | Disable color output |
 
