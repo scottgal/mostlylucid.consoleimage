@@ -76,5 +76,11 @@ Generate-Sample $portrait "matrix_portrait_final.gif" "-w 60 --matrix --gif-leng
 Generate-Sample $mountain "matrix_mountain_fullcolor.gif" "-w 80 --matrix --matrix-fullcolor --gif-length 3" "Matrix Full Color"
 Generate-Sample $portrait "matrix_binary.gif" "-w 60 --matrix --matrix-alphabet 01 --gif-length 3" "Matrix Binary Rain"
 
+# Moviebill samples (logo animation)
+$moviebill = Join-Path (Join-Path $scriptDir "samples") "moviebill-logo.gif"
+Generate-Sample $moviebill "moviebill_ascii.gif" "-w 60" "Moviebill ASCII"
+Generate-Sample $moviebill "moviebill_blocks.gif" "-b -w 60" "Moviebill Blocks"
+Generate-Sample $moviebill "moviebill_braille.gif" "-B -w 60" "Moviebill Braille"
+
 Write-Host "`nDone! Samples generated in $samplesDir/" -ForegroundColor Green
 Write-Host "Remember to commit the updated samples to git." -ForegroundColor Cyan

@@ -26,7 +26,7 @@
 - **FFmpeg-style options** - Use `--ss` for start time, `-t` for duration
 - **Status line** - `--status` or `-S` shows progress, timing, file info during playback
 - **Temporal stability** - `--dejitter` reduces color flickering in animations
-- **Improved braille rendering** - Better full-color mode with edge-preserving dot selection
+- **Improved braille rendering** - Atkinson dithering, Otsu's threshold, color boost for vibrant output
 - **Standalone Player packages** - `mostlylucid.consoleimage.player` for embedding documents without ImageSharp
 
 ## What's New in 2.0
@@ -138,7 +138,7 @@ shoulders.
     - Ultra-high resolution braille characters (2×4 dots per cell, UTF-8 auto-enabled)
     - Native terminal protocols: iTerm2, Kitty, Sixel (auto-detected)
 - **Auto background detection**: Automatically detects dark/light backgrounds
-- **Floyd-Steinberg dithering**: Error diffusion for smoother gradient rendering
+- **Atkinson dithering**: High-contrast error diffusion for crisp braille output
 - **Adaptive thresholding**: Otsu's method for optimal braille binarization
 - **Edge-direction characters**: Uses directional chars (/ \ | -) based on detected edges
 - **AOT compatible**: Works with Native AOT compilation

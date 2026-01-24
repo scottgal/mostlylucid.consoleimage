@@ -68,20 +68,21 @@ Console.WriteLine(output);
 
 2x4 dots per character cell (8 dots total) for maximum detail. Uses advanced rendering techniques:
 
-- **Autocontrast**: Automatically adjusts threshold based on image's actual brightness range
-  (inspired by [img2braille](https://github.com/TheFel0x/img2braille))
-- **Selective Floyd-Steinberg dithering**: Error diffusion only in mid-tone regions for smooth
-  gradients while keeping dark/bright areas clean
-- **24-bit color support**: Each braille cell colored with averaged pixel color
+- **Atkinson dithering**: Bill Atkinson's algorithm (from MacPaint) produces higher contrast and
+  reduced speckling compared to Floyd-Steinberg - ideal for binary braille output
+- **Otsu's threshold**: Automatic optimal threshold for monochrome mode by maximizing between-class variance
+- **Generous thresholds for color**: Shows most dots (85%) so colors remain visible, only hiding truly dark pixels
+- **Color boost**: Automatic 25% saturation and 15% brightness boost to compensate for sparse dot coverage
+- **24-bit color support**: Each braille cell colored by the visible dots
 
 ```csharp
-using var renderer = new BrailleRenderer(new RenderOptions { MaxWidth = 80 });
+using var renderer = new BrailleRenderer(new RenderOptions { MaxWidth = 80, UseColor = true });
 string output = renderer.RenderFile("photo.jpg");
 Console.WriteLine(output);
 ```
 
-Best results with: photographs, gradients, detailed artwork. For line art, consider disabling
-dithering (`EnableDithering = false`) for sharper edges.
+Best results with: photographs, animations, and colorful images. Monochrome mode uses Otsu's
+threshold for optimal contrast.
 
 ### Matrix Mode (Digital Rain Effect)
 
@@ -394,7 +395,8 @@ This library implements techniques and algorithms from various sources:
 
 - **ASCII shape-matching**: Based on [Alex Harri's ASCII rendering approach](https://alexharri.com/blog/ascii-rendering)
 - **Braille autocontrast**: Inspired by [img2braille](https://github.com/TheFel0x/img2braille)
-- **Floyd-Steinberg dithering**: Classic error-diffusion algorithm for smooth gradients
+- **Floyd-Steinberg dithering**: Classic error-diffusion algorithm for smooth gradients (ASCII/ColorBlocks)
+- **Atkinson dithering**: Bill Atkinson's MacPaint algorithm for high-contrast braille output
 - **Braille Unicode mapping**: Standard Unicode Braille Patterns block (U+2800-U+28FF)
 
 ## License

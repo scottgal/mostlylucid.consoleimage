@@ -86,7 +86,10 @@
       "Bash(Select-String -Pattern \"color\")",
       "Bash(xxd:*)",
       "Bash(pushd:*)",
-      "Bash(popd)"
+      "Bash(popd)",
+      "WebFetch(domain:lachlanarthur.github.io)",
+      "WebFetch(domain:tannerhelland.com)",
+      "Bash(exit 0)"
     ]
   },
   "enableAllProjectMcpServers": true,

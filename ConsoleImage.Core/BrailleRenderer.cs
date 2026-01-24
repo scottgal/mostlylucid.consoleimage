@@ -121,12 +121,8 @@ public class BrailleRenderer : IDisposable
                     g = (byte)(totalG / colorCount);
                     b = (byte)(totalB / colorCount);
 
-                    if (_options.Gamma != 1.0f)
-                    {
-                        r = (byte)Math.Clamp(MathF.Pow(r / 255f, _options.Gamma) * 255f, 0, 255);
-                        g = (byte)Math.Clamp(MathF.Pow(g / 255f, _options.Gamma) * 255f, 0, 255);
-                        b = (byte)Math.Clamp(MathF.Pow(b / 255f, _options.Gamma) * 255f, 0, 255);
-                    }
+                    // Apply gamma correction and boost saturation/brightness for braille
+                    (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
                 }
 
                 cells[cy, cx] = new CellData(brailleChar, r, g, b);
@@ -156,35 +152,27 @@ public class BrailleRenderer : IDisposable
         var (minBrightness, maxBrightness) = GetBrightnessRangeFromBuffer(brightness);
         var invertMode = _options.Invert;
 
-        // For colored braille: use HYBRID mode
-        // This gives density proportional to brightness for more pleasing output
-        var useHybridMode = _options.UseColor;
-
-        // Calculate threshold for dot pattern mode
+        // For COLOR mode: show most dots, only hide truly dark pixels
+        // The color carries the detail, so we want dense output
+        // For MONOCHROME mode: use Otsu's method for optimal separation
         float threshold;
         if (_options.UseColor)
         {
-            // Colored mode with dots: be VERY generous with dots (dense output)
-            // Only suppress truly dark pixels in invert mode, or truly bright in non-invert
-            threshold = invertMode
-                ? minBrightness + (maxBrightness - minBrightness) * 0.15f  // Show 85% of brightness range as dots
-                : minBrightness + (maxBrightness - minBrightness) * 0.85f; // Show 85% as dots
+            // Color mode: use generous threshold to show most content
+            // In invert mode (dark terminal): only hide very dark pixels (< 15%)
+            // In normal mode (light terminal): only hide very bright pixels (> 85%)
+            threshold = invertMode ? 0.15f : 0.85f;
         }
         else
         {
-            // Monochrome mode: use standard mid-point threshold
-            var thresholdBias = invertMode ? 0.35f : 0.65f;
-            threshold = minBrightness + (maxBrightness - minBrightness) * thresholdBias;
+            // Monochrome: use Otsu's method for best separation
+            threshold = CalculateOtsuThreshold(brightness);
         }
 
-        // Apply Floyd-Steinberg dithering only when explicitly enabled
-        var useDithering = _options.EnableDithering;
-        if (useDithering && !useHybridMode)
-        {
-            brightness = ApplyFloydSteinbergDithering(brightness, pixelWidth, pixelHeight, threshold);
-            // After dithering, values are 0 or 1, so use 0.5 threshold
-            threshold = 0.5f;
-        }
+        // Apply Atkinson dithering for smooth gradients
+        brightness = ApplyAtkinsonDithering(brightness, pixelWidth, pixelHeight, threshold);
+        // After dithering, values are 0 or 1, so use 0.5 threshold
+        threshold = 0.5f;
 
         // Pre-size StringBuilder: each char cell needs ~20 bytes for ANSI codes + 1 char
         // Plus newlines and resets
@@ -246,29 +234,16 @@ public class BrailleRenderer : IDisposable
                         }
                     }
 
-                    // Determine braille pattern
-                    int brailleCode;
-
-                    if (useHybridMode)
+                    // Determine braille pattern using dithered threshold
+                    var brailleCode = 0;
+                    for (var i = 0; i < colorCount; i++)
                     {
-                        // Hybrid mode: uses local variance for edge detection (fast)
-                        brailleCode = CalculateHybridBrailleCode(
-                            cellBrightness, cellIndices, colorCount,
-                            minBrightness, maxBrightness, invertMode);
-                    }
-                    else
-                    {
-                        // Standard mode: threshold-based dot pattern
-                        brailleCode = 0;
-                        for (var i = 0; i < colorCount; i++)
-                        {
-                            var isDot = invertMode
-                                ? cellBrightness[i] > threshold
-                                : cellBrightness[i] < threshold;
+                        var isDot = invertMode
+                            ? cellBrightness[i] > threshold
+                            : cellBrightness[i] < threshold;
 
-                            if (isDot)
-                                brailleCode |= DotBits[cellIndices[i]];
-                        }
+                        if (isDot)
+                            brailleCode |= DotBits[cellIndices[i]];
                     }
 
                     var brailleChar = (char)(BrailleBase + brailleCode);
@@ -279,13 +254,9 @@ public class BrailleRenderer : IDisposable
                         var g = (byte)(totalG / colorCount);
                         var b = (byte)(totalB / colorCount);
 
-                        // Apply gamma correction
-                        if (_options.Gamma != 1.0f)
-                        {
-                            r = (byte)Math.Clamp(MathF.Pow(r / 255f, _options.Gamma) * 255f, 0, 255);
-                            g = (byte)Math.Clamp(MathF.Pow(g / 255f, _options.Gamma) * 255f, 0, 255);
-                            b = (byte)Math.Clamp(MathF.Pow(b / 255f, _options.Gamma) * 255f, 0, 255);
-                        }
+                        // Apply gamma correction and boost saturation/brightness for braille
+                        // Braille dots are sparse, so colors appear less vibrant
+                        (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
 
                         // Skip absolute black characters (invisible on dark terminal)
                         // This reduces file size and improves rendering
@@ -377,29 +348,16 @@ public class BrailleRenderer : IDisposable
                         }
                     }
 
-                    // Determine braille pattern
-                    int brailleCode;
-
-                    if (useHybridMode)
+                    // Determine braille pattern using dithered threshold
+                    var brailleCode = 0;
+                    for (var i = 0; i < colorCount; i++)
                     {
-                        // Hybrid mode: uses local variance for edge detection (fast)
-                        brailleCode = CalculateHybridBrailleCode(
-                            cellBrightness, cellIndices, colorCount,
-                            minBrightness, maxBrightness, invertMode);
-                    }
-                    else
-                    {
-                        // Standard mode: threshold-based dot pattern
-                        brailleCode = 0;
-                        for (var i = 0; i < colorCount; i++)
-                        {
-                            var isDot = invertMode
-                                ? cellBrightness[i] > threshold
-                                : cellBrightness[i] < threshold;
+                        var isDot = invertMode
+                            ? cellBrightness[i] > threshold
+                            : cellBrightness[i] < threshold;
 
-                            if (isDot)
-                                brailleCode |= DotBits[cellIndices[i]];
-                        }
+                        if (isDot)
+                            brailleCode |= DotBits[cellIndices[i]];
                     }
 
                     var brailleChar = (char)(BrailleBase + brailleCode);
@@ -410,13 +368,9 @@ public class BrailleRenderer : IDisposable
                         var g = (byte)(totalG / colorCount);
                         var b = (byte)(totalB / colorCount);
 
-                        // Apply gamma correction
-                        if (_options.Gamma != 1.0f)
-                        {
-                            r = (byte)Math.Clamp(MathF.Pow(r / 255f, _options.Gamma) * 255f, 0, 255);
-                            g = (byte)Math.Clamp(MathF.Pow(g / 255f, _options.Gamma) * 255f, 0, 255);
-                            b = (byte)Math.Clamp(MathF.Pow(b / 255f, _options.Gamma) * 255f, 0, 255);
-                        }
+                        // Apply gamma correction and boost saturation/brightness for braille
+                        // Braille dots are sparse, so colors appear less vibrant
+                        (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
 
                         // Skip absolute black characters (invisible on dark terminal)
                         // This reduces file size and improves rendering
@@ -600,35 +554,186 @@ public class BrailleRenderer : IDisposable
     }
 
     /// <summary>
-    ///     Apply Floyd-Steinberg dithering to brightness values for smoother gradients.
-    ///     Returns a new array with dithered values (0 or 1).
+    ///     Boost saturation and brightness for braille colors.
+    ///     Braille dots are sparse, so colors appear less vibrant than solid blocks.
+    ///     This compensates by increasing saturation ~20% and brightness ~10%.
     /// </summary>
-    private float[] ApplyFloydSteinbergDithering(float[] brightness, int width, int height, float threshold)
+    private static (byte r, byte g, byte b) BoostBrailleColor(byte r, byte g, byte b, float gamma)
+    {
+        // Convert to float for processing
+        float rf = r / 255f;
+        float gf = g / 255f;
+        float bf = b / 255f;
+
+        // Apply gamma correction first
+        if (gamma != 1.0f)
+        {
+            rf = MathF.Pow(rf, gamma);
+            gf = MathF.Pow(gf, gamma);
+            bf = MathF.Pow(bf, gamma);
+        }
+
+        // Boost saturation by ~20% and brightness by ~10%
+        // Convert RGB to HSL-ish, boost, convert back
+        var maxC = MathF.Max(rf, MathF.Max(gf, bf));
+        var minC = MathF.Min(rf, MathF.Min(gf, bf));
+        var delta = maxC - minC;
+
+        if (delta > 0.01f)
+        {
+            // Increase saturation: push colors away from gray
+            var mid = (maxC + minC) / 2f;
+            const float satBoost = 1.25f; // 25% more saturated
+            rf = mid + (rf - mid) * satBoost;
+            gf = mid + (gf - mid) * satBoost;
+            bf = mid + (bf - mid) * satBoost;
+        }
+
+        // Brightness boost: ~15%
+        const float brightBoost = 1.15f;
+        rf *= brightBoost;
+        gf *= brightBoost;
+        bf *= brightBoost;
+
+        // Clamp and convert back
+        return (
+            (byte)Math.Clamp(rf * 255f, 0, 255),
+            (byte)Math.Clamp(gf * 255f, 0, 255),
+            (byte)Math.Clamp(bf * 255f, 0, 255)
+        );
+    }
+
+    /// <summary>
+    ///     Calculate optimal threshold using Otsu's method.
+    ///     Maximizes between-class variance for best foreground/background separation.
+    /// </summary>
+    private float CalculateOtsuThreshold(float[] brightness)
+    {
+        const int histogramSize = 256;
+        var histogram = new int[histogramSize];
+        var totalPixels = brightness.Length;
+
+        // Build histogram
+        for (var i = 0; i < totalPixels; i++)
+        {
+            var bin = (int)(brightness[i] * 255);
+            bin = Math.Clamp(bin, 0, 255);
+            histogram[bin]++;
+        }
+
+        // Calculate total mean
+        var totalSum = 0f;
+        for (var i = 0; i < histogramSize; i++)
+            totalSum += i * histogram[i];
+
+        var sumB = 0f;
+        var wB = 0;
+        var maxVariance = 0f;
+        var optimalThreshold = 0;
+
+        // Find threshold that maximizes between-class variance
+        for (var t = 0; t < histogramSize; t++)
+        {
+            wB += histogram[t];
+            if (wB == 0) continue;
+
+            var wF = totalPixels - wB;
+            if (wF == 0) break;
+
+            sumB += t * histogram[t];
+
+            var mB = sumB / wB;
+            var mF = (totalSum - sumB) / wF;
+
+            var variance = (float)wB * wF * (mB - mF) * (mB - mF);
+
+            if (variance > maxVariance)
+            {
+                maxVariance = variance;
+                optimalThreshold = t;
+            }
+        }
+
+        return optimalThreshold / 255f;
+    }
+
+    /// <summary>
+    ///     Apply Atkinson dithering - best for braille due to high contrast and reduced speckling.
+    ///     Only propagates 6/8 of error (not full), producing cleaner binary output.
+    ///     Developed by Bill Atkinson at Apple for MacPaint.
+    /// </summary>
+    private float[] ApplyAtkinsonDithering(float[] brightness, int width, int height, float threshold)
     {
         // Normalize brightness values to 0-1 range based on min/max
         var (min, max) = GetBrightnessRangeFromBuffer(brightness);
         var range = max - min;
-        if (range < 0.01f) range = 1f; // Avoid division issues
+        if (range < 0.01f) range = 1f;
 
-        // Work with a copy to avoid modifying original
+        // Work with a copy
         var result = new float[brightness.Length];
-        for (var i = 0; i < brightness.Length; i++) result[i] = (brightness[i] - min) / range;
+        for (var i = 0; i < brightness.Length; i++)
+            result[i] = (brightness[i] - min) / range;
 
-        // Floyd-Steinberg error diffusion
+        // Atkinson error diffusion pattern:
+        //       X   1   1
+        //   1   1   1
+        //       1
+        // Divisor: 8 (but only distributes 6/8, rest is discarded)
+        // This creates higher contrast by not fully propagating error
         for (var y = 0; y < height; y++)
         for (var x = 0; x < width; x++)
         {
             var idx = y * width + x;
             var oldVal = result[idx];
-            var newVal = oldVal > 0.5f ? 1f : 0f;
+            var newVal = oldVal > threshold ? 1f : 0f;
+            result[idx] = newVal;
+            var error = (oldVal - newVal) / 8f;
+
+            // Distribute to 6 neighbors (only 6/8 of error propagated)
+            if (x + 1 < width)
+                result[idx + 1] += error;
+            if (x + 2 < width)
+                result[idx + 2] += error;
+            if (y + 1 < height)
+            {
+                if (x > 0)
+                    result[(y + 1) * width + (x - 1)] += error;
+                result[(y + 1) * width + x] += error;
+                if (x + 1 < width)
+                    result[(y + 1) * width + (x + 1)] += error;
+            }
+            if (y + 2 < height)
+                result[(y + 2) * width + x] += error;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    ///     Apply Floyd-Steinberg dithering - classic algorithm, good quality.
+    /// </summary>
+    private float[] ApplyFloydSteinbergDithering(float[] brightness, int width, int height, float threshold)
+    {
+        var (min, max) = GetBrightnessRangeFromBuffer(brightness);
+        var range = max - min;
+        if (range < 0.01f) range = 1f;
+
+        var result = new float[brightness.Length];
+        for (var i = 0; i < brightness.Length; i++) result[i] = (brightness[i] - min) / range;
+
+        // Floyd-Steinberg:
+        //       X   7
+        //   3   5   1
+        // Divisor: 16
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+        {
+            var idx = y * width + x;
+            var oldVal = result[idx];
+            var newVal = oldVal > threshold ? 1f : 0f;
             result[idx] = newVal;
             var error = oldVal - newVal;
 
-            // Distribute error to neighboring pixels
-            // Right:       7/16
-            // Below-left:  3/16
-            // Below:       5/16
-            // Below-right: 1/16
             if (x + 1 < width)
                 result[idx + 1] += error * (7f / 16f);
             if (y + 1 < height)
