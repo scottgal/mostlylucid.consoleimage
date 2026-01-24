@@ -1,0 +1,38 @@
+ConsoleImage.Player Release Notes
+==================================
+
+v3.0.0
+------
+- Added full .cidz compressed format support (GZip + delta compression)
+- Added FromCompressedBytes() for loading from embedded resources
+- Added FromCompressedStreamAsync() for loading from streams
+- Auto-detects format from file magic bytes (GZip, JSON, NDJSON)
+- Implements OptimizedDocument delta frame reconstruction
+- Zero external dependencies - uses only built-in .NET libraries:
+  - System.Text.Json (JSON parsing with AOT source generation)
+  - System.IO.Compression (GZip decompression)
+- Full AOT/Native AOT compatibility
+
+v2.0.0
+------
+- Initial release as separate NuGet package
+- Support for standard JSON documents
+- Support for streaming NDJSON format
+- ConsolePlayer with animation support
+- OnFrameChanged and OnLoopComplete events
+- Zero external dependencies
+- AOT compatible with source-generated JSON serialization
+
+Features
+--------
+- Zero dependencies beyond built-in .NET libraries
+- AOT/Native AOT compatible
+- Supports all ConsoleImage document formats:
+  - Compressed .cidz (GZip + delta encoding)
+  - Standard JSON
+  - Streaming NDJSON (JSON Lines)
+- Smooth animation playback with DECSET 2026
+- Speed multiplier and loop count overrides
+- Frame change events for progress tracking
+- Tiny footprint (~50KB)
+- Fast parsing (~100-300µs per frame)

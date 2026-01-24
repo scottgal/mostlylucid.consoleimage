@@ -196,6 +196,48 @@ jobs:
       run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
 
   # ============================================
+  # STEP 4: Publish Player (zero dependencies, runs parallel)
+  # ============================================
+  publish-player:
+    runs-on: ubuntu-latest
+    needs: [publish-core]
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Create version tag for MinVer
+      run: |
+        TAG="consoleimage-player-v${{ needs.publish-core.outputs.version }}"
+        if git rev-parse "$TAG" >/dev/null 2>&1; then
+          echo "Tag $TAG already exists, skipping creation"
+        else
+          git tag "$TAG"
+          echo "Created tag $TAG"
+        fi
+
+    - name: Build & Pack Player
+      run: |
+        dotnet restore ConsoleImage.Player/ConsoleImage.Player.csproj
+        dotnet pack ConsoleImage.Player/ConsoleImage.Player.csproj -c Release -o ./artifacts
+
+    - name: NuGet Login (OIDC)
+      id: nuget
+      uses: NuGet/login@v1
+      with:
+        user: 'mostlylucid'
+
+    - name: Publish Player to NuGet.org
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+    - name: Publish Player to GitHub Packages
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
+
+  # ============================================
   # Wait for Video to be available (for CLI verification)
   # ============================================
   wait-for-video:
@@ -373,7 +415,7 @@ jobs:
   # STEP 5: Create GitHub Release with all CLI binaries
   # ============================================
   release:
-    needs: [publish-core, publish-video, publish-spectre, build-cli]
+    needs: [publish-core, publish-video, publish-spectre, publish-player, build-cli]
     runs-on: ubuntu-latest
 
     steps:
@@ -471,8 +513,16 @@ jobs:
 
             ### NuGet Packages (for .NET developers)
             ```bash
+            # Full rendering library (requires ImageSharp)
             dotnet add package mostlylucid.consoleimage --version ${{ needs.publish-core.outputs.version }}
+
+            # Zero-dependency player for .cidz documents (AOT compatible)
+            dotnet add package mostlylucid.consoleimage.player --version ${{ needs.publish-core.outputs.version }}
+
+            # Video support (requires FFmpeg)
             dotnet add package mostlylucid.consoleimage.video --version ${{ needs.publish-core.outputs.version }}
+
+            # Spectre.Console integration
             dotnet add package mostlylucid.consoleimage.spectre --version ${{ needs.publish-core.outputs.version }}
             ```
 
@@ -495,7 +545,7 @@ jobs:
   # ============================================
   summary:
     runs-on: ubuntu-latest
-    needs: [publish-core, publish-video, publish-spectre, build-cli, release]
+    needs: [publish-core, publish-video, publish-spectre, publish-player, build-cli, release]
     if: always()
     steps:
     - name: Summary
@@ -506,6 +556,7 @@ jobs:
         echo "| Package | Version | NuGet |" >> $GITHUB_STEP_SUMMARY
         echo "|---------|---------|-------|" >> $GITHUB_STEP_SUMMARY
         echo "| mostlylucid.consoleimage | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage.player | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.player/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
         echo "| mostlylucid.consoleimage.video | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.video/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
         echo "| mostlylucid.consoleimage.spectre | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY

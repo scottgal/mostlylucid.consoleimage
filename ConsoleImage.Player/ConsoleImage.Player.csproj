@@ -31,6 +31,7 @@
 
     <ItemGroup>
         <None Include="README.md" Pack="true" PackagePath="README.md"/>
+        <None Include="ReleaseNotes.txt" Pack="true" PackagePath="ReleaseNotes.txt"/>
         <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')"/>
     </ItemGroup>
 

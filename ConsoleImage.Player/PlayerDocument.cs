@@ -1,6 +1,8 @@
 // PlayerDocument - Minimal document model for playing back ConsoleImage JSON
-// Zero dependencies beyond System.Text.Json (built-in)
+// Zero dependencies beyond System.Text.Json and System.IO.Compression (built-in)
 
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -20,11 +22,15 @@ namespace ConsoleImage.Player;
 [JsonSerializable(typeof(StreamingHeader))]
 [JsonSerializable(typeof(StreamingFrame))]
 [JsonSerializable(typeof(StreamingFooter))]
+[JsonSerializable(typeof(OptimizedDocument))]
+[JsonSerializable(typeof(OptimizedFrame))]
+[JsonSerializable(typeof(List<OptimizedFrame>))]
+[JsonSerializable(typeof(string[]))]
 public partial class PlayerJsonContext : JsonSerializerContext;
 
 /// <summary>
 ///     Minimal document model for playing ConsoleImage JSON documents.
-///     Compatible with both standard JSON and streaming NDJSON formats.
+///     Compatible with compressed .cidz, standard JSON, and streaming NDJSON formats.
 /// </summary>
 public class PlayerDocument
 {
@@ -86,7 +92,7 @@ public class PlayerDocument
     public int TotalDurationMs => Frames.Sum(f => f.DelayMs);
 
     /// <summary>
-    ///     Load a document from a JSON file (auto-detects format)
+    ///     Load a document from a file (auto-detects format: .cidz, .json, .ndjson)
     /// </summary>
     /// <exception cref="FileNotFoundException">File does not exist</exception>
     /// <exception cref="JsonException">Invalid JSON format</exception>
@@ -94,6 +100,20 @@ public class PlayerDocument
     {
         if (!File.Exists(path))
             throw new FileNotFoundException($"Document not found: {path}", path);
+
+        // Check magic bytes for format detection
+        await using var checkStream = File.OpenRead(path);
+        var magic = new byte[2];
+        var read = await checkStream.ReadAsync(magic, ct);
+        checkStream.Position = 0;
+
+        // GZip magic: 0x1F 0x8B
+        if (read >= 2 && magic[0] == 0x1F && magic[1] == 0x8B)
+        {
+            return await LoadCompressedAsync(checkStream, ct);
+        }
+
+        checkStream.Close();
 
         // Check if streaming NDJSON format
         if (await IsStreamingFormatAsync(path, ct))
@@ -114,8 +134,38 @@ public class PlayerDocument
         if (json.StartsWith("{") && json.Contains("\"@type\":\"ConsoleImageDocumentHeader\""))
             return LoadStreamingFromString(json);
 
+        // Check for optimized format
+        if (json.Contains("\"@type\":\"OptimizedConsoleImageDocument\"") ||
+            json.Contains("\"@type\": \"OptimizedConsoleImageDocument\""))
+        {
+            return LoadOptimizedFromString(json);
+        }
+
         return JsonSerializer.Deserialize(json, PlayerJsonContext.Default.PlayerDocument)
                ?? throw new InvalidOperationException("Failed to deserialize document");
+    }
+
+    /// <summary>
+    ///     Load a document from GZip-compressed bytes (.cidz format)
+    /// </summary>
+    public static PlayerDocument FromCompressedBytes(byte[] data)
+    {
+        using var ms = new MemoryStream(data);
+        using var gzip = new GZipStream(ms, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzip, Encoding.UTF8);
+        var json = reader.ReadToEnd();
+        return FromJson(json);
+    }
+
+    /// <summary>
+    ///     Load a document from a GZip-compressed stream
+    /// </summary>
+    public static async Task<PlayerDocument> FromCompressedStreamAsync(Stream stream, CancellationToken ct = default)
+    {
+        await using var gzip = new GZipStream(stream, CompressionMode.Decompress, leaveOpen: true);
+        using var reader = new StreamReader(gzip, Encoding.UTF8);
+        var json = await reader.ReadToEndAsync(ct);
+        return FromJson(json);
     }
 
     /// <summary>
@@ -125,6 +175,23 @@ public class PlayerDocument
     {
         foreach (var frame in Frames)
             yield return frame;
+    }
+
+    private static async Task<PlayerDocument> LoadCompressedAsync(Stream stream, CancellationToken ct)
+    {
+        await using var gzip = new GZipStream(stream, CompressionMode.Decompress, leaveOpen: true);
+        using var reader = new StreamReader(gzip, Encoding.UTF8);
+        var json = await reader.ReadToEndAsync(ct);
+        return FromJson(json);
+    }
+
+    private static PlayerDocument LoadOptimizedFromString(string json)
+    {
+        var optimized = JsonSerializer.Deserialize(json, PlayerJsonContext.Default.OptimizedDocument);
+        if (optimized == null)
+            throw new InvalidOperationException("Failed to deserialize optimized document");
+
+        return optimized.ToPlayerDocument();
     }
 
     private static async Task<bool> IsStreamingFormatAsync(string path, CancellationToken ct)
@@ -321,4 +388,246 @@ public class StreamingFooter
     public int FrameCount { get; set; }
     public int TotalDurationMs { get; set; }
     public bool IsComplete { get; set; }
+}
+
+// Types for optimized/compressed format (.cidz)
+
+/// <summary>
+///     Optimized document format with global color palette and delta compression.
+/// </summary>
+public class OptimizedDocument
+{
+    [JsonPropertyName("@type")]
+    public string Type { get; set; } = "OptimizedConsoleImageDocument";
+
+    public string Version { get; set; } = "3.1";
+    public DateTime Created { get; set; }
+    public string? SourceFile { get; set; }
+    public string RenderMode { get; set; } = "ASCII";
+    public PlayerSettings Settings { get; set; } = new();
+
+    /// <summary>
+    ///     Global color palette - each entry is "RRGGBB" hex string.
+    ///     Index 0 is reserved for "no color" (use terminal default).
+    /// </summary>
+    public string[] Palette { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    ///     Keyframe interval for delta encoding.
+    /// </summary>
+    public int KeyframeInterval { get; set; } = 30;
+
+    /// <summary>
+    ///     Optimized frames - mix of keyframes and delta frames.
+    /// </summary>
+    public List<OptimizedFrame> Frames { get; set; } = new();
+
+    /// <summary>
+    ///     Convert optimized document to standard PlayerDocument by reconstructing frames.
+    /// </summary>
+    public PlayerDocument ToPlayerDocument()
+    {
+        var doc = new PlayerDocument
+        {
+            Type = "ConsoleImageDocument",
+            Version = Version,
+            Created = Created,
+            SourceFile = SourceFile,
+            RenderMode = RenderMode,
+            Settings = Settings
+        };
+
+        string? prevChars = null;
+        List<int>? prevIndices = null;
+
+        foreach (var frame in Frames)
+        {
+            string chars;
+            List<int> indices;
+
+            if (frame.IsKeyframe)
+            {
+                // Keyframe - use stored characters and decompress color indices
+                chars = frame.Characters ?? "";
+                indices = DecompressColorIndices(frame.ColorIndices);
+            }
+            else
+            {
+                // Delta frame - apply changes to previous frame
+                if (prevChars == null || prevIndices == null)
+                {
+                    // No previous frame - skip this delta (shouldn't happen in valid files)
+                    continue;
+                }
+                (chars, indices) = ApplyDelta(prevChars, prevIndices, frame.Delta ?? "");
+            }
+
+            // Rebuild ANSI content from characters and colors
+            var content = RebuildAnsiContent(chars, indices, Palette);
+
+            doc.Frames.Add(new PlayerFrame
+            {
+                Content = content,
+                DelayMs = frame.DelayMs,
+                Width = frame.Width,
+                Height = frame.Height
+            });
+
+            prevChars = chars;
+            prevIndices = indices;
+        }
+
+        return doc;
+    }
+
+    private static List<int> DecompressColorIndices(string? compressed)
+    {
+        var result = new List<int>();
+        if (string.IsNullOrEmpty(compressed)) return result;
+
+        foreach (var run in compressed.Split(';'))
+        {
+            if (string.IsNullOrEmpty(run)) continue;
+            var parts = run.Split(',');
+            var idx = int.Parse(parts[0]);
+            var count = parts.Length > 1 ? int.Parse(parts[1]) : 1;
+            for (int i = 0; i < count; i++)
+                result.Add(idx);
+        }
+
+        return result;
+    }
+
+    private static (string chars, List<int> indices) ApplyDelta(string prevChars, List<int> prevIndices, string delta)
+    {
+        var chars = prevChars.ToCharArray();
+        var indices = new List<int>(prevIndices);
+
+        if (string.IsNullOrEmpty(delta))
+            return (new string(chars), indices);
+
+        foreach (var change in delta.Split(';'))
+        {
+            if (string.IsNullOrEmpty(change)) continue;
+
+            var colonIdx = change.IndexOf(':');
+            if (colonIdx < 0) continue;
+
+            var pos = int.Parse(change.Substring(0, colonIdx));
+            var rest = change.Substring(colonIdx + 1);
+            var parts = rest.Split(',');
+
+            if (parts.Length >= 2)
+            {
+                var newChars = UnescapeDeltaChars(parts[0]);
+                var colorIdx = int.Parse(parts[1]);
+                var count = parts.Length > 2 ? int.Parse(parts[2]) : 1;
+
+                for (int i = 0; i < count && pos + i < chars.Length; i++)
+                {
+                    chars[pos + i] = i < newChars.Length ? newChars[i] : ' ';
+                    while (indices.Count <= pos + i) indices.Add(0);
+                    indices[pos + i] = colorIdx;
+                }
+            }
+        }
+
+        return (new string(chars), indices);
+    }
+
+    private static string UnescapeDeltaChars(string s)
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '\\' && i + 1 < s.Length)
+            {
+                sb.Append(s[i + 1] switch
+                {
+                    'c' => ':',
+                    'm' => ',',
+                    's' => ';',
+                    'n' => '\n',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    _ => s[i + 1]
+                });
+                i++;
+            }
+            else
+            {
+                sb.Append(s[i]);
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string RebuildAnsiContent(string chars, List<int> indices, string[] palette)
+    {
+        var sb = new StringBuilder();
+        var lastColorIdx = -1;
+
+        for (int i = 0; i < chars.Length; i++)
+        {
+            var colorIdx = i < indices.Count ? indices[i] : 0;
+
+            if (colorIdx != lastColorIdx)
+            {
+                if (colorIdx == 0 || colorIdx >= palette.Length || string.IsNullOrEmpty(palette[colorIdx]))
+                {
+                    sb.Append("\x1b[0m");
+                }
+                else
+                {
+                    var hex = palette[colorIdx];
+                    if (hex.Length >= 6)
+                    {
+                        var r = Convert.ToInt32(hex.Substring(0, 2), 16);
+                        var g = Convert.ToInt32(hex.Substring(2, 2), 16);
+                        var b = Convert.ToInt32(hex.Substring(4, 2), 16);
+                        sb.Append($"\x1b[38;2;{r};{g};{b}m");
+                    }
+                }
+                lastColorIdx = colorIdx;
+            }
+
+            sb.Append(chars[i]);
+
+            // Reset at end of line to prevent color bleeding
+            if (chars[i] == '\n' && lastColorIdx != 0)
+            {
+                sb.Insert(sb.Length - 1, "\x1b[0m");
+                lastColorIdx = 0;
+            }
+        }
+
+        if (lastColorIdx != 0)
+        {
+            sb.Append("\x1b[0m");
+        }
+
+        return sb.ToString();
+    }
+}
+
+/// <summary>
+///     Optimized frame - can be keyframe (full) or delta (changes only).
+/// </summary>
+public class OptimizedFrame
+{
+    /// <summary>True = full keyframe, False = delta from previous frame.</summary>
+    public bool IsKeyframe { get; set; } = true;
+
+    /// <summary>Plain characters without ANSI codes (keyframes only).</summary>
+    public string? Characters { get; set; }
+
+    /// <summary>RLE-compressed color indices (keyframes only).</summary>
+    public string? ColorIndices { get; set; }
+
+    /// <summary>Delta encoding - changes from previous frame (delta frames only).</summary>
+    public string? Delta { get; set; }
+
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public int DelayMs { get; set; }
 }
