@@ -65,6 +65,9 @@ public class CliOptions
     public Option<bool> NoFfmpegDownload { get; }
     public Option<bool> FfmpegYes { get; }
 
+    // yt-dlp (YouTube support)
+    public Option<string?> YtdlpPath { get; }
+
     // Output
     public Option<string?> Output { get; }
     public Option<bool> Info { get; }
@@ -103,6 +106,17 @@ public class CliOptions
     // Temporal stability
     public Option<bool> Dejitter { get; }
     public Option<int?> ColorThreshold { get; }
+
+    // Slideshow mode
+    public Option<float> SlideDelay { get; }
+    public Option<bool> Shuffle { get; }
+    public Option<bool> Recursive { get; }
+    public Option<string> SortBy { get; }
+    public Option<bool> SortDesc { get; }
+    public Option<bool> SortAsc { get; }
+    public Option<float> VideoPreview { get; }
+    public Option<bool> GifLoop { get; }
+    public Option<bool> HideSlideInfo { get; }
 
     public CliOptions()
     {
@@ -225,8 +239,10 @@ public class CliOptions
         // FFmpeg
         FfmpegPath = new Option<string?>("--ffmpeg-path") { Description = "Path to FFmpeg executable" };
         NoFfmpegDownload = new Option<bool>("--no-ffmpeg-download") { Description = "Don't auto-download FFmpeg" };
-        FfmpegYes = new Option<bool>("--yes") { Description = "Auto-confirm FFmpeg download" };
+        FfmpegYes = new Option<bool>("--yes") { Description = "Auto-confirm FFmpeg/yt-dlp download" };
         FfmpegYes.Aliases.Add("-y");
+
+        YtdlpPath = new Option<string?>("--ytdlp-path") { Description = "Path to yt-dlp executable (for YouTube URLs)" };
 
         // Output
         Output = new Option<string?>("--output") { Description = "Output file (.gif, .cidz, .json)" };
@@ -290,6 +306,56 @@ public class CliOptions
         Dejitter.Aliases.Add("--stabilize");
 
         ColorThreshold = new Option<int?>("--color-threshold") { Description = "Color stability threshold (0-255, default 15)" };
+
+        // Slideshow mode
+        SlideDelay = new Option<float>("--slide-delay") { Description = "Delay between images in seconds (0 = manual only, no auto-advance)" };
+        SlideDelay.DefaultValueFactory = _ => 3.0f;
+        SlideDelay.Aliases.Add("--interval");
+        SlideDelay.Aliases.Add("-d");
+
+        Shuffle = new Option<bool>("--shuffle") { Description = "Randomize image order (slideshow mode)" };
+
+        Recursive = new Option<bool>("--recursive") { Description = "Include subdirectories (slideshow mode)" };
+        Recursive.Aliases.Add("-R");
+
+        SortBy = new Option<string>("--sort") { Description = "Sort order: name, date, size, random (slideshow mode)" };
+        SortBy.DefaultValueFactory = _ => "date";
+        SortBy.Aliases.Add("--order-by");
+
+        SortDesc = new Option<bool>("--desc") { Description = "Sort descending (slideshow mode, default: true for newest first)" };
+        SortDesc.DefaultValueFactory = _ => true;
+
+        SortAsc = new Option<bool>("--asc") { Description = "Sort ascending (oldest first, slideshow mode)" };
+
+        VideoPreview = new Option<float>("--video-preview") { Description = "Max video preview duration in seconds (slideshow mode)" };
+        VideoPreview.DefaultValueFactory = _ => 30.0f;
+        VideoPreview.Aliases.Add("--preview");
+
+        GifLoop = new Option<bool>("--gif-loop") { Description = "Loop GIFs in slideshow (default: play once)" };
+
+        HideSlideInfo = new Option<bool>("--hide-info") { Description = "Hide [1/N] filename header in slideshow" };
+        HideSlideInfo.Aliases.Add("--no-header");
+    }
+
+    /// <summary>
+    /// Check if input looks like a glob pattern or directory for slideshow mode.
+    /// </summary>
+    public static bool IsSlideshowInput(string? input)
+    {
+        if (string.IsNullOrEmpty(input)) return false;
+
+        // URLs are never slideshows (YouTube URLs contain '?' which would match glob)
+        if (input.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            input.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Glob patterns
+        if (input.Contains('*') || input.Contains('?')) return true;
+
+        // Directory
+        if (Directory.Exists(input)) return true;
+
+        return false;
     }
 
     /// <summary>
@@ -345,6 +411,7 @@ public class CliOptions
         command.Options.Add(FfmpegPath);
         command.Options.Add(NoFfmpegDownload);
         command.Options.Add(FfmpegYes);
+        command.Options.Add(YtdlpPath);
 
         command.Options.Add(Output);
         command.Options.Add(Info);
@@ -378,5 +445,16 @@ public class CliOptions
 
         command.Options.Add(Dejitter);
         command.Options.Add(ColorThreshold);
+
+        // Slideshow mode
+        command.Options.Add(SlideDelay);
+        command.Options.Add(Shuffle);
+        command.Options.Add(Recursive);
+        command.Options.Add(SortBy);
+        command.Options.Add(SortDesc);
+        command.Options.Add(SortAsc);
+        command.Options.Add(VideoPreview);
+        command.Options.Add(GifLoop);
+        command.Options.Add(HideSlideInfo);
     }
 }

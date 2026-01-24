@@ -48,10 +48,13 @@ Provides the following MCP tools:
 |------------------------|----------------------------------------------------------------------|
 | `render_image`         | Render image/GIF to ASCII art (ascii, blocks, braille, matrix modes) |
 | `render_to_gif`        | Create animated GIF from image/GIF source                            |
+| `render_video`         | Render video file to animated ASCII art GIF (NEW in v3.1)            |
 | `extract_frames`       | Extract raw video frames to GIF (no ASCII rendering)                 |
 | `get_image_info`       | Get detailed image metadata (format, dimensions, EXIF, color depth)  |
 | `get_gif_info`         | Get GIF metadata (dimensions, frame count)                           |
 | `get_video_info`       | Get video file info via FFmpeg                                       |
+| `check_youtube_url`    | Check if URL is a YouTube video (NEW in v3.1)                        |
+| `get_youtube_stream`   | Extract direct stream URL from YouTube (NEW in v3.1)                 |
 | `list_render_modes`    | List available render modes with descriptions                        |
 | `list_matrix_presets`  | List Matrix digital rain color presets                               |
 | `compare_render_modes` | Render same image in all modes for comparison                        |
@@ -308,6 +311,57 @@ Extracts raw video frames to an animated GIF file. No ASCII rendering - preserve
 - "Extract 8 keyframes from video.mp4 as a GIF"
 - "Create a thumbnail GIF from the first 5 seconds of movie.mp4"
 - "Extract scene changes from video.mp4 using smart keyframe detection"
+
+### render_video
+
+Renders a video file to an animated ASCII art GIF. Requires FFmpeg (auto-downloads on first use).
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `inputPath` | string | (required) | Path to video file (MP4, MKV, AVI, WebM, etc.) |
+| `outputPath` | string | (required) | Path for the output GIF file |
+| `mode` | string | `"braille"` | Render mode: `braille` (default), `ascii`, `blocks`, or `matrix` |
+| `width` | int | `60` | Width in characters |
+| `startTime` | double | `0` | Start time in seconds |
+| `duration` | double | `10` | Duration in seconds |
+| `fps` | int | `10` | Target frames per second |
+| `fontSize` | int | `10` | Font size for GIF rendering |
+| `maxColors` | int | `64` | Max colors in GIF palette |
+
+**Example prompts:**
+
+- "Render movie.mp4 to ASCII art GIF"
+- "Create a braille animation from video.mp4, first 5 seconds"
+- "Convert video.mkv to matrix-style GIF at 80 characters wide"
+
+### check_youtube_url
+
+Check if a URL is a YouTube video and whether yt-dlp is available.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | string | (required) | URL to check |
+
+**Returns:** JSON with `isYouTubeUrl`, `ytdlpAvailable`, `status`
+
+### get_youtube_stream
+
+Extract the direct video stream URL from a YouTube video. Requires yt-dlp (auto-downloads on first use, ~10MB).
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | string | (required) | YouTube video URL |
+| `maxHeight` | int | `null` | Maximum video height (e.g., 720, 1080) |
+
+**Returns:** JSON with `videoUrl`, `title`, and status information
+
+**Example prompts:**
+
+- "Get the stream URL for this YouTube video"
+- "Extract the 720p stream from https://youtu.be/..."
 
 ### get_gif_info
 

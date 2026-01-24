@@ -25,9 +25,16 @@ ConsoleImage/
 │   ├── EdgeDirection.cs         # Edge detection and directional chars
 │   ├── CalibrationHelper.cs     # Aspect ratio calibration with circle test pattern
 │   ├── ConsoleHelper.cs         # Windows ANSI support enabler
-│   └── StatusLine.cs            # Status display below rendered output
+│   ├── StatusLine.cs            # Status display below rendered output
+│   ├── UrlHelper.cs             # URL detection and download helpers
+│   └── YtdlpProvider.cs         # YouTube support via yt-dlp (auto-download)
 ├── ConsoleImage/                # CLI tool for images/GIFs
 │   ├── Program.cs               # Command-line interface
+│   ├── CliOptions.cs            # CLI option definitions
+│   ├── Handlers/
+│   │   ├── SlideshowHandler.cs  # Directory/glob slideshow with keyboard control
+│   │   ├── ImageHandler.cs      # Single image/GIF rendering
+│   │   └── VideoHandler.cs      # Video playback via FFmpeg
 │   └── calibration.json         # Saved aspect ratio calibration
 ├── ConsoleImage.Video.Core/     # Video playback library (FFmpeg-based)
 │   ├── FFmpegService.cs         # FFmpeg process management
@@ -311,6 +318,103 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `--save` - Save calibration to calibration.json
 - `--no-color` - Disable color output (greyscale for blocks/braille)
 - `--no-animate` - Show first frame only
+
+### Slideshow Mode
+
+Pass a directory or glob pattern to enter slideshow mode for browsing multiple images:
+
+```bash
+# Slideshow from directory (newest first by default)
+consoleimage ./photos
+
+# Slideshow with glob pattern
+consoleimage "C:\Pictures\*.jpg"
+consoleimage "./vacation/d*.png"
+
+# Recursive (include subdirectories)
+consoleimage ./photos -R
+
+# Shuffle order
+consoleimage ./photos --shuffle
+
+# Sort options: name, date, size, random
+consoleimage ./photos --sort name --asc
+
+# Manual navigation only (no auto-advance)
+consoleimage ./photos --slide-delay 0
+
+# Custom delay between slides (default: 3 seconds)
+consoleimage ./photos --slide-delay 5
+
+# Output slideshow as GIF
+consoleimage ./photos -o slideshow.gif --slide-delay 2
+
+# Hide the [1/N] filename header
+consoleimage ./photos --hide-info
+```
+
+**Slideshow Controls:**
+- `Space` - Pause/resume auto-advance
+- `Left/Right` arrows - Previous/next image
+- `Up/Down` arrows - Previous/next image (alternate)
+- `Home/End` - Jump to first/last image
+- `N/P` - Next/previous (vim-style)
+- `Q` or `Escape` - Quit slideshow
+
+**Slideshow Options:**
+- `-d, --slide-delay` - Seconds between slides (0 = manual only, default: 3)
+- `--shuffle` - Randomize image order
+- `-R, --recursive` - Include subdirectories
+- `--sort` - Sort by: name, date, size, random (default: date)
+- `--desc` - Sort descending (default for date = newest first)
+- `--asc` - Sort ascending (oldest first)
+- `--video-preview` - Max video preview duration in seconds (default: 30)
+- `--gif-loop` - Loop GIFs continuously (default: play once)
+- `--hide-info` - Hide the [1/N] filename header
+
+### YouTube Support
+
+Play YouTube videos directly by passing a URL:
+
+```bash
+# Play YouTube video (yt-dlp required)
+consoleimage "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+consoleimage "https://youtu.be/dQw4w9WgXcQ"
+
+# YouTube Shorts
+consoleimage "https://youtube.com/shorts/abc123"
+
+# With render options
+consoleimage "https://youtu.be/xyz" -w 80 --blocks
+
+# Output YouTube video to GIF
+consoleimage "https://youtu.be/xyz" -o output.gif --duration 10
+
+# Specify custom yt-dlp path
+consoleimage "https://youtu.be/xyz" --ytdlp-path /path/to/yt-dlp
+
+# Auto-confirm yt-dlp download
+consoleimage "https://youtu.be/xyz" -y
+```
+
+**yt-dlp Requirement:**
+YouTube support requires [yt-dlp](https://github.com/yt-dlp/yt-dlp) to extract video streams.
+
+If yt-dlp is not found, ConsoleImage will offer to download it automatically (~10MB).
+Install manually with:
+- Windows: `winget install yt-dlp` or `pip install yt-dlp`
+- macOS: `brew install yt-dlp`
+- Linux: `pip install yt-dlp` or `sudo apt install yt-dlp`
+
+**YouTube Options:**
+- `--ytdlp-path` - Path to yt-dlp executable
+- `-y, --yes` - Auto-confirm yt-dlp download (no prompt)
+
+**How it works:**
+1. Detects YouTube URL patterns (youtube.com, youtu.be, shorts)
+2. Uses yt-dlp to extract the direct video stream URL
+3. Passes the stream URL to FFmpeg for playback
+4. For ASCII rendering, requests lower resolution (480p) for efficiency
 
 ## Build
 

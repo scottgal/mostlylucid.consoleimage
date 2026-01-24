@@ -32,6 +32,8 @@ await app.RunAsync();
 [JsonSerializable(typeof(DetailedImageInfo))]
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(ExtractFramesResult))]
+[JsonSerializable(typeof(RenderVideoResult))]
+[JsonSerializable(typeof(YouTubeInfoResult))]
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 internal partial class McpJsonContext : JsonSerializerContext
 {
@@ -82,6 +84,25 @@ internal record ExtractFramesResult(
     int Height,
     double FileSizeKB,
     string? Message = null
+);
+
+internal record RenderVideoResult(
+    bool Success,
+    string OutputPath,
+    int FrameCount,
+    string Mode,
+    int Width,
+    int Height,
+    double FileSizeKB,
+    string? Message = null
+);
+
+internal record YouTubeInfoResult(
+    bool IsYouTubeUrl,
+    bool YtdlpAvailable,
+    string Status,
+    string? VideoUrl = null,
+    string? Title = null
 );
 
 /// <summary>
@@ -699,6 +720,188 @@ public sealed class ConsoleImageTools
         catch (Exception ex)
         {
             return $"Error comparing modes: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    ///     Render a video file to an animated GIF with ASCII art
+    /// </summary>
+    [McpServerTool(Name = "render_video")]
+    [Description("Render a video file (MP4, MKV, AVI, WebM) to an animated ASCII art GIF. Requires FFmpeg (auto-downloads on first use).")]
+    public static async Task<string> RenderVideo(
+        [Description("Path to the video file")]
+        string inputPath,
+        [Description("Path for the output GIF file")]
+        string outputPath,
+        [Description("Render mode: ascii, blocks, braille, or matrix")]
+        string mode = "braille",
+        [Description("Width in characters (default: 60)")]
+        int width = 60,
+        [Description("Start time in seconds (default: 0)")]
+        double startTime = 0,
+        [Description("Duration in seconds (default: 10)")]
+        double duration = 10,
+        [Description("Target FPS (default: 10)")]
+        int fps = 10,
+        [Description("Font size for GIF rendering (default: 10)")]
+        int fontSize = 10,
+        [Description("Max colors in GIF palette (default: 64)")]
+        int maxColors = 64)
+    {
+        if (!File.Exists(inputPath))
+            return $"Error: File not found: {inputPath}";
+
+        try
+        {
+            using var ffmpeg = new FFmpegService();
+            await ffmpeg.InitializeAsync(null, CancellationToken.None);
+
+            var videoInfo = await ffmpeg.GetVideoInfoAsync(inputPath);
+            if (videoInfo == null)
+                return "Error: Could not read video info";
+
+            var options = new RenderOptions
+            {
+                MaxWidth = width,
+                UseColor = true
+            };
+
+            var gifOptions = new GifWriterOptions
+            {
+                FontSize = fontSize,
+                MaxColors = maxColors,
+                LoopCount = 0
+            };
+
+            using var gifWriter = new GifWriter(gifOptions);
+            var frameCount = 0;
+            var endTime = startTime + duration;
+            var targetHeight = (int)(width / (videoInfo.Width / (double)videoInfo.Height) * 0.5);
+
+            await foreach (var frame in ffmpeg.StreamFramesAsync(
+                inputPath, width, targetHeight, startTime, endTime, 1, fps,
+                videoInfo.VideoCodec, CancellationToken.None))
+            {
+                var delayMs = (int)(1000.0 / fps);
+                switch (mode.ToLowerInvariant())
+                {
+                    case "blocks" or "colorblocks":
+                        using (var renderer = new ColorBlockRenderer(options))
+                        {
+                            var content = renderer.RenderImage(frame);
+                            var rendered = new ColorBlockFrame(content, delayMs);
+                            gifWriter.AddColorBlockFrame(rendered, delayMs);
+                        }
+                        break;
+
+                    case "braille":
+                        using (var renderer = new BrailleRenderer(options))
+                        {
+                            var rendered = renderer.RenderImageToFrame(frame);
+                            gifWriter.AddBrailleFrame(rendered, delayMs);
+                        }
+                        break;
+
+                    case "matrix":
+                        using (var renderer = new MatrixRenderer(options, MatrixOptions.ClassicGreen))
+                        {
+                            var rendered = renderer.RenderImage(frame);
+                            gifWriter.AddMatrixFrame(rendered);
+                        }
+                        break;
+
+                    default:
+                        using (var renderer = new AsciiRenderer(options))
+                        {
+                            var rendered = renderer.RenderImage(frame);
+                            gifWriter.AddFrame(rendered, delayMs);
+                        }
+                        break;
+                }
+
+                frame.Dispose();
+                frameCount++;
+
+                if (frameCount >= fps * duration)
+                    break;
+            }
+
+            gifWriter.Save(outputPath);
+
+            var fileInfo = new FileInfo(outputPath);
+            var result = new RenderVideoResult(true, outputPath, frameCount, mode, width, targetHeight,
+                fileInfo.Length / 1024.0, $"Rendered {frameCount} frames in {mode} mode");
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.RenderVideoResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error rendering video: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    ///     Check if a URL is a YouTube video and get status
+    /// </summary>
+    [McpServerTool(Name = "check_youtube_url")]
+    [Description("Check if a URL is a YouTube video and whether yt-dlp is available to process it.")]
+    public static string CheckYouTubeUrl(
+        [Description("URL to check")]
+        string url)
+    {
+        try
+        {
+            var isYouTube = YtdlpProvider.IsYouTubeUrl(url);
+            var ytdlpAvailable = YtdlpProvider.IsAvailable();
+            var status = YtdlpProvider.GetStatus();
+
+            var result = new YouTubeInfoResult(
+                isYouTube,
+                ytdlpAvailable,
+                status
+            );
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.YouTubeInfoResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error checking URL: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    ///     Get YouTube video stream URL using yt-dlp
+    /// </summary>
+    [McpServerTool(Name = "get_youtube_stream")]
+    [Description("Extract the direct video stream URL from a YouTube video using yt-dlp. Requires yt-dlp (auto-downloads on first use).")]
+    public static async Task<string> GetYouTubeStream(
+        [Description("YouTube video URL")]
+        string url,
+        [Description("Maximum video height (e.g., 720, 1080). Default: best available")]
+        int? maxHeight = null)
+    {
+        try
+        {
+            if (!YtdlpProvider.IsYouTubeUrl(url))
+                return "Error: Not a valid YouTube URL";
+
+            // Get yt-dlp path (will download if needed)
+            var ytdlpPath = await YtdlpProvider.GetYtdlpPathAsync();
+
+            var streamInfo = await YtdlpProvider.GetStreamInfoAsync(url, ytdlpPath, maxHeight);
+            if (streamInfo == null)
+                return "Error: Could not extract stream URL";
+
+            var result = new YouTubeInfoResult(
+                true,
+                true,
+                "Stream extracted successfully",
+                streamInfo.VideoUrl,
+                streamInfo.Title
+            );
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.YouTubeInfoResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error extracting YouTube stream: {ex.Message}";
         }
     }
 }

@@ -124,6 +124,19 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var dejitter = parseResult.GetValue(cliOptions.Dejitter);
     var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold);
 
+    // Slideshow mode
+    var slideDelay = parseResult.GetValue(cliOptions.SlideDelay);
+    var shuffle = parseResult.GetValue(cliOptions.Shuffle);
+    var recursive = parseResult.GetValue(cliOptions.Recursive);
+    var sortBy = parseResult.GetValue(cliOptions.SortBy);
+    var sortDescOpt = parseResult.GetValue(cliOptions.SortDesc);
+    var sortAscOpt = parseResult.GetValue(cliOptions.SortAsc);
+    // --asc overrides --desc (default is descending/newest first)
+    var sortDesc = sortAscOpt ? false : sortDescOpt;
+    var videoPreview = parseResult.GetValue(cliOptions.VideoPreview);
+    var gifLoop = parseResult.GetValue(cliOptions.GifLoop);
+    var hideSlideInfo = parseResult.GetValue(cliOptions.HideSlideInfo);
+
     // Parse unified output option - auto-detect format from extension
     var (outputAsJson, outputAsCompressed, jsonOutputPath, gifOutputPath) =
         ParseOutputOption(output);
@@ -145,12 +158,142 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         return 1;
     }
 
-    // Check if input is a URL (FFmpeg can stream videos directly from URLs)
-    var isUrl = UrlHelper.IsUrl(inputPath);
+    // Slideshow mode - for directories and glob patterns
+    if (CliOptions.IsSlideshowInput(inputPath))
+    {
+        // Use smaller defaults for slideshow (50x30) unless user specified width/height
+        var slideshowMaxWidth = width.HasValue ? maxWidth : Math.Min(maxWidth, 50);
+        var slideshowMaxHeight = height.HasValue ? maxHeight : Math.Min(maxHeight, 30);
+
+        var slideshowOptions = new SlideshowOptions
+        {
+            SlideDelay = slideDelay,
+            Shuffle = shuffle,
+            Recursive = recursive,
+            SortBy = sortBy,
+            SortDesc = sortDesc,
+            VideoPreview = videoPreview,
+            GifLoop = gifLoop,
+            HideStatus = hideSlideInfo,
+            OutputPath = gifOutputPath,
+            GifFontSize = gifFontSize,
+            GifScale = gifScale,
+            GifColors = gifColors,
+            Width = width,
+            Height = height,
+            MaxWidth = slideshowMaxWidth,
+            MaxHeight = slideshowMaxHeight,
+            UseAscii = useAscii,
+            UseBlocks = useBlocks,
+            UseBraille = useBraille,
+            UseMatrix = useMatrix,
+            UseColor = !noColor,
+            Contrast = contrast,
+            Gamma = gamma,
+            CharAspect = charAspect,
+            ShowStatus = showStatus
+        };
+        return await SlideshowHandler.HandleAsync(inputPath, slideshowOptions, cancellationToken);
+    }
+
+    // Parse yt-dlp path option
+    var ytdlpPath = parseResult.GetValue(cliOptions.YtdlpPath);
+
+    // Check for YouTube URL first
+    var isYouTube = YtdlpProvider.IsYouTubeUrl(inputPath);
+    var isUrl = isYouTube || UrlHelper.IsUrl(inputPath);
     string inputFullPath;
     string? tempFile = null;
+    string? youtubeTitle = null;
 
-    if (isUrl)
+    if (isYouTube)
+    {
+        inputPath = UrlHelper.NormalizeUrl(inputPath);
+        Console.Error.WriteLine($"YouTube URL detected: {inputPath}");
+
+        // Check if yt-dlp is available, offer to download if not
+        if (!YtdlpProvider.IsAvailable(ytdlpPath))
+        {
+            var (needsDownload, statusMsg, downloadUrl) = YtdlpProvider.GetDownloadStatus();
+
+            if (needsDownload && downloadUrl != null)
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine(statusMsg);
+                Console.Error.WriteLine();
+
+                // Auto-confirm if -y flag was passed
+                if (!autoConfirmDownload)
+                {
+                    Console.Error.Write("Download yt-dlp now? [y/N]: ");
+                    var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+                    if (response != "y" && response != "yes")
+                    {
+                        Console.Error.WriteLine();
+                        Console.Error.WriteLine("Install yt-dlp manually:");
+                        Console.Error.WriteLine("  Windows: winget install yt-dlp");
+                        Console.Error.WriteLine("  macOS:   brew install yt-dlp");
+                        Console.Error.WriteLine("  Linux:   pip install yt-dlp");
+                        Console.Error.WriteLine();
+                        Console.Error.WriteLine("Or use --ytdlp-path to specify location.");
+                        return 1;
+                    }
+                }
+
+                // Download yt-dlp
+                var progress = new Progress<(string Status, double Progress)>(p =>
+                {
+                    Console.Error.Write($"\r{p.Status,-50}");
+                });
+
+                try
+                {
+                    ytdlpPath = await YtdlpProvider.DownloadAsync(progress, cancellationToken);
+                    Console.Error.WriteLine();
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"\nDownload failed: {ex.Message}");
+                    return 1;
+                }
+            }
+            else
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine(statusMsg);
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("Install yt-dlp:");
+                Console.Error.WriteLine("  Windows: winget install yt-dlp");
+                Console.Error.WriteLine("  macOS:   brew install yt-dlp");
+                Console.Error.WriteLine("  Linux:   pip install yt-dlp");
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("Or use --ytdlp-path to specify location.");
+                return 1;
+            }
+        }
+
+        Console.Error.Write("Extracting video stream URL... ");
+
+        // For ASCII rendering, we don't need high resolution - 480p is plenty
+        var ytMaxHeight = useBraille ? 480 : 360;
+        var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, cancellationToken);
+
+        if (streamInfo == null)
+        {
+            Console.Error.WriteLine("failed.");
+            Console.Error.WriteLine("Could not extract video stream from YouTube URL.");
+            return 1;
+        }
+
+        Console.Error.WriteLine("done.");
+        Console.Error.WriteLine($"  Title: {streamInfo.Title}");
+        youtubeTitle = streamInfo.Title;
+
+        // Use the video URL directly with FFmpeg
+        inputFullPath = streamInfo.VideoUrl;
+        input = new FileInfo("youtube.mp4"); // Dummy for extension detection
+    }
+    else if (isUrl)
     {
         inputPath = UrlHelper.NormalizeUrl(inputPath);
         Console.Error.WriteLine($"URL detected: {inputPath}");

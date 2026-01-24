@@ -174,4 +174,10 @@ public static class UrlHelper
         if (ext != null) return ImageExtensions.Contains(ext);
         return false;
     }
+
+    /// <summary>
+    ///     Check if the URL is a YouTube video URL.
+    ///     Delegates to YtdlpProvider for consistency.
+    /// </summary>
+    public static bool IsYouTubeUrl(string? url) => YtdlpProvider.IsYouTubeUrl(url);
 }

@@ -90,7 +90,18 @@
       "WebFetch(domain:lachlanarthur.github.io)",
       "WebFetch(domain:tannerhelland.com)",
       "Bash(exit 0)",
-      "Bash(file:*)"
+      "Bash(file:*)",
+      "Bash(where:*)",
+      "Bash(set \"PATH=C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\Installer;%PATH%\")",
+      "Bash(publish-testconsoleimage.exe:*)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\publish-test\\\\consoleimage.exe\" --help)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\publish-test\\\\consoleimage.exe\" \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\icon.png\" -w 30 --no-alt-screen)",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\publish-test\\\\consoleimage.exe\" \"https://youtu.be/CzzCsvuV04k\" -w 40 -t 3 -o \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\test_youtube.gif\")",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\publish-test\\\\consoleimage.exe\" \"https://youtu.be/CzzCsvuV04k\" -w 40 -t 2 --blocks -o \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\test_youtube_blocks.gif\")",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\publish-test\\\\consoleimage.exe\" \"https://youtu.be/CzzCsvuV04k\" -w 40 -t 2 --ascii -o \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\test_youtube_ascii.gif\")",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\publish-test\\\\consoleimage.exe\" \"https://youtu.be/CzzCsvuV04k\" --raw -t 2 -o \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\test_youtube_raw.gif\")",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\publish-test\\\\consoleimage.exe\":*)"
     ]
   },
   "enableAllProjectMcpServers": true,

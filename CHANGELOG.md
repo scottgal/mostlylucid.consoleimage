@@ -2,6 +2,129 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.0] - 2025-01-24
+
+### Major Features
+
+#### Slideshow Mode
+- **Directory and glob pattern support** - Pass a directory or glob pattern to browse multiple images
+- **Interactive keyboard controls** - Space (pause), arrows (navigate), Q (quit), Home/End (jump)
+- **Background pre-rendering** - Next 2 slides cached for instant, silky-smooth transitions
+- **Multiple sort options** - Sort by name, date, size, or random with `--sort`
+- **Manual navigation mode** - `--slide-delay 0` disables auto-advance for manual-only browsing
+- **Recursive scanning** - `-R` includes subdirectories
+- **Shuffle mode** - `--shuffle` randomizes playback order
+- **GIF output** - Export slideshow as animated GIF with `--output slideshow.gif`
+
+```bash
+# Browse photos (newest first by default)
+consoleimage ./photos
+
+# Glob pattern with shuffle
+consoleimage "C:\Pictures\*.jpg" --shuffle
+
+# Manual navigation only (no auto-advance)
+consoleimage ./vacation --slide-delay 0
+
+# Recursive with custom delay
+consoleimage ./albums -R --slide-delay 5
+
+# Export slideshow to GIF
+consoleimage ./photos -o slideshow.gif --slide-delay 2
+```
+
+**Slideshow Controls:**
+| Key | Action |
+|-----|--------|
+| `Space` | Pause/resume auto-advance |
+| `←` `→` | Previous/next image |
+| `↑` `↓` | Previous/next (alternate) |
+| `Home` `End` | Jump to first/last |
+| `N` `P` | Next/previous (vim-style) |
+| `Q` `Esc` | Quit slideshow |
+
+#### YouTube Support
+- **Direct YouTube playback** - Pass any YouTube URL to play as ASCII art
+- **yt-dlp auto-download** - Offers to download yt-dlp (~10MB) if not installed
+- **Custom yt-dlp path** - `--ytdlp-path` to specify location
+- **All URL formats supported** - youtube.com/watch, youtu.be, youtube.com/shorts
+- **Direct stream extraction** - Prefers MP4 streams over HLS for reliable playback
+
+```bash
+# Play YouTube video
+consoleimage "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+consoleimage "https://youtu.be/dQw4w9WgXcQ"
+
+# YouTube Shorts
+consoleimage "https://youtube.com/shorts/abc123"
+
+# With render options
+consoleimage "https://youtu.be/xyz" -w 80 --blocks
+
+# Output YouTube to GIF
+consoleimage "https://youtu.be/xyz" -o output.gif -t 10
+
+# Specify yt-dlp path
+consoleimage "https://youtu.be/xyz" --ytdlp-path /path/to/yt-dlp
+
+# Auto-confirm yt-dlp download
+consoleimage "https://youtu.be/xyz" -y
+```
+
+### New Classes
+
+- **`SlideshowHandler`** - Full slideshow implementation with caching and keyboard control
+- **`YtdlpProvider`** - YouTube support via yt-dlp with auto-download capability
+- **`SlideshowOptions`** - Configuration for slideshow mode
+
+### MCP Server Updates
+
+New tools added to the MCP server for AI assistants:
+
+| Tool | Description |
+|------|-------------|
+| `render_video` | Render video files to animated ASCII art GIFs |
+| `check_youtube_url` | Check if a URL is a YouTube video |
+| `get_youtube_stream` | Extract direct stream URL from YouTube videos |
+
+### Improvements
+
+#### FFmpeg Hardware Acceleration
+- **Extended codec blocklist** - Added mjpeg, prores, dnxhd, huffyuv, ffv1, rawvideo to prevent CUDA errors
+- **Better error handling** - Automatic fallback to software decoding when hardware fails
+
+#### URL Handling
+- **Fixed URL detection** - URLs with `?` (like YouTube) no longer incorrectly trigger slideshow mode
+
+### New CLI Options
+
+#### Slideshow Options
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-d, --slide-delay` | Seconds between slides (0 = manual only) | 3 |
+| `--shuffle` | Randomize playback order | OFF |
+| `-R, --recursive` | Include subdirectories | OFF |
+| `--sort` | Sort by: name, date, size, random | date |
+| `--desc` | Sort descending (newest first) | ON |
+| `--asc` | Sort ascending (oldest first) | OFF |
+| `--video-preview` | Max video preview duration (seconds) | 30 |
+| `--gif-loop` | Loop GIFs continuously in slideshow | OFF |
+| `--hide-info` | Hide [1/N] filename header | OFF |
+
+#### YouTube Options
+| Option | Description |
+|--------|-------------|
+| `--ytdlp-path` | Path to yt-dlp executable |
+| `-y, --yes` | Auto-confirm yt-dlp download |
+
+### Bug Fixes
+
+- **Fixed YouTube URL detection** - URLs containing `?` no longer treated as glob patterns
+- **Fixed HLS stream issues** - YouTube format selector now prefers direct MP4 over HLS manifests
+- **Fixed CUDA decoder errors** - MJPEG and other problematic codecs fall back to software decoding
+
+---
+
 ## [3.0.0] - 2025-01-24
 
 ### Breaking Changes

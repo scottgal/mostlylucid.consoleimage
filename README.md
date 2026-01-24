@@ -1,6 +1,6 @@
 # mostlylucid.consoleimage
 
-**Version 3.0** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+**Version 3.1** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -16,6 +16,12 @@ consoleimage movie.mp4
 
 # Play an animated GIF
 consoleimage animation.gif
+
+# Browse photos in slideshow mode (NEW in v3.1!)
+consoleimage ./photos
+
+# Play YouTube videos directly (NEW in v3.1!)
+consoleimage "https://youtu.be/dQw4w9WgXcQ"
 ```
 
 That's it! Colors and animation are enabled by default. **Braille mode is now the default** for maximum detail.
@@ -93,6 +99,62 @@ consoleimage movie.mp4 -a -w 120 # ASCII mode, wider
 consoleimage photo.jpg --matrix              # Classic green
 consoleimage photo.jpg --matrix --matrix-fullcolor  # Source colors
 ```
+
+## Slideshow Mode (v3.1)
+
+Browse directories of images with keyboard controls:
+
+```bash
+# Browse a folder of images
+consoleimage ./photos
+
+# Use glob patterns
+consoleimage "*.jpg"
+consoleimage "vacation/**/*.png"
+
+# Manual advance only (no auto-advance)
+consoleimage ./photos --slide-delay 0
+
+# Auto-advance every 5 seconds
+consoleimage ./photos --slide-delay 5000
+
+# Shuffle order
+consoleimage ./photos --shuffle
+```
+
+**Keyboard Controls:**
+| Key | Action |
+|-----|--------|
+| `Space` | Pause/Resume auto-advance |
+| `→` / `N` | Next image |
+| `←` / `P` | Previous image |
+| `R` | Toggle shuffle |
+| `Q` / `Esc` | Quit |
+
+## YouTube Support (v3.1)
+
+Play YouTube videos directly in your terminal:
+
+```bash
+# Play a YouTube video
+consoleimage "https://youtu.be/dQw4w9WgXcQ"
+consoleimage "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+# With render options
+consoleimage "https://youtu.be/VIDEO_ID" --blocks -w 100
+
+# Save as GIF
+consoleimage "https://youtu.be/VIDEO_ID" -o output.gif -w 60
+
+# Save as document
+consoleimage "https://youtu.be/VIDEO_ID" -o video.cidz
+```
+
+**Requirements:**
+- **yt-dlp** - Auto-downloads (~10MB) on first YouTube use, or install manually via `pip install yt-dlp`
+- **FFmpeg** - Auto-downloads on first video use
+
+Use `--ytdlp-path` to specify a custom yt-dlp location.
 
 ## Features
 
@@ -230,9 +292,13 @@ this image as ASCII art" and it will use the tools automatically.
 |------|-------------|
 | `render_image` | Render image/GIF to ASCII art (ascii, blocks, braille, matrix) |
 | `render_to_gif` | Create animated GIF output |
+| `render_video` | Render video to animated ASCII GIF (v3.1) |
 | `extract_frames` | Extract raw video frames to GIF (no ASCII, just frames) |
+| `get_image_info` | Get detailed image metadata (format, dimensions, EXIF) |
 | `get_gif_info` | Get GIF metadata (dimensions, frame count) |
 | `get_video_info` | Get video file info via FFmpeg |
+| `check_youtube_url` | Check if URL is a YouTube video (v3.1) |
+| `get_youtube_stream` | Extract stream URL from YouTube (v3.1) |
 | `list_render_modes` | List available render modes with descriptions |
 | `list_matrix_presets` | List Matrix color presets |
 | `compare_render_modes` | Render same image in all modes for comparison |
@@ -404,6 +470,12 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `--gif-font-size`     | GIF font size in pixels                                   | 10             |
 | `--gif-length`        | Max GIF length in seconds                                 | -              |
 | `--gif-frames`        | Max GIF frames                                            | -              |
+| **Slideshow**         |                                                           |                |
+| `--slide-delay`       | Auto-advance delay in ms (0 = manual only)                | 3000           |
+| `--shuffle`           | Randomize slideshow order                                 | OFF            |
+| `--hide-info`         | Hide file info header in slideshow                        | OFF            |
+| **YouTube**           |                                                           |                |
+| `--ytdlp-path`        | Path to yt-dlp executable                                 | Auto-detect    |
 
 ## JSON Document Format
 

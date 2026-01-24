@@ -174,6 +174,15 @@ public sealed class FFmpegService : IDisposable
         "apng",     // Animated PNG
         "mpeg4",    // MPEG-4 part 2 / DivX - hwdownload nv12 format issues
         "av1",      // AV1 - hwdownload nv12 format issues
+        "mjpeg",    // Motion JPEG - CUDA decoder fails on many systems
+        "mjpegb",   // Motion JPEG B
+        "jpeg2000", // JPEG 2000
+        "jpegls",   // JPEG-LS
+        "rawvideo", // Raw video - no hardware decode
+        "prores",   // ProRes - not supported by CUDA
+        "dnxhd",    // DNxHD - not supported by CUDA
+        "huffyuv",  // Huffyuv - lossless, no CUDA
+        "ffv1",     // FFV1 - lossless, no CUDA
     };
 
     /// <summary>
