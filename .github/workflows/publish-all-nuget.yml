@@ -4,7 +4,7 @@ name: Publish All NuGet Packages
 # 1. ConsoleImage.Core → wait for NuGet availability
 # 2. ConsoleImage.Video.Core (needs Core) ─┬─ run in parallel after Core is available
 # 3. ConsoleImage.Spectre (needs Core)    ─┘
-# 4. Build & release CLI binaries (consoleimage, consolevideo, consoleimage-mcp)
+# 4. Build & release CLI binaries (consoleimage, consoleimage-mcp)
 
 on:
   workflow_dispatch:
@@ -303,8 +303,7 @@ jobs:
       - name: Restore with NuGet packages
         run: |
           dotnet restore ConsoleImage/ConsoleImage.csproj -p:UseNuGetDependency=true -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
-          dotnet restore ConsoleImage.Video/ConsoleImage.Video.csproj -p:UseNuGetDependency=true -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }}
-          dotnet restore ConsoleImage.Mcp/ConsoleImage.Mcp.csproj -p:UseNuGetDependency=true -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }}
+          dotnet restore ConsoleImage.Mcp/ConsoleImage.Mcp.csproj -p:UseNuGetDependency=true -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
 
       - name: Publish AOT - consoleimage
         shell: bash
@@ -315,15 +314,6 @@ jobs:
             -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} \
             -o ./publish/consoleimage-${{ matrix.rid }}
 
-      - name: Publish AOT - consolevideo
-        shell: bash
-        run: |
-          dotnet publish ConsoleImage.Video/ConsoleImage.Video.csproj \
-            -c Release -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishAot=true -p:UseNuGetDependency=true \
-            -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }} \
-            -o ./publish/consolevideo-${{ matrix.rid }}
-
       - name: Publish AOT - consoleimage-mcp
         shell: bash
         run: |
@@ -331,13 +321,12 @@ jobs:
             -c Release -r ${{ matrix.rid }} --self-contained true \
             -p:PublishAot=true -p:UseNuGetDependency=true \
             -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} \
-            -p:VideoPackageVersion=${{ needs.publish-core.outputs.version }} \
             -o ./publish/consoleimage-mcp-${{ matrix.rid }}
 
       - name: Prepare archives
         shell: bash
         run: |
-          # consoleimage
+          # consoleimage (unified CLI for images, GIFs, videos, documents)
           mkdir -p ./archive/consoleimage-${{ matrix.rid }}
           if [ "${{ matrix.ext }}" == ".exe" ]; then
             cp ./publish/consoleimage-${{ matrix.rid }}/consoleimage.exe ./archive/consoleimage-${{ matrix.rid }}/
@@ -347,16 +336,6 @@ jobs:
           fi
           cp README.md ./archive/consoleimage-${{ matrix.rid }}/
           cp ConsoleImage/calibration.json ./archive/consoleimage-${{ matrix.rid }}/ || true
-
-          # consolevideo
-          mkdir -p ./archive/consolevideo-${{ matrix.rid }}
-          if [ "${{ matrix.ext }}" == ".exe" ]; then
-            cp ./publish/consolevideo-${{ matrix.rid }}/consolevideo.exe ./archive/consolevideo-${{ matrix.rid }}/
-          else
-            cp ./publish/consolevideo-${{ matrix.rid }}/consolevideo ./archive/consolevideo-${{ matrix.rid }}/
-            chmod +x ./archive/consolevideo-${{ matrix.rid }}/consolevideo
-          fi
-          cp ConsoleImage.Video/README.md ./archive/consolevideo-${{ matrix.rid }}/ || cp README.md ./archive/consolevideo-${{ matrix.rid }}/
 
           # consoleimage-mcp
           mkdir -p ./archive/consoleimage-mcp-${{ matrix.rid }}
@@ -374,14 +353,12 @@ jobs:
         run: |
           cd archive
           Compress-Archive -Path consoleimage-${{ matrix.rid }}/* -DestinationPath consoleimage-${{ matrix.rid }}.zip
-          Compress-Archive -Path consolevideo-${{ matrix.rid }}/* -DestinationPath consolevideo-${{ matrix.rid }}.zip
           Compress-Archive -Path consoleimage-mcp-${{ matrix.rid }}/* -DestinationPath consoleimage-mcp-${{ matrix.rid }}.zip
 
       - name: Archive (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
           cd archive/consoleimage-${{ matrix.rid }} && tar -czvf ../consoleimage-${{ matrix.rid }}.tar.gz * && cd ..
-          cd consolevideo-${{ matrix.rid }} && tar -czvf ../consolevideo-${{ matrix.rid }}.tar.gz * && cd ..
           cd consoleimage-mcp-${{ matrix.rid }} && tar -czvf ../consoleimage-mcp-${{ matrix.rid }}.tar.gz *
 
       - name: Upload artifacts
@@ -423,63 +400,44 @@ jobs:
 
             ### CLI Downloads
 
-            | Platform | consoleimage | consolevideo | consoleimage-mcp |
-            |----------|--------------|--------------|------------------|
-            | Windows x64 | `consoleimage-win-x64.zip` | `consolevideo-win-x64.zip` | `consoleimage-mcp-win-x64.zip` |
-            | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consolevideo-linux-x64.tar.gz` | `consoleimage-mcp-linux-x64.tar.gz` |
-            | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consolevideo-linux-arm64.tar.gz` | `consoleimage-mcp-linux-arm64.tar.gz` |
-            | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consolevideo-osx-arm64.tar.gz` | `consoleimage-mcp-osx-arm64.tar.gz` |
+            | Platform | consoleimage | consoleimage-mcp |
+            |----------|--------------|------------------|
+            | Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-mcp-win-x64.zip` |
+            | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-mcp-linux-x64.tar.gz` |
+            | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-mcp-linux-arm64.tar.gz` |
+            | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-mcp-osx-arm64.tar.gz` |
 
             ---
 
-            ### consoleimage - Image & GIF to ASCII
+            ### consoleimage - Unified CLI for Images, GIFs, Videos, Documents
 
             ```bash
-            # Basic usage - render image to terminal
+            # Images
             consoleimage photo.jpg
+            consoleimage photo.png --blocks      # Unicode color blocks (▀▄)
+            consoleimage photo.png --braille     # Braille patterns
+            consoleimage photo.png --matrix      # Matrix digital rain
 
-            # Render modes
-            consoleimage photo.png --blocks      # Unicode color blocks (▀▄) - highest fidelity
-            consoleimage photo.png --braille     # Braille patterns - ultra-high resolution
-            consoleimage photo.png --matrix      # Matrix digital rain effect
-
-            # Animated GIF playback
-            consoleimage animation.gif
+            # Animated GIFs
             consoleimage animation.gif --speed 1.5 --loop 3
 
-            # Output to file
-            consoleimage animation.gif -o output.gif    # Create animated GIF
-            consoleimage photo.png -o render.json       # Save as JSON document
+            # Videos (FFmpeg auto-downloads on first use)
+            consoleimage movie.mp4
+            consoleimage movie.mp4 --blocks -w 120
+            consoleimage movie.mp4 --ss 60 -t 30    # Start at 60s, play 30s
 
-            # Size control
-            consoleimage photo.jpg -w 120              # Set width (auto-fits to terminal by default)
-            consoleimage photo.jpg -w 80 -h 40        # Set both dimensions
+            # Save to compressed document (.cidz)
+            consoleimage animation.gif -o output.cidz
+            consoleimage movie.mp4 -o movie.cidz --blocks
+
+            # Play saved documents
+            consoleimage output.cidz --speed 2.0
+
+            # Convert to GIF
+            consoleimage movie.cidz -o movie.gif
 
             # Show status line with progress
             consoleimage animation.gif --status
-            ```
-
-            ---
-
-            ### consolevideo - Video to ASCII (FFmpeg)
-
-            ```bash
-            # Play video as ASCII art (auto-downloads FFmpeg if needed)
-            consolevideo movie.mp4
-
-            # Render modes (same as consoleimage)
-            consolevideo movie.mp4 --blocks
-            consolevideo movie.mp4 --braille
-            consolevideo movie.mp4 --matrix
-
-            # Size and speed control
-            consolevideo movie.mp4 -w 120 --speed 2.0
-
-            # Output to animated GIF
-            consolevideo movie.mp4 -o output.gif --gif-colors 64
-
-            # Show status line with timing info
-            consolevideo movie.mp4 --status
             ```
 
             ---
@@ -556,7 +514,6 @@ jobs:
         echo "| CLI | Platforms |" >> $GITHUB_STEP_SUMMARY
         echo "|-----|-----------|" >> $GITHUB_STEP_SUMMARY
         echo "| consoleimage | win-x64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
-        echo "| consolevideo | win-x64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
         echo "| consoleimage-mcp | win-x64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "[View Release](https://github.com/${{ github.repository }}/releases/tag/consoleimage-v${VERSION})" >> $GITHUB_STEP_SUMMARY
