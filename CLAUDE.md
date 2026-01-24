@@ -27,7 +27,9 @@ ConsoleImage/
 │   ├── ConsoleHelper.cs         # Windows ANSI support enabler
 │   ├── StatusLine.cs            # Status display below rendered output
 │   ├── UrlHelper.cs             # URL detection and download helpers
-│   └── YtdlpProvider.cs         # YouTube support via yt-dlp (auto-download)
+│   ├── YtdlpProvider.cs         # YouTube support via yt-dlp (auto-download)
+│   ├── FrameHasher.cs           # Perceptual hashing for frame deduplication
+│   └── SmartFrameSampler.cs     # Intelligent frame skipping using perceptual hashing
 ├── ConsoleImage/                # CLI tool for images/GIFs
 │   ├── Program.cs               # Command-line interface
 │   ├── CliOptions.cs            # CLI option definitions
@@ -122,6 +124,22 @@ Displays information below rendered output during playback.
 - Use `--status` or `-S` CLI flag to enable
 - Status in GIF output only supported for ASCII mode (pixel-based modes can't mix text)
 
+### SmartFrameSampler
+Intelligent frame skipping using perceptual hashing for improved playback performance.
+- **Perceptual hashing** - Resizes frame to 8x8, computes average brightness hash
+- **LFU cache** - Caches rendered content, reuses for similar frames
+- **Streaming optimized** - Hash computation runs ahead of rendering
+- **No quality loss** - Only skips visually similar frames
+- Enable with `-f s` or `-f smart` CLI option
+- Maintains proper timing - frames are not sped up, just reuses cached content
+
+### FrameHasher
+Fast perceptual hashing for frame deduplication.
+- **aHash algorithm** - Resize to 8x8, compare to average brightness
+- **64-bit hash** - One bit per pixel (above/below average)
+- **Hamming distance** - Count differing bits between hashes
+- **Threshold 5** - Default similarity threshold (5 of 64 bits can differ)
+
 ### CalibrationHelper
 Manages terminal font aspect ratio calibration. Each render mode (ASCII, Blocks, Braille)
 maps pixels to characters differently and may need separate calibration.
@@ -215,7 +233,8 @@ consoleimage animation.gif --status
 consolevideo movie.mp4 -S -w 120
 
 # Frame sampling for large GIFs
-consoleimage big.gif --frame-sample 2  # Every 2nd frame
+consoleimage big.gif --frame-sample 2  # Every 2nd frame (uniform skip)
+consoleimage big.gif -f s              # Smart skip: perceptual hash-based dedup
 
 # Output to GIF (auto-detected from .gif extension)
 consolevideo movie.mp4 -o output.gif -w 100
@@ -306,7 +325,7 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `-s, --speed` - Animation speed multiplier
 - `-S, --status` - Show status line below output (progress, timing, file info)
 - `-l, --loop` - Loop count (0 = infinite)
-- `-f, --frame-sample` - Frame sampling rate (skip frames)
+- `-f, --frame-step` - Frame step: 1 (every frame), 2 (every 2nd), s/smart (perceptual hash skip)
 - `-a, --ascii` - Use classic ASCII characters (v2.x default)
 - `-b, --blocks` - Use colored Unicode blocks
 - `-B, --braille` - Use braille characters (DEFAULT - 2x4 dots per cell)

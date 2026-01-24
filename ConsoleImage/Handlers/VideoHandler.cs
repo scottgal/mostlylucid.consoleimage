@@ -243,7 +243,7 @@ public static class VideoHandler
 
         await foreach (var frameImage in ffmpeg.StreamFramesAsync(
                            inputPath, targetWidth, targetHeight,
-                           rawStartTime, rawEndTime, opts.FrameStep, uniformTargetFps, videoInfo.VideoCodec, ct))
+                           rawStartTime, rawEndTime, opts.FrameStepValue, uniformTargetFps, videoInfo.VideoCodec, ct))
         {
             if (streamingGif.ShouldStop)
             {
@@ -291,7 +291,7 @@ public static class VideoHandler
 
         await foreach (var frameImage in ffmpeg.StreamFramesAsync(
                            inputPath, targetWidth, targetHeight,
-                           rawStartTime, rawEndTime, opts.FrameStep, targetFps, videoInfo.VideoCodec, ct))
+                           rawStartTime, rawEndTime, opts.FrameStepValue, targetFps, videoInfo.VideoCodec, ct))
         {
             if (maxFrames > 0 && frameCount >= maxFrames)
             {
@@ -380,7 +380,7 @@ public static class VideoHandler
         var frameCount = 0;
         await foreach (var frameImage in ffmpeg.StreamFramesAsync(
                            inputPath, targetWidth, targetHeight,
-                           rawStartTime, rawEndTime, opts.FrameStep, targetFps, videoInfo.VideoCodec, ct))
+                           rawStartTime, rawEndTime, opts.FrameStepValue, targetFps, videoInfo.VideoCodec, ct))
         {
             if (frameCount >= maxFrames)
             {
@@ -590,7 +590,7 @@ public static class VideoHandler
         var effectiveStart = opts.Start ?? 0;
         var effectiveEnd = end ?? videoInfo.Duration;
         var effectiveDuration = effectiveEnd - effectiveStart;
-        var estimatedTotalFrames = (int)(effectiveDuration * gifTargetFps / opts.FrameStep);
+        var estimatedTotalFrames = (int)(effectiveDuration * gifTargetFps / opts.FrameStepValue);
 
         var statusRenderer = opts.ShowStatus ? new StatusLine(charWidth, !opts.NoColor) : null;
         var renderModeName = opts.UseBraille ? "Braille" : opts.UseBlocks ? "Blocks" : "ASCII";
@@ -610,7 +610,7 @@ public static class VideoHandler
                            pixelHeight,
                            gifStartTime > 0 ? gifStartTime : null,
                            end,
-                           opts.FrameStep,
+                           opts.FrameStepValue,
                            gifTargetFps,
                            videoInfo.VideoCodec,
                            ct))
@@ -647,7 +647,7 @@ public static class VideoHandler
                         RenderMode = renderModeName,
                         CurrentFrame = renderedCount + 1,
                         TotalFrames = estimatedTotalFrames,
-                        CurrentTime = TimeSpan.FromSeconds(effectiveStart + renderedCount * opts.FrameStep / gifTargetFps),
+                        CurrentTime = TimeSpan.FromSeconds(effectiveStart + renderedCount * opts.FrameStepValue / gifTargetFps),
                         TotalDuration = TimeSpan.FromSeconds(effectiveDuration),
                         Fps = gifTargetFps
                     };
@@ -752,7 +752,7 @@ public static class VideoHandler
                                pixelHeight,
                                jsonStartTime > 0 ? jsonStartTime : null,
                                end,
-                               opts.FrameStep,
+                               opts.FrameStepValue,
                                jsonTargetFps,
                                videoCodec,
                                ct))
@@ -817,7 +817,7 @@ public static class VideoHandler
                                pixelHeight,
                                streamStartTime > 0 ? streamStartTime : null,
                                end,
-                               opts.FrameStep,
+                               opts.FrameStepValue,
                                jsonTargetFps,
                                videoCodec,
                                ct))
@@ -891,6 +891,10 @@ public static class VideoHandler
             _ => FrameSamplingStrategy.Uniform
         };
 
+        // Parse frame step option: "-f s" for smart, "-f 2" for uniform skip
+        var (frameStep, smartMode) = opts.ParseFrameStep();
+        var samplingMode = smartMode ? Video.Core.FrameSamplingMode.Smart : Video.Core.FrameSamplingMode.Uniform;
+
         var options = new VideoRenderOptions
         {
             RenderOptions = new RenderOptions
@@ -921,8 +925,10 @@ public static class VideoHandler
             StartTime = opts.Start,
             EndTime = end,
             TargetFps = opts.Fps,
-            FrameStep = Math.Max(1, opts.FrameStep),
+            FrameStep = frameStep,
             SamplingStrategy = samplingStrategy,
+            SamplingMode = samplingMode,
+            DebugMode = opts.DebugMode,
             SceneThreshold = opts.SceneThreshold,
             BufferAheadFrames = Math.Clamp(opts.Buffer, 2, 10),
             SpeedMultiplier = opts.Speed,
@@ -1016,9 +1022,36 @@ public class VideoHandlerOptions
     public float Speed { get; init; } = 1.0f;
     public int Loop { get; init; } = 1;
     public double? Fps { get; init; }
-    public int FrameStep { get; init; } = 1;
+    public string? FrameStep { get; init; } = "1";
     public string? Sampling { get; init; }
     public double SceneThreshold { get; init; } = 0.4;
+
+    /// <summary>
+    /// Parse the FrameStep option and return (frameStepValue, isSmartMode).
+    /// </summary>
+    public (int frameStep, bool smartMode) ParseFrameStep()
+    {
+        if (string.IsNullOrEmpty(FrameStep))
+            return (1, false);
+
+        var lower = FrameStep.ToLowerInvariant().Trim();
+
+        // Smart mode
+        if (lower == "s" || lower == "smart")
+            return (1, true);
+
+        // Numeric mode
+        if (int.TryParse(FrameStep, out var step))
+            return (Math.Max(1, step), false);
+
+        // Default fallback
+        return (1, false);
+    }
+
+    /// <summary>
+    /// Get the numeric frame step value (for FFmpeg).
+    /// </summary>
+    public int FrameStepValue => ParseFrameStep().frameStep;
 
     // Render modes
     public bool UseBlocks { get; init; }
@@ -1080,4 +1113,7 @@ public class VideoHandlerOptions
 
     // Subtitles
     public SubtitleTrack? Subtitles { get; init; }
+
+    // Debug
+    public bool DebugMode { get; init; }
 }

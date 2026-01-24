@@ -27,7 +27,7 @@ public class CliOptions
     public Option<float> Speed { get; }
     public Option<int> Loop { get; }
     public Option<double?> Fps { get; }
-    public Option<int> FrameStep { get; }
+    public Option<string> FrameStep { get; }
     public Option<string> Sampling { get; }
     public Option<double> SceneThreshold { get; }
 
@@ -125,6 +125,12 @@ public class CliOptions
     public Option<bool> GifLoop { get; }
     public Option<bool> HideSlideInfo { get; }
 
+    // Easter egg
+    public Option<bool> EasterEgg { get; }
+
+    // Debug mode
+    public Option<bool> Debug { get; }
+
     public CliOptions()
     {
         // Detect console window size for defaults
@@ -180,8 +186,8 @@ public class CliOptions
         Fps = new Option<double?>("--fps") { Description = "Target framerate" };
         Fps.Aliases.Add("-r");
 
-        FrameStep = new Option<int>("--frame-step") { Description = "Frame step (1 = every frame, 2 = every 2nd)" };
-        FrameStep.DefaultValueFactory = _ => 1;
+        FrameStep = new Option<string>("--frame-step") { Description = "Frame step: 1 (every frame), 2 (every 2nd), s/smart (skip similar frames)" };
+        FrameStep.DefaultValueFactory = _ => "1";
         FrameStep.Aliases.Add("-f");
 
         Sampling = new Option<string>("--sampling") { Description = "Sampling strategy: uniform, keyframe, scene, adaptive" };
@@ -358,6 +364,11 @@ public class CliOptions
 
         HideSlideInfo = new Option<bool>("--hide-info") { Description = "Hide [1/N] filename header in slideshow" };
         HideSlideInfo.Aliases.Add("--no-header");
+
+        // Easter egg
+        EasterEgg = new Option<bool>("--ee") { Description = "Play animation demo" };
+
+        Debug = new Option<bool>("--debug") { Description = "Enable debug output for smart frame sampling" };
     }
 
     /// <summary>
@@ -486,5 +497,7 @@ public class CliOptions
         command.Options.Add(VideoPreview);
         command.Options.Add(GifLoop);
         command.Options.Add(HideSlideInfo);
+        command.Options.Add(EasterEgg);
+        command.Options.Add(Debug);
     }
 }

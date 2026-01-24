@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
@@ -30,6 +31,9 @@ public class VideoAnimationPlayer : IDisposable
 
     // Delta rendering support for braille mode
     private CellData[,]? _previousBrailleCells;
+
+    // Smart frame sampling
+    private SmartFrameSampler? _smartSampler;
 
     // Subtitle rendering
     private SubtitleRenderer? _subtitleRenderer;
@@ -83,16 +87,15 @@ public class VideoAnimationPlayer : IDisposable
         Console.Out.Flush();
 
         // Initialize subtitle renderer if subtitles are available
-        if (_options.Subtitles?.HasEntries == true)
-        {
-            int subtitleWidth = _renderWidth;
-            // For blocks/braille, convert pixel width to char width
-            if (_options.RenderMode == VideoRenderMode.ColorBlocks)
-                subtitleWidth = _renderWidth;
-            else if (_options.RenderMode == VideoRenderMode.Braille)
-                subtitleWidth = _renderWidth / 2;
+        UpdateSubtitleRenderer();
 
-            _subtitleRenderer = new SubtitleRenderer(subtitleWidth, 2, _options.RenderOptions.UseColor);
+        // Initialize smart frame sampler if enabled
+        if (_options.SamplingMode == FrameSamplingMode.Smart)
+        {
+            _smartSampler = new SmartFrameSampler(_options.SmartSkipThreshold)
+            {
+                DebugMode = _options.DebugMode
+            };
         }
 
         int loopsDone = 0;
@@ -107,6 +110,8 @@ public class VideoAnimationPlayer : IDisposable
                 {
                     Console.Write("\x1b[2J\x1b[H");
                     Console.Out.Flush();
+                    // Re-create subtitle renderer with new dimensions
+                    UpdateSubtitleRenderer();
                 }
 
                 _currentFrame = 0;
@@ -159,8 +164,19 @@ public class VideoAnimationPlayer : IDisposable
                 {
                     using (image)
                     {
-                        // Render frame to ASCII
-                        var frameContent = RenderFrame(renderer, image);
+                        string frameContent;
+
+                        // Use smart sampling if enabled
+                        if (_smartSampler != null)
+                        {
+                            // Clone image for the render func since original is disposed
+                            frameContent = _smartSampler.ProcessFrame(image, img => RenderFrame(renderer, img));
+                        }
+                        else
+                        {
+                            // Standard rendering
+                            frameContent = RenderFrame(renderer, image);
+                        }
 
                         // Wait if buffer is full
                         while (frameBuffer.Count >= _options.BufferAheadFrames && !ct.IsCancellationRequested)
@@ -632,6 +648,25 @@ public class VideoAnimationPlayer : IDisposable
         catch { }
 
         return false;
+    }
+
+    /// <summary>
+    /// Create or update the subtitle renderer based on current render dimensions.
+    /// </summary>
+    private void UpdateSubtitleRenderer()
+    {
+        if (_options.Subtitles?.HasEntries != true)
+            return;
+
+        int subtitleWidth = _renderWidth;
+        // For blocks/braille, convert pixel width to char width
+        if (_options.RenderMode == VideoRenderMode.ColorBlocks)
+            subtitleWidth = _renderWidth;
+        else if (_options.RenderMode == VideoRenderMode.Braille)
+            subtitleWidth = _renderWidth / 2;
+
+        _subtitleRenderer = new SubtitleRenderer(subtitleWidth, 2, _options.RenderOptions.UseColor);
+        _lastSubtitleContent = null; // Reset cached content after resize
     }
 
     /// <summary>

@@ -4,6 +4,23 @@ using ConsoleImage.Core.Subtitles;
 namespace ConsoleImage.Video.Core;
 
 /// <summary>
+/// Frame sampling mode for video playback.
+/// </summary>
+public enum FrameSamplingMode
+{
+    /// <summary>
+    /// Render every frame (or use uniform FrameStep).
+    /// </summary>
+    Uniform,
+
+    /// <summary>
+    /// Smart frame skipping using perceptual hashing.
+    /// Skips visually similar frames while maintaining timing.
+    /// </summary>
+    Smart
+}
+
+/// <summary>
 /// Configuration options for video-to-ASCII rendering.
 /// Extends RenderOptions with video-specific settings.
 /// </summary>
@@ -41,6 +58,24 @@ public class VideoRenderOptions
     /// Frame sampling strategy for intelligent sampling.
     /// </summary>
     public FrameSamplingStrategy SamplingStrategy { get; set; } = FrameSamplingStrategy.Uniform;
+
+    /// <summary>
+    /// Frame sampling mode: Uniform (fixed step) or Smart (perceptual hash skip).
+    /// </summary>
+    public FrameSamplingMode SamplingMode { get; set; } = FrameSamplingMode.Uniform;
+
+    /// <summary>
+    /// Hash similarity threshold for smart frame skipping (0-64).
+    /// Lower = stricter matching (only nearly identical frames skipped).
+    /// Higher = more aggressive (may cause visible stuttering).
+    /// Default: 2 (conservative - only skip nearly identical frames)
+    /// </summary>
+    public int SmartSkipThreshold { get; set; } = 2;
+
+    /// <summary>
+    /// Enable debug output for smart frame sampling.
+    /// </summary>
+    public bool DebugMode { get; set; }
 
     /// <summary>
     /// Number of frames to buffer ahead during playback.
@@ -185,6 +220,9 @@ public class VideoRenderOptions
         TargetFps = TargetFps,
         FrameStep = FrameStep,
         SamplingStrategy = SamplingStrategy,
+        SamplingMode = SamplingMode,
+        SmartSkipThreshold = SmartSkipThreshold,
+        DebugMode = DebugMode,
         BufferAheadFrames = BufferAheadFrames,
         SpeedMultiplier = SpeedMultiplier,
         LoopCount = LoopCount,

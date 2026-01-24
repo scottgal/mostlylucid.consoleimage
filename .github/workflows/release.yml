@@ -29,6 +29,10 @@ jobs:
             rid: win-x64
             artifact: consoleimage-win-x64
             ext: .exe
+          - os: windows-latest
+            rid: win-arm64
+            artifact: consoleimage-win-arm64
+            ext: .exe
           - os: ubuntu-latest
             rid: linux-x64
             artifact: consoleimage-linux-x64
@@ -193,6 +197,7 @@ jobs:
             | Platform | consoleimage | consoleimage-mcp |
             |----------|--------------|------------------|
             | Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-win-x64-mcp.zip` |
+            | Windows ARM64 | `consoleimage-win-arm64.zip` | `consoleimage-win-arm64-mcp.zip` |
             | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-linux-x64-mcp.tar.gz` |
             | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
             | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-osx-arm64-mcp.tar.gz` |

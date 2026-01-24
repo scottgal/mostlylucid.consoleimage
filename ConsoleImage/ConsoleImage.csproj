@@ -6,6 +6,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AssemblyName>consoleimage</AssemblyName>
+        <ApplicationIcon>consoleimage.ico</ApplicationIcon>
 
         <!-- AOT Compilation Support -->
         <PublishAot>true</PublishAot>

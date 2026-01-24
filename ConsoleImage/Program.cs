@@ -12,11 +12,17 @@ using ConsoleImage.Core.Subtitles;
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
 
-// Easter egg: if no arguments, play embedded animation then show help
-if (args.Length == 0)
+// Easter egg: --ee plays hidden animation
+if (args.Length == 1 && args[0] == "--ee")
 {
     await PlayEasterEggAsync();
-    ShowHelpAndWait();
+    return 0;
+}
+
+// No arguments: show help and prompt for input
+if (args.Length == 0)
+{
+    ShowHelpAndPrompt();
     return 0;
 }
 
@@ -137,6 +143,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var lightCutoff = parseResult.GetValue(cliOptions.LightCutoff);
     var dejitter = parseResult.GetValue(cliOptions.Dejitter);
     var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold);
+    var debug = parseResult.GetValue(cliOptions.Debug);
 
     // Subtitle options
     var subtitleFile = parseResult.GetValue(cliOptions.SubtitleFile);
@@ -531,7 +538,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         ColorThreshold = colorThreshold,
 
         // Subtitles
-        Subtitles = subtitles
+        Subtitles = subtitles,
+
+        // Debug
+        DebugMode = debug
     };
 
     var result = await VideoHandler.HandleAsync(inputFullPath, input, videoOpts, cancellationToken);
@@ -722,42 +732,48 @@ static async Task PlayEasterEggAsync()
     }
 }
 
-static void ShowHelpAndWait()
+static void ShowHelpAndPrompt()
 {
     Console.WriteLine();
     Console.WriteLine("ConsoleImage v3.0 - ASCII Art Renderer");
     Console.WriteLine("=======================================");
     Console.WriteLine();
-    Console.WriteLine("Usage: consoleimage <file> [options]");
-    Console.WriteLine();
     Console.WriteLine("Render modes:");
-    Console.WriteLine("  (default)    Braille dots - highest detail, smallest output");
+    Console.WriteLine("  (default)    Braille dots - highest detail");
     Console.WriteLine("  -a, --ascii  Classic ASCII characters");
-    Console.WriteLine("  -b, --blocks Unicode half-blocks (2x vertical resolution)");
+    Console.WriteLine("  -b, --blocks Unicode half-blocks");
     Console.WriteLine("  -M, --matrix Matrix digital rain effect");
     Console.WriteLine();
-    Console.WriteLine("Common options:");
-    Console.WriteLine("  -w, --width <n>     Output width (default: 50 for video)");
-    Console.WriteLine("  -s, --speed <n>     Playback speed multiplier");
-    Console.WriteLine("  -l, --loop <n>      Loop count (0 = infinite)");
-    Console.WriteLine("  -o, --output <file> Save as .gif or .cidz");
-    Console.WriteLine("  -S, --status        Show status line");
-    Console.WriteLine("  --colours <n>       Reduce color palette (4, 16, 256)");
-    Console.WriteLine("  --dejitter          Reduce animation flickering");
-    Console.WriteLine();
     Console.WriteLine("Examples:");
-    Console.WriteLine("  consoleimage photo.jpg              (braille, auto-sized)");
-    Console.WriteLine("  consoleimage movie.mp4 -w 80        (braille, 80 chars wide)");
-    Console.WriteLine("  consoleimage movie.mp4 -a -w 120    (ascii mode)");
-    Console.WriteLine("  consoleimage animation.gif -o out.gif");
+    Console.WriteLine("  consoleimage photo.jpg");
+    Console.WriteLine("  consoleimage movie.mp4 -w 80");
+    Console.WriteLine("  consoleimage https://youtu.be/VIDEO_ID");
     Console.WriteLine();
-    Console.WriteLine("Run 'consoleimage --help' for full options.");
+    Console.WriteLine("Run 'consoleimage --help' for all options.");
     Console.WriteLine();
-    Console.WriteLine("Press any key to exit...");
+    Console.Write("Enter filename or URL (or press Enter to exit): ");
+
     try
     {
         if (!Console.IsInputRedirected)
-            Console.ReadKey(true);
+        {
+            var input = Console.ReadLine();
+            if (!string.IsNullOrWhiteSpace(input))
+            {
+                // Re-invoke with the provided input
+                var process = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = Environment.ProcessPath ?? "consoleimage",
+                        Arguments = $"\"{input}\"",
+                        UseShellExecute = false
+                    }
+                };
+                process.Start();
+                process.WaitForExit();
+            }
+        }
     }
     catch { }
 }
