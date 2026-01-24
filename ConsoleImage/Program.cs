@@ -86,6 +86,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var darkCutoff = parseResult.GetValue(cliOptions.DarkCutoff);
     var lightCutoff = parseResult.GetValue(cliOptions.LightCutoff);
     var mode = parseResult.GetValue(cliOptions.Mode);
+    var dejitter = parseResult.GetValue(cliOptions.Dejitter);
+    var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold);
 
     // Parse unified output option - auto-detect format from extension
     var (outputAsJson, outputAsCompressed, jsonOutputPath, gifOutputPath) =
@@ -273,7 +275,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         DarkBgThreshold = darkBgThreshold,
         AutoBg = autoBg,
         DarkCutoff = darkCutoff,
-        LightCutoff = lightCutoff
+        LightCutoff = lightCutoff,
+
+        // Temporal stability
+        Dejitter = dejitter,
+        ColorThreshold = colorThreshold
     };
 
     var result = await VideoHandler.HandleAsync(inputFullPath, input, videoOpts, cancellationToken);

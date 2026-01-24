@@ -98,6 +98,10 @@ public class CliOptions
     public Option<float?> DarkCutoff { get; }
     public Option<float?> LightCutoff { get; }
 
+    // Temporal stability
+    public Option<bool> Dejitter { get; }
+    public Option<int?> ColorThreshold { get; }
+
     public CliOptions()
     {
         // Detect console window size for defaults
@@ -184,6 +188,7 @@ public class CliOptions
 
         Colors = new Option<int?>("--colors") { Description = "Max colors in palette (4, 16, 256)" };
         Colors.Aliases.Add("-c");
+        Colors.Aliases.Add("--colours"); // British English alias
 
         Contrast = new Option<float>("--contrast") { Description = "Contrast enhancement (1.0 = none)" };
         Contrast.DefaultValueFactory = _ => 2.5f;
@@ -269,6 +274,12 @@ public class CliOptions
         AutoBg = new Option<bool>("--auto-bg") { Description = "Auto-detect and suppress background" };
         DarkCutoff = new Option<float?>("--dark-cutoff") { Description = "Skip colors below this brightness" };
         LightCutoff = new Option<float?>("--light-cutoff") { Description = "Skip colors above this brightness" };
+
+        // Temporal stability
+        Dejitter = new Option<bool>("--dejitter") { Description = "Enable temporal stability (reduce flickering in animations)" };
+        Dejitter.Aliases.Add("--stabilize");
+
+        ColorThreshold = new Option<int?>("--color-threshold") { Description = "Color stability threshold (0-255, default 15)" };
     }
 
     /// <summary>
@@ -352,5 +363,8 @@ public class CliOptions
         command.Options.Add(AutoBg);
         command.Options.Add(DarkCutoff);
         command.Options.Add(LightCutoff);
+
+        command.Options.Add(Dejitter);
+        command.Options.Add(ColorThreshold);
     }
 }

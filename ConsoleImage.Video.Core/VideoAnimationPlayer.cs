@@ -27,6 +27,9 @@ public class VideoAnimationPlayer : IDisposable
     private int _currentLoop;
     private int _totalFramesEstimate;
 
+    // Delta rendering support for braille mode
+    private CellData[,]? _previousBrailleCells;
+
     public VideoAnimationPlayer(string videoPath, VideoRenderOptions? options = null)
     {
         _videoPath = videoPath;
@@ -281,9 +284,27 @@ public class VideoAnimationPlayer : IDisposable
         return _options.RenderMode switch
         {
             VideoRenderMode.ColorBlocks => ((ColorBlockRenderer)renderer).RenderImage(image),
-            VideoRenderMode.Braille => ((BrailleRenderer)renderer).RenderImage(image),
+            VideoRenderMode.Braille => RenderBrailleFrame((BrailleRenderer)renderer, image),
             _ => RenderAsciiFrame((AsciiRenderer)renderer, image)
         };
+    }
+
+    /// <summary>
+    /// Render braille frame with optional delta optimization.
+    /// </summary>
+    private string RenderBrailleFrame(BrailleRenderer renderer, Image<Rgba32> image)
+    {
+        // Use delta rendering if temporal stability is enabled
+        if (_options.RenderOptions.EnableTemporalStability)
+        {
+            var colorThreshold = _options.RenderOptions.ColorStabilityThreshold;
+            var (output, cells) = renderer.RenderWithDelta(image, _previousBrailleCells, colorThreshold);
+            _previousBrailleCells = cells;
+            return output;
+        }
+
+        // Standard full-frame rendering
+        return renderer.RenderImage(image);
     }
 
     /// <summary>

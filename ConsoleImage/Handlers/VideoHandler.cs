@@ -715,7 +715,9 @@ public static class VideoHandler
                 EnableDithering = !opts.NoDither,
                 EnableEdgeDirectionChars = !opts.NoEdgeChars,
                 DarkTerminalBrightnessThreshold = opts.DarkCutoff,
-                LightTerminalBrightnessThreshold = opts.LightCutoff
+                LightTerminalBrightnessThreshold = opts.LightCutoff,
+                EnableTemporalStability = opts.Dejitter,
+                ColorStabilityThreshold = opts.ColorThreshold ?? 15
             },
             StartTime = opts.Start,
             EndTime = end,
@@ -781,7 +783,9 @@ public static class VideoHandler
             EnableDithering = !opts.NoDither,
             EnableEdgeDirectionChars = !opts.NoEdgeChars,
             DarkTerminalBrightnessThreshold = opts.DarkCutoff,
-            LightTerminalBrightnessThreshold = opts.LightCutoff
+            LightTerminalBrightnessThreshold = opts.LightCutoff,
+            EnableTemporalStability = opts.Dejitter,
+            ColorStabilityThreshold = opts.ColorThreshold ?? 15
         };
     }
 }
@@ -868,4 +872,8 @@ public class VideoHandlerOptions
     public bool AutoBg { get; init; }
     public float? DarkCutoff { get; init; }
     public float? LightCutoff { get; init; }
+
+    // Temporal stability
+    public bool Dejitter { get; init; }
+    public int? ColorThreshold { get; init; }
 }

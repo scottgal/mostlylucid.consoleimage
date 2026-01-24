@@ -123,6 +123,23 @@ public class BrailleRenderer : IDisposable
 
                     // Apply gamma correction and boost saturation/brightness for braille
                     (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
+
+                    // Apply color quantization for reduced palette / temporal stability
+                    var paletteSize = _options.ColorCount;
+                    if (paletteSize.HasValue && paletteSize.Value > 0)
+                    {
+                        var quantStep = Math.Max(1, 256 / paletteSize.Value);
+                        r = (byte)(r / quantStep * quantStep);
+                        g = (byte)(g / quantStep * quantStep);
+                        b = (byte)(b / quantStep * quantStep);
+                    }
+                    else if (_options.EnableTemporalStability)
+                    {
+                        var quantStep = Math.Max(1, _options.ColorStabilityThreshold / 2);
+                        r = (byte)(r / quantStep * quantStep);
+                        g = (byte)(g / quantStep * quantStep);
+                        b = (byte)(b / quantStep * quantStep);
+                    }
                 }
 
                 cells[cy, cx] = new CellData(brailleChar, r, g, b);
@@ -130,6 +147,117 @@ public class BrailleRenderer : IDisposable
         });
 
         return cells;
+    }
+
+    /// <summary>
+    ///     Render an image with delta optimization - only outputs changed cells.
+    ///     Much more efficient for video/animation playback where most cells don't change.
+    /// </summary>
+    /// <param name="image">Image to render</param>
+    /// <param name="previousCells">Previous frame's cells (null for first frame)</param>
+    /// <param name="colorThreshold">Color difference threshold for considering a cell unchanged (0-255)</param>
+    /// <returns>Tuple of (ANSI output string, current frame's cells for next comparison)</returns>
+    public (string output, CellData[,] cells) RenderWithDelta(
+        Image<Rgba32> image,
+        CellData[,]? previousCells,
+        int colorThreshold = 8)
+    {
+        var cells = RenderToCells(image);
+        var height = cells.GetLength(0);
+        var width = cells.GetLength(1);
+
+        // First frame or dimension change - full redraw
+        if (previousCells == null ||
+            previousCells.GetLength(0) != height ||
+            previousCells.GetLength(1) != width)
+        {
+            return (RenderCellsToString(cells), cells);
+        }
+
+        // Delta render - only output changed cells
+        var sb = new System.Text.StringBuilder();
+        SixLabors.ImageSharp.PixelFormats.Rgba32? lastColor = null;
+        var changedCount = 0;
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var current = cells[y, x];
+                var previous = previousCells[y, x];
+
+                // Skip if cell hasn't changed (with threshold tolerance)
+                if (current.IsSimilar(previous, colorThreshold))
+                    continue;
+
+                changedCount++;
+
+                // Position cursor at this cell (1-indexed)
+                sb.Append($"\x1b[{y + 1};{x + 1}H");
+
+                // Output color if needed
+                if (_options.UseColor)
+                {
+                    var newColor = new SixLabors.ImageSharp.PixelFormats.Rgba32(current.R, current.G, current.B, 255);
+                    if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, newColor))
+                    {
+                        sb.Append($"\x1b[38;2;{current.R};{current.G};{current.B}m");
+                        lastColor = newColor;
+                    }
+                }
+
+                sb.Append(current.Character);
+            }
+        }
+
+        // Reset color at end
+        if (lastColor != null)
+            sb.Append("\x1b[0m");
+
+        return (sb.ToString(), cells);
+    }
+
+    /// <summary>
+    ///     Convert cell array to full ANSI string (for first frame or full redraw).
+    /// </summary>
+    private string RenderCellsToString(CellData[,] cells)
+    {
+        var height = cells.GetLength(0);
+        var width = cells.GetLength(1);
+        var sb = new System.Text.StringBuilder(width * height * 25);
+
+        sb.Append("\x1b[H"); // Home cursor
+
+        SixLabors.ImageSharp.PixelFormats.Rgba32? lastColor = null;
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var cell = cells[y, x];
+
+                if (_options.UseColor)
+                {
+                    var newColor = new SixLabors.ImageSharp.PixelFormats.Rgba32(cell.R, cell.G, cell.B, 255);
+                    if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, newColor))
+                    {
+                        sb.Append($"\x1b[38;2;{cell.R};{cell.G};{cell.B}m");
+                        lastColor = newColor;
+                    }
+                }
+
+                sb.Append(cell.Character);
+            }
+
+            if (y < height - 1)
+            {
+                sb.Append("\x1b[0m\n");
+                lastColor = null;
+            }
+        }
+
+        sb.Append("\x1b[0m");
+        return sb.ToString();
     }
 
     /// <summary>

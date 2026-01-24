@@ -315,6 +315,25 @@ public class AsciiRenderer : IDisposable
                         (byte)Math.Clamp(MathF.Pow(color.G / 255f, _options.Gamma) * 255f, 0, 255),
                         (byte)Math.Clamp(MathF.Pow(color.B / 255f, _options.Gamma) * 255f, 0, 255));
 
+                // Apply color quantization for reduced palette / temporal stability
+                var colorCount = _options.ColorCount;
+                if (colorCount.HasValue && colorCount.Value > 0)
+                {
+                    var quantStep = Math.Max(1, 256 / colorCount.Value);
+                    color = new Rgb24(
+                        (byte)(color.R / quantStep * quantStep),
+                        (byte)(color.G / quantStep * quantStep),
+                        (byte)(color.B / quantStep * quantStep));
+                }
+                else if (_options.EnableTemporalStability)
+                {
+                    var quantStep = Math.Max(1, _options.ColorStabilityThreshold / 2);
+                    color = new Rgb24(
+                        (byte)(color.R / quantStep * quantStep),
+                        (byte)(color.G / quantStep * quantStep),
+                        (byte)(color.B / quantStep * quantStep));
+                }
+
                 colors[y, x] = color;
             }
         }
