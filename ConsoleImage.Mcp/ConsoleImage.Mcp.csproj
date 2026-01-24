@@ -42,7 +42,7 @@
     <!-- CI/Release: use NuGet packages -->
     <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
         <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)"/>
-        <PackageReference Include="mostlylucid.consoleimage.video" Version="$(VideoPackageVersion)"/>
+        <PackageReference Include="mostlylucid.consoleimage.video" Version="$(CorePackageVersion)"/>
     </ItemGroup>
 
     <ItemGroup>
