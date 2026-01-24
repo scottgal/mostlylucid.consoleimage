@@ -32,6 +32,7 @@ public class CliOptions
     public Option<double> SceneThreshold { get; }
 
     // Render modes
+    public Option<bool> Ascii { get; }
     public Option<bool> Blocks { get; }
     public Option<bool> Braille { get; }
     public Option<bool> Matrix { get; }
@@ -167,12 +168,16 @@ public class CliOptions
         SceneThreshold = new Option<double>("--scene-threshold") { Description = "Scene detection threshold (0.0-1.0)" };
         SceneThreshold.DefaultValueFactory = _ => 0.4;
 
-        // Render modes
-        Blocks = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks (▀▄)" };
+        // Render modes (braille is default - highest detail, smallest output)
+        Ascii = new Option<bool>("--ascii") { Description = "Use ASCII characters instead of braille" };
+        Ascii.Aliases.Add("-a");
+
+        Blocks = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks instead of braille" };
         Blocks.Aliases.Add("-b");
 
-        Braille = new Option<bool>("--braille") { Description = "Use braille characters (2x4 dots per cell)" };
+        Braille = new Option<bool>("--braille") { Description = "Use braille characters (DEFAULT - 2x4 dots per cell, highest detail)" };
         Braille.Aliases.Add("-B");
+        Braille.DefaultValueFactory = _ => true;
 
         Matrix = new Option<bool>("--matrix") { Description = "Use Matrix digital rain effect" };
         Matrix.Aliases.Add("-M");
@@ -306,6 +311,7 @@ public class CliOptions
         command.Options.Add(Sampling);
         command.Options.Add(SceneThreshold);
 
+        command.Options.Add(Ascii);
         command.Options.Add(Blocks);
         command.Options.Add(Braille);
         command.Options.Add(Matrix);

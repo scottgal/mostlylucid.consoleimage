@@ -2,6 +2,64 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2025-01-24
+
+### Breaking Changes
+
+#### Braille is Now the Default Render Mode
+- **Braille mode (`-B`) is now the default** - Highest resolution output (2×4 dots per cell = 8x detail)
+- **`--ascii` / `-a` option added** - Use this for classic ASCII character rendering
+- **Default video width is 50** for braille mode - Braille is more CPU intensive, so we default to a smaller width for smooth video playback
+
+**Migration:**
+```bash
+# Old default (ASCII) - now requires -a flag
+consoleimage photo.jpg -a
+
+# New default (Braille) - just works
+consoleimage photo.jpg
+
+# Braille explicitly - same as before
+consoleimage photo.jpg -B
+```
+
+### New Features
+
+#### Mode Switching
+- **`-a, --ascii`** - Switch to classic ASCII character rendering
+- **Mutually exclusive modes** - `-a`, `-b`, `-B`, and `-M` now properly override each other
+- **Smart defaults** - Braille for maximum detail, ASCII available when needed
+
+#### Easter Egg
+- **Star Wars ASCII animation** - Run `consoleimage` with no arguments to see a surprise!
+
+### Improvements
+
+#### Braille Rendering
+- **Temporal stability (de-jitter)** - `--dejitter` reduces color flickering between frames
+- **Color quantization** - `--color-threshold` fine-tunes stability (0-255, default: 15)
+- **Cell-level delta rendering** - Only update changed cells for smoother video playback
+
+#### Codec Compatibility
+- **MPEG-4 Part 2 support** - Added to hardware acceleration blocklist for compatibility
+- **AV1 support** - Added to hardware acceleration blocklist for compatibility
+- **Better fallback** - Automatic software decoding when hardware acceleration fails
+
+### Bug Fixes
+
+- **Fixed hwdownload errors** - MPEG-4 and AV1 codecs now fall back to software decoding
+- **Fixed British spelling** - `--colours` alias added for `--colors` option
+
+### CLI Changes
+
+| Change | Old | New |
+|--------|-----|-----|
+| Default mode | ASCII | Braille |
+| ASCII mode | (default) | `-a, --ascii` |
+| Video width (braille) | Console width | 50 |
+
+---
+
 ## [2.7.0] - 2025-01-24
 
 ### Major Features

@@ -1,6 +1,6 @@
 # mostlylucid.consoleimage
 
-**Version 2.7** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+**Version 3.0** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -8,7 +8,7 @@
 ## Quick Start
 
 ```bash
-# Render an image to your terminal
+# Render an image to your terminal (braille mode by default!)
 consoleimage photo.jpg
 
 # Play a video as ASCII art (FFmpeg auto-downloads on first use)
@@ -18,28 +18,32 @@ consoleimage movie.mp4
 consoleimage animation.gif
 ```
 
-That's it! Colors and animation are enabled by default.
+That's it! Colors and animation are enabled by default. **Braille mode is now the default** for maximum detail.
 
 ### Choosing a Render Mode
 
 | Mode | Command | Resolution | Best For |
 |------|---------|------------|----------|
-| **ASCII** | `consoleimage photo.jpg` | Standard | General use, widest compatibility |
+| **Braille** | `consoleimage photo.jpg` | 8x (2×4 dots/cell) | **DEFAULT** - Maximum detail |
+| **ASCII** | `consoleimage photo.jpg -a` | Standard | Widest compatibility |
 | **Blocks** | `consoleimage photo.jpg -b` | 2x vertical | Photos, high fidelity |
-| **Braille** | `consoleimage photo.jpg -B` | 8x (2×4 dots/cell) | Maximum detail, smallest file size |
+| **Matrix** | `consoleimage photo.jpg -M` | Digital rain | Special effects |
 
-**Braille mode** (`-B`) packs 8 dots into each character cell, giving you the highest resolution output. Use it when you need:
+**Braille mode** is now the default because it packs 8 dots into each character cell, giving you the highest resolution output:
 - Maximum detail in limited terminal space
 - Smallest `.cidz` document files (fewer characters = smaller files)
 - Crisp rendering of photos, videos, or animations
 - Output that needs to fit in narrow terminal windows
 
 ```bash
-# High-detail braille at 80 chars wide
-consoleimage photo.jpg -B -w 80
+# Default braille at 80 chars wide
+consoleimage photo.jpg -w 80
+
+# Classic ASCII mode (v2.x default)
+consoleimage photo.jpg -a
 
 # Save video as compact braille document
-consoleimage movie.mp4 -B -o movie.cidz
+consoleimage movie.mp4 -o movie.cidz
 ```
 
 ### Common Options
@@ -72,6 +76,17 @@ consoleimage movie.mp4 -o movie.cidz
 > **Note:** These examples are rendered using `-o gif:` output. Terminal display varies by emulator and font.
 
 ## What's New
+
+<details>
+<summary><strong>Version 3.0</strong> (Breaking Changes)</summary>
+
+- **Braille is now the default** - Maximum resolution out of the box
+- **`-a, --ascii` option** - Use for classic ASCII mode (previous default)
+- **Video width defaults to 50** for braille (CPU intensive)
+- **Easter egg** - Run with no arguments for a surprise!
+- **MPEG-4 and AV1 codec support** - Hardware acceleration fallback
+- **`--colours` alias** - British spelling support
+</details>
 
 <details>
 <summary><strong>Version 2.7</strong></summary>
@@ -493,8 +508,9 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `--bg-threshold`      | Light background threshold (0.0-1.0)                      | Auto           |
 | `--dark-bg-threshold` | Dark background threshold (0.0-1.0)                       | Auto           |
 | `--auto-bg`           | Auto-detect background                                    | ON             |
+| `-a, --ascii`         | Use classic ASCII characters                              | OFF            |
 | `-b, --blocks`        | Use colored Unicode half-blocks                           | OFF            |
-| `-B, --braille`       | Use braille characters (2×4 dots/cell)                    | OFF            |
+| `-B, --braille`       | Use braille characters (2×4 dots/cell)                    | **DEFAULT**    |
 | `--no-alt-screen`     | Keep animation in scrollback                              | Alt screen ON  |
 | `--no-parallel`       | Disable parallel processing                               | Parallel ON    |
 | `-a, --aspect-ratio`  | Character aspect ratio (width/height)                     | 0.5            |

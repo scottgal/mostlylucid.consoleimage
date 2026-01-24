@@ -171,8 +171,11 @@ same pixels that contribute to the visible pattern.
 ## CLI Usage
 
 ```bash
-# Basic rendering
+# Basic rendering (braille mode is DEFAULT in v3.0+)
 consoleimage image.jpg
+
+# Classic ASCII mode (v2.x default)
+consoleimage image.jpg --ascii
 
 # With options
 consoleimage animation.gif -w 80 --speed 1.5 --loop 3
@@ -180,7 +183,7 @@ consoleimage animation.gif -w 80 --speed 1.5 --loop 3
 # Color blocks mode (higher fidelity)
 consoleimage photo.png --blocks
 
-# Braille mode (ultra-high resolution)
+# Braille mode (ultra-high resolution) - DEFAULT
 consoleimage photo.png --braille
 
 # Matrix mode (digital rain effect)
@@ -288,13 +291,14 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 ### Key CLI Options
 - `-w, --width` - Output width in characters
 - `-h, --height` - Output height in characters
-- `-a, --aspect-ratio` - Character aspect ratio (width/height)
+- `--char-aspect` - Character aspect ratio (width/height)
 - `-s, --speed` - Animation speed multiplier
 - `-S, --status` - Show status line below output (progress, timing, file info)
 - `-l, --loop` - Loop count (0 = infinite)
 - `-f, --frame-sample` - Frame sampling rate (skip frames)
+- `-a, --ascii` - Use classic ASCII characters (v2.x default)
 - `-b, --blocks` - Use colored Unicode blocks
-- `-B, --braille` - Use braille characters (2x4 dots per cell)
+- `-B, --braille` - Use braille characters (DEFAULT - 2x4 dots per cell)
 - `-M, --matrix` - Use Matrix digital rain effect
 - `--matrix-color` - Matrix color: green, red, blue, amber, cyan, purple, or hex (#RRGGBB)
 - `--matrix-fullcolor` - Use source image colors with Matrix lighting

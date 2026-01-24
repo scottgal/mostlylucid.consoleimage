@@ -45,9 +45,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var frameStep = parseResult.GetValue(cliOptions.FrameStep);
     var sampling = parseResult.GetValue(cliOptions.Sampling);
     var sceneThreshold = parseResult.GetValue(cliOptions.SceneThreshold);
+    var useAscii = parseResult.GetValue(cliOptions.Ascii);
     var useBlocks = parseResult.GetValue(cliOptions.Blocks);
-    var useBraille = parseResult.GetValue(cliOptions.Braille);
+    var useBrailleOpt = parseResult.GetValue(cliOptions.Braille);
     var useMatrix = parseResult.GetValue(cliOptions.Matrix);
+
+    // Braille is default, but --ascii, --blocks, or --matrix override it
+    var useBraille = useBrailleOpt && !useAscii && !useBlocks && !useMatrix;
     var matrixColor = parseResult.GetValue(cliOptions.MatrixColor);
     var matrixFullColor = parseResult.GetValue(cliOptions.MatrixFullColor);
     var matrixDensity = parseResult.GetValue(cliOptions.MatrixDensity);
@@ -206,6 +210,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             showStatus, cancellationToken);
 
     // Video files - requires FFmpeg
+    // Default width for braille video is 50 (more CPU intensive)
+    var videoWidth = width ?? (useBraille ? 50 : null);
+
     var videoOpts = new VideoHandlerOptions
     {
         // Output
@@ -214,10 +221,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         OutputAsCompressed = outputAsCompressed,
         JsonOutputPath = jsonOutputPath,
 
-        // Dimensions
-        Width = width,
+        // Dimensions (braille defaults to 50 wide for performance)
+        Width = videoWidth,
         Height = height,
-        MaxWidth = maxWidth,
+        MaxWidth = videoWidth ?? maxWidth,
         MaxHeight = maxHeight,
 
         // Time range
@@ -482,19 +489,19 @@ static async Task PlayEasterEggAsync()
 static void ShowHelpAndWait()
 {
     Console.WriteLine();
-    Console.WriteLine("ConsoleImage - ASCII Art Renderer");
-    Console.WriteLine("==================================");
+    Console.WriteLine("ConsoleImage v3.0 - ASCII Art Renderer");
+    Console.WriteLine("=======================================");
     Console.WriteLine();
     Console.WriteLine("Usage: consoleimage <file> [options]");
     Console.WriteLine();
     Console.WriteLine("Render modes:");
-    Console.WriteLine("  (default)    ASCII characters");
+    Console.WriteLine("  (default)    Braille dots - highest detail, smallest output");
+    Console.WriteLine("  -a, --ascii  Classic ASCII characters");
     Console.WriteLine("  -b, --blocks Unicode half-blocks (2x vertical resolution)");
-    Console.WriteLine("  -B, --braille Braille dots (2x4 per character - highest detail)");
-    Console.WriteLine("  -M, --matrix  Matrix digital rain effect");
+    Console.WriteLine("  -M, --matrix Matrix digital rain effect");
     Console.WriteLine();
     Console.WriteLine("Common options:");
-    Console.WriteLine("  -w, --width <n>     Output width in characters");
+    Console.WriteLine("  -w, --width <n>     Output width (default: 50 for video)");
     Console.WriteLine("  -s, --speed <n>     Playback speed multiplier");
     Console.WriteLine("  -l, --loop <n>      Loop count (0 = infinite)");
     Console.WriteLine("  -o, --output <file> Save as .gif or .cidz");
@@ -503,9 +510,10 @@ static void ShowHelpAndWait()
     Console.WriteLine("  --dejitter          Reduce animation flickering");
     Console.WriteLine();
     Console.WriteLine("Examples:");
-    Console.WriteLine("  consoleimage photo.jpg -B -w 80");
-    Console.WriteLine("  consoleimage movie.mp4 -b -w 120 -S");
-    Console.WriteLine("  consoleimage animation.gif -o output.gif");
+    Console.WriteLine("  consoleimage photo.jpg              (braille, auto-sized)");
+    Console.WriteLine("  consoleimage movie.mp4 -w 80        (braille, 80 chars wide)");
+    Console.WriteLine("  consoleimage movie.mp4 -a -w 120    (ascii mode)");
+    Console.WriteLine("  consoleimage animation.gif -o out.gif");
     Console.WriteLine();
     Console.WriteLine("Run 'consoleimage --help' for full options.");
     Console.WriteLine();
