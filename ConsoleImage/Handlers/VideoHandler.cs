@@ -220,7 +220,7 @@ public static class VideoHandler
 
         await foreach (var frameImage in ffmpeg.StreamFramesAsync(
                            inputPath, targetWidth, targetHeight,
-                           rawStartTime, rawEndTime, opts.FrameStep, uniformTargetFps, ct))
+                           rawStartTime, rawEndTime, opts.FrameStep, uniformTargetFps, videoInfo.VideoCodec, ct))
         {
             if (streamingGif.ShouldStop)
             {
@@ -413,6 +413,7 @@ public static class VideoHandler
                            end,
                            opts.FrameStep,
                            gifTargetFps,
+                           videoInfo.VideoCodec,
                            ct))
         {
             if (opts.UseBraille)
@@ -522,16 +523,16 @@ public static class VideoHandler
 
         if (opts.OutputAsCompressed)
             return await HandleCompressedJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts,
-                pixelWidth, pixelHeight, charWidth, charHeight, frameDelayMs, jsonTargetFps, end, renderModeName, ct);
+                pixelWidth, pixelHeight, charWidth, charHeight, frameDelayMs, jsonTargetFps, end, renderModeName, videoInfo.VideoCodec, ct);
 
         return await HandleStreamingJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts,
-            pixelWidth, pixelHeight, frameDelayMs, jsonTargetFps, end, renderModeName, ct);
+            pixelWidth, pixelHeight, frameDelayMs, jsonTargetFps, end, renderModeName, videoInfo.VideoCodec, ct);
     }
 
     private static async Task<int> HandleCompressedJsonOutput(
         FFmpegService ffmpeg, string inputPath, RenderOptions jsonRenderOptions, VideoHandlerOptions opts,
         int pixelWidth, int pixelHeight, int charWidth, int charHeight,
-        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName,
+        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName, string? videoCodec,
         CancellationToken ct)
     {
         var doc = new ConsoleImageDocument
@@ -554,6 +555,7 @@ public static class VideoHandler
                                end,
                                opts.FrameStep,
                                jsonTargetFps,
+                               videoCodec,
                                ct))
             {
                 string content;
@@ -594,7 +596,7 @@ public static class VideoHandler
     private static async Task<int> HandleStreamingJsonOutput(
         FFmpegService ffmpeg, string inputPath, RenderOptions jsonRenderOptions, VideoHandlerOptions opts,
         int pixelWidth, int pixelHeight,
-        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName,
+        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName, string? videoCodec,
         CancellationToken ct)
     {
         await using var docWriter = new StreamingDocumentWriter(
@@ -618,6 +620,7 @@ public static class VideoHandler
                                end,
                                opts.FrameStep,
                                jsonTargetFps,
+                               videoCodec,
                                ct))
             {
                 if (opts.UseBraille)

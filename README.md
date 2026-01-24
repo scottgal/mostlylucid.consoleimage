@@ -2,57 +2,156 @@
 
 **Version 2.7** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
-**Based on [Alex Harri's excellent article](https://alexharri.com/blog/ascii-rendering)** on ASCII rendering techniques.
+[![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
 
-## What's New in 2.6
+## Quick Start
 
-- **MCP Server** - `consoleimage-mcp` exposes rendering as AI tools for Claude Desktop, VS Code, etc.
-- **Spectre.Console Enhancements** - `MatrixImage`, `MultiAnimationPlayer`, `RenderModeComparison`
-- **VideoPlayer API** - Simple one-liner video playback: `await VideoPlayer.PlayAsync("video.mp4")`
+```bash
+# Render an image to your terminal
+consoleimage photo.jpg
 
-## What's New in 2.5
+# Play a video as ASCII art (FFmpeg auto-downloads on first use)
+consoleimage movie.mp4
 
-- **Matrix Mode** - `--matrix` digital rain effect with color presets, full color mode, custom alphabets
-- **Edge Detection Reveal** - `--matrix-edge-detect` reveals image shape through rain
-- **FFmpeg Auto-Download** - Zero setup, FFmpeg downloads automatically on first use
-- **Smart Keyframes** - Scene detection for representative frame extraction
-- **Memory Efficient** - Streaming GIF output, only 1 frame in memory
+# Play an animated GIF
+consoleimage animation.gif
+```
 
-## What's New in 2.7
+That's it! Colors and animation are enabled by default.
 
-- **Unified CLI** - `consoleimage` now handles images, GIFs, videos, AND document playback (no separate `consolevideo`)
-- **Compressed documents (.cidz)** - Save rendered output with delta encoding (~7:1 compression)
-- **Document-to-GIF conversion** - Convert cidz/json documents directly to animated GIFs
-- **FFmpeg-style options** - Use `--ss` for start time, `-t` for duration
-- **Status line** - `--status` or `-S` shows progress, timing, file info during playback
-- **Temporal stability** - `--dejitter` reduces color flickering in animations
-- **Improved braille rendering** - Atkinson dithering, Otsu's threshold, color boost for vibrant output
-- **Standalone Player packages** - `mostlylucid.consoleimage.player` for embedding documents without ImageSharp
+### Choosing a Render Mode
 
-## What's New in 2.0
+| Mode | Command | Resolution | Best For |
+|------|---------|------------|----------|
+| **ASCII** | `consoleimage photo.jpg` | Standard | General use, widest compatibility |
+| **Blocks** | `consoleimage photo.jpg -b` | 2x vertical | Photos, high fidelity |
+| **Braille** | `consoleimage photo.jpg -B` | 8x (2×4 dots/cell) | Maximum detail, smallest file size |
 
-- **URL support** - Load images directly from HTTP/HTTPS URLs
-- **Native terminal protocols** - iTerm2, Kitty, Sixel auto-detection
-- **JSON document format** - Save/load rendered output as portable JSON-LD documents
-- **Streaming JSON** - Write frames incrementally for long videos (NDJSON format)
-- **GIF output** - Save rendered output as animated GIF files
-- **Dynamic resize** - Animations re-render when you resize the console
-- **Flicker-free** - DECSET 2026 synchronized output with diff-based rendering
-- **Performance** - Parallel rendering, pre-computed lookup tables
+**Braille mode** (`-B`) packs 8 dots into each character cell, giving you the highest resolution output. Use it when you need:
+- Maximum detail in limited terminal space
+- Smallest `.cidz` document files (fewer characters = smaller files)
+- Crisp rendering of photos, videos, or animations
+- Output that needs to fit in narrow terminal windows
 
-See [CHANGELOG.md](CHANGELOG.md) for full details.
+```bash
+# High-detail braille at 80 chars wide
+consoleimage photo.jpg -B -w 80
 
-| ASCII Mode                                                                                                                        | ColorBlocks Mode                                                                                                                         | Braille Mode                                                                                                                          |
-|-----------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+# Save video as compact braille document
+consoleimage movie.mp4 -B -o movie.cidz
+```
+
+### Common Options
+
+```bash
+# Set output width
+consoleimage photo.jpg -w 100
+
+# Control animation speed and loops
+consoleimage animation.gif --speed 1.5 --loop 3
+
+# Video: start at 30s, play for 10s
+consoleimage movie.mp4 --ss 30 -t 10
+
+# Save as animated GIF
+consoleimage animation.gif -o output.gif
+
+# Save as compressed document (play back without source file)
+consoleimage movie.mp4 -o movie.cidz
+```
+
+## Render Mode Comparison
+
+| ASCII Mode | ColorBlocks Mode | Braille Mode |
+|------------|------------------|--------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> |
+| Shape-matched characters | Unicode half-blocks (▀▄) | 2×4 dot patterns |
+| Widest compatibility | 2x vertical resolution | 8x resolution |
 
-**Original GIF → Three rendering modes** (shape-matched ASCII, Unicode half-blocks, braille dots)
+> **Note:** These examples are rendered using `-o gif:` output. Terminal display varies by emulator and font.
 
-> **Note:** These example images are rendered to GIF using the tool's `-o gif:` output option with a consistent
-> monospace font. Actual terminal display may vary depending on your terminal emulator, font choice, and color support.
-> GIF output typically produces cleaner results than live terminal display.
+## What's New
 
-### Video to ASCII
+<details>
+<summary><strong>Version 2.7</strong></summary>
+
+- **Unified CLI** - `consoleimage` handles images, GIFs, videos, AND document playback
+- **Compressed documents (.cidz)** - Delta encoding with ~7:1 compression
+- **Improved braille** - Atkinson dithering, Otsu's threshold, color boost
+- **Status line** - `--status` shows progress during playback
+- **Temporal stability** - `--dejitter` reduces color flickering
+</details>
+
+<details>
+<summary><strong>Version 2.6</strong></summary>
+
+- **MCP Server** - AI tool integration for Claude Desktop, VS Code
+- **Spectre.Console** - `MatrixImage`, `MultiAnimationPlayer`
+- **VideoPlayer API** - `await VideoPlayer.PlayAsync("video.mp4")`
+</details>
+
+<details>
+<summary><strong>Version 2.5</strong></summary>
+
+- **Matrix Mode** - Digital rain effect with color presets
+- **FFmpeg Auto-Download** - Zero setup for video playback
+- **Memory Efficient** - Streaming GIF output
+</details>
+
+See [CHANGELOG.md](CHANGELOG.md) for full history.
+
+## Examples
+
+### Video - Big Buck Bunny (Blender Open Movie)
+
+| ASCII | ColorBlocks | Braille |
+|-------|-------------|---------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_ascii.gif" width="250" alt="Bunny ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_blocks.gif" width="250" alt="Bunny Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_braille.gif" width="250" alt="Bunny Braille"> |
+
+```bash
+consoleimage movie.mp4 -B -w 80  # Braille mode for maximum detail
+```
+
+### Video - Star Trek TNG
+
+| ASCII | ColorBlocks | Braille |
+|-------|-------------|---------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/startrek_ascii.gif" width="250" alt="Star Trek ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/startrek_blocks.gif" width="250" alt="Star Trek Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/startrek_braille.gif" width="250" alt="Star Trek Braille"> |
+
+### Animation - Futurama
+
+| ASCII | ColorBlocks | Braille |
+|-------|-------------|---------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/futurama_ascii.gif" width="250" alt="Futurama ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/futurama_blocks.gif" width="250" alt="Futurama Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/futurama_braille.gif" width="250" alt="Futurama Braille"> |
+
+```bash
+consoleimage video.mkv --ss 120 -t 3 -o clip.gif  # Extract 3 seconds starting at 2:00
+```
+
+### Keyframe Extraction (Slideshow)
+
+<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/scene_keyframes.gif" width="400" alt="Keyframe slideshow">
+
+Extract representative frames from a video to create a slow-playing slideshow:
+
+```bash
+consoleimage video.avi --ss 0 -t 300 --smart-keyframes --raw -o slideshow.gif --gif-frames 12 --gif-fps 1
+```
+
+### Classic Animation - Amiga Boing Ball
+
+| ASCII | ColorBlocks | Braille |
+|-------|-------------|---------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_ascii.gif" width="200" alt="Boing ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_blocks.gif" width="200" alt="Boing Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_braille.gif" width="200" alt="Boing Braille"> |
+
+### Animated GIF
+
+| ASCII | ColorBlocks | Braille |
+|-------|-------------|---------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/cat_wag_ascii.gif" width="200" alt="Cat ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/cat_wag_blocks.gif" width="200" alt="Cat Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/cat_wag_braille.gif" width="200" alt="Cat Braille"> |
+
+### Animation Comparison
 
 | ASCII                                                                                                                                 | ColorBlocks                                                                                                                             | Braille                                                                                                                                   |
 |---------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|

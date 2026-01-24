@@ -133,6 +133,7 @@ public class VideoAnimationPlayer : IDisposable
                     _options.EndTime,
                     _options.FrameStep,
                     _options.TargetFps,
+                    _videoInfo?.VideoCodec,
                     ct))
                 {
                     using (image)

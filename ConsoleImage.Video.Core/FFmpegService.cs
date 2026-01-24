@@ -162,11 +162,28 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
+    /// Codecs known to have issues with hardware acceleration.
+    /// These typically cause "auto_scale" filter errors or other conversion issues.
+    /// </summary>
+    private static readonly HashSet<string> _hwAccelProblematicCodecs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "theora",   // Ogg Theora - causes auto_scale filter errors
+        "vp6",      // Old Flash codec
+        "vp6f",     // Flash VP6
+        "gif",      // GIF as video
+        "apng",     // Animated PNG
+    };
+
+    /// <summary>
     /// Get FFmpeg hardware acceleration arguments.
     /// </summary>
-    private string GetHwAccelArgs()
+    private string GetHwAccelArgs(string? codec = null)
     {
         if (!_useHardwareAcceleration || string.IsNullOrEmpty(_hwAccelType))
+            return "";
+
+        // Disable hwaccel for codecs known to cause issues
+        if (!string.IsNullOrEmpty(codec) && _hwAccelProblematicCodecs.Contains(codec))
             return "";
 
         return _hwAccelType switch
@@ -181,8 +198,12 @@ public sealed class FFmpegService : IDisposable
     /// <summary>
     /// Get filter prefix for hwdownload if using CUDA.
     /// </summary>
-    private string GetHwDownloadFilter()
+    private string GetHwDownloadFilter(string? codec = null)
     {
+        // Skip hwdownload for problematic codecs
+        if (!string.IsNullOrEmpty(codec) && _hwAccelProblematicCodecs.Contains(codec))
+            return "";
+
         if (_hwAccelType == "cuda" && _useHardwareAcceleration)
         {
             // hwdownload transfers from GPU to CPU memory
@@ -387,6 +408,7 @@ public sealed class FFmpegService : IDisposable
     /// Most efficient method for sequential playback.
     /// Outputs RGBA32 for compatibility with renderers.
     /// </summary>
+    /// <param name="codec">Optional codec hint to detect problematic codecs for hwaccel.</param>
     public async IAsyncEnumerable<Image<Rgba32>> StreamFramesAsync(
         string videoPath,
         int outputWidth,
@@ -395,11 +417,12 @@ public sealed class FFmpegService : IDisposable
         double? endTime = null,
         int frameStep = 1,
         double? targetFps = null,
+        string? codec = null,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
-        var hwAccel = GetHwAccelArgs();
-        var hwDownload = GetHwDownloadFilter();
+        var hwAccel = GetHwAccelArgs(codec);
+        var hwDownload = GetHwDownloadFilter(codec);
 
         // Build filter chain
         var filters = new List<string>();
@@ -421,6 +444,9 @@ public sealed class FFmpegService : IDisposable
         {
             filters.Add($"fps={targetFps.Value:F2}");
         }
+
+        // Explicit format conversion to avoid auto_scale issues with some codecs (e.g., Theora)
+        filters.Add("format=rgba");
 
         var filterChain = string.Join(",", filters);
 
@@ -550,6 +576,7 @@ public sealed class FFmpegService : IDisposable
         if (!string.IsNullOrEmpty(hwDownload))
             filters.Add(hwDownload.TrimEnd(','));
         filters.Add($"scale={outputWidth}:{outputHeight}:flags=fast_bilinear");
+        filters.Add("format=rgba");
 
         var filterChain = string.Join(",", filters);
 
@@ -629,7 +656,7 @@ public sealed class FFmpegService : IDisposable
             }
         }
 
-        var filters = $"scale={outputWidth}:{outputHeight}:flags=fast_bilinear";
+        var filters = $"scale={outputWidth}:{outputHeight}:flags=fast_bilinear,format=rgba";
 
         // Use -skip_frame nokey to only decode keyframes (much faster)
         // -vsync passthrough avoids frame duplication
@@ -701,7 +728,7 @@ public sealed class FFmpegService : IDisposable
 
         // Select only I-frames, scale down, limit count
         // The showinfo filter gives us the timestamp
-        var filters = $"select='eq(pict_type,I)',scale={outputWidth}:{outputHeight}:flags=fast_bilinear,showinfo";
+        var filters = $"select='eq(pict_type,I)',scale={outputWidth}:{outputHeight}:flags=fast_bilinear,format=rgba,showinfo";
 
         // Output raw frames - limit to maxCount
         var args = $"-loglevel error {inputArgs}-vf \"{filters}\" -vsync vfr -frames:v {maxCount} -f rawvideo -pix_fmt rgba -";

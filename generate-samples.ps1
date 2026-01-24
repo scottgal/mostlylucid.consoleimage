@@ -82,5 +82,17 @@ Generate-Sample $moviebill "moviebill_ascii.gif" "-w 60" "Moviebill ASCII"
 Generate-Sample $moviebill "moviebill_blocks.gif" "-b -w 60" "Moviebill Blocks"
 Generate-Sample $moviebill "moviebill_braille.gif" "-B -w 60" "Moviebill Braille"
 
+# Boingball samples (classic Amiga demo)
+$boingball = "F:/gifs/boingball_10_80x80_256.gif"
+Generate-Sample $boingball "boingball_ascii.gif" "-w 60" "Boingball ASCII"
+Generate-Sample $boingball "boingball_blocks.gif" "-b -w 60" "Boingball Blocks"
+Generate-Sample $boingball "boingball_braille.gif" "-B -w 60" "Boingball Braille"
+
+# Cat wag samples (animated GIF)
+$catwag = "F:/gifs/cat_wag.gif"
+Generate-Sample $catwag "cat_wag_ascii.gif" "-w 60" "Cat Wag ASCII"
+Generate-Sample $catwag "cat_wag_blocks.gif" "-b -w 60" "Cat Wag Blocks"
+Generate-Sample $catwag "cat_wag_braille.gif" "-B -w 60" "Cat Wag Braille"
+
 Write-Host "`nDone! Samples generated in $samplesDir/" -ForegroundColor Green
 Write-Host "Remember to commit the updated samples to git." -ForegroundColor Cyan
