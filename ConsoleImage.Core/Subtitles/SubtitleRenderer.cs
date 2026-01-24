@@ -166,6 +166,28 @@ public class SubtitleRenderer
         var sourceLines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var result = new List<string>();
 
+        // If source already has multiple lines, use them directly (don't re-balance)
+        if (sourceLines.Length >= 2)
+        {
+            foreach (var sourceLine in sourceLines)
+            {
+                if (result.Count >= _maxLines)
+                    break;
+
+                var trimmed = sourceLine.Trim();
+                if (string.IsNullOrEmpty(trimmed))
+                    continue;
+
+                // Truncate if too long
+                if (trimmed.Length > _maxWidth)
+                    trimmed = trimmed[.._maxWidth];
+
+                result.Add(trimmed);
+            }
+            return result.ToArray();
+        }
+
+        // Single source line - apply balancing/wrapping
         foreach (var sourceLine in sourceLines)
         {
             if (result.Count >= _maxLines)
