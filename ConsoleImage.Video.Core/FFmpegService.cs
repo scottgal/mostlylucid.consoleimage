@@ -173,6 +173,7 @@ public sealed class FFmpegService : IDisposable
         "gif",      // GIF as video
         "apng",     // Animated PNG
         "mpeg4",    // MPEG-4 part 2 / DivX - hwdownload nv12 format issues
+        "av1",      // AV1 - hwdownload nv12 format issues
     };
 
     /// <summary>

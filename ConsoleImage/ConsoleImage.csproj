@@ -52,4 +52,11 @@
         </Content>
     </ItemGroup>
 
+    <!-- Easter egg animation -->
+    <ItemGroup>
+        <EmbeddedResource Include="star_wars.json">
+            <LogicalName>ConsoleImage.star_wars.json</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
+
 </Project>

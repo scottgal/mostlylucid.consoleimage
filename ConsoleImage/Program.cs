@@ -2,6 +2,7 @@
 // Supports multiple render modes: ASCII, ColorBlocks, Braille, Matrix
 
 using System.CommandLine;
+using System.Reflection;
 using ConsoleImage.Cli;
 using ConsoleImage.Cli.Handlers;
 using ConsoleImage.Cli.Utilities;
@@ -9,6 +10,14 @@ using ConsoleImage.Core;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
+
+// Easter egg: if no arguments, play embedded animation then show help
+if (args.Length == 0)
+{
+    await PlayEasterEggAsync();
+    ShowHelpAndWait();
+    return 0;
+}
 
 // Load saved calibration if exists
 var savedCalibration = CalibrationHelper.Load();
@@ -412,4 +421,99 @@ static bool IsDocumentFile(string extension, string fileName)
 static bool IsImageFile(string extension)
 {
     return extension is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif";
+}
+
+// Easter egg: play embedded Star Wars animation
+static async Task PlayEasterEggAsync()
+{
+    try
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        using var stream = assembly.GetManifestResourceStream("ConsoleImage.star_wars.json");
+        if (stream == null) return;
+
+        // Load JSON directly from embedded resource
+        using var reader = new StreamReader(stream);
+        var json = await reader.ReadToEndAsync();
+        var doc = ConsoleImageDocument.FromJson(json);
+        if (doc == null || doc.Frames.Count == 0) return;
+
+        // Play with cancellation on any key press
+        using var cts = new CancellationTokenSource();
+
+        // Start playback
+        var player = new UnifiedPlayer(doc, new UnifiedPlayerOptions
+        {
+            UseAltScreen = true,
+            LoopCountOverride = 1
+        });
+
+        // Start key listener only if we have interactive console
+        Task? keyTask = null;
+        if (!Console.IsInputRedirected)
+        {
+            keyTask = Task.Run(() =>
+            {
+                try
+                {
+                    Console.ReadKey(true);
+                    cts.Cancel();
+                }
+                catch { }
+            });
+        }
+
+        // Play the animation
+        try
+        {
+            await player.PlayAsync(cts.Token);
+        }
+        catch (OperationCanceledException) { }
+
+        // Cancel key listener if still running
+        cts.Cancel();
+    }
+    catch
+    {
+        // Silently ignore any errors with easter egg
+    }
+}
+
+static void ShowHelpAndWait()
+{
+    Console.WriteLine();
+    Console.WriteLine("ConsoleImage - ASCII Art Renderer");
+    Console.WriteLine("==================================");
+    Console.WriteLine();
+    Console.WriteLine("Usage: consoleimage <file> [options]");
+    Console.WriteLine();
+    Console.WriteLine("Render modes:");
+    Console.WriteLine("  (default)    ASCII characters");
+    Console.WriteLine("  -b, --blocks Unicode half-blocks (2x vertical resolution)");
+    Console.WriteLine("  -B, --braille Braille dots (2x4 per character - highest detail)");
+    Console.WriteLine("  -M, --matrix  Matrix digital rain effect");
+    Console.WriteLine();
+    Console.WriteLine("Common options:");
+    Console.WriteLine("  -w, --width <n>     Output width in characters");
+    Console.WriteLine("  -s, --speed <n>     Playback speed multiplier");
+    Console.WriteLine("  -l, --loop <n>      Loop count (0 = infinite)");
+    Console.WriteLine("  -o, --output <file> Save as .gif or .cidz");
+    Console.WriteLine("  -S, --status        Show status line");
+    Console.WriteLine("  --colours <n>       Reduce color palette (4, 16, 256)");
+    Console.WriteLine("  --dejitter          Reduce animation flickering");
+    Console.WriteLine();
+    Console.WriteLine("Examples:");
+    Console.WriteLine("  consoleimage photo.jpg -B -w 80");
+    Console.WriteLine("  consoleimage movie.mp4 -b -w 120 -S");
+    Console.WriteLine("  consoleimage animation.gif -o output.gif");
+    Console.WriteLine();
+    Console.WriteLine("Run 'consoleimage --help' for full options.");
+    Console.WriteLine();
+    Console.WriteLine("Press any key to exit...");
+    try
+    {
+        if (!Console.IsInputRedirected)
+            Console.ReadKey(true);
+    }
+    catch { }
 }
