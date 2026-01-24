@@ -1,6 +1,6 @@
 # mostlylucid.consoleimage
 
-**Version 2.6** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+**Version 2.7** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 
 **Based on [Alex Harri's excellent article](https://alexharri.com/blog/ascii-rendering)** on ASCII rendering techniques.
 
@@ -20,10 +20,14 @@
 
 ## What's New in 2.7
 
-- **Unified CLI** - `consoleimage` now handles images, GIFs, videos, AND document playback
-- **Compressed documents (.cidz)** - Save rendered output as compressed documents with delta encoding
+- **Unified CLI** - `consoleimage` now handles images, GIFs, videos, AND document playback (no separate `consolevideo`)
+- **Compressed documents (.cidz)** - Save rendered output with delta encoding (~7:1 compression)
 - **Document-to-GIF conversion** - Convert cidz/json documents directly to animated GIFs
 - **FFmpeg-style options** - Use `--ss` for start time, `-t` for duration
+- **Status line** - `--status` or `-S` shows progress, timing, file info during playback
+- **Temporal stability** - `--dejitter` reduces color flickering in animations
+- **Improved braille rendering** - Better full-color mode with edge-preserving dot selection
+- **Standalone Player packages** - `mostlylucid.consoleimage.player` for embedding documents without ImageSharp
 
 ## What's New in 2.0
 
@@ -381,8 +385,11 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `--no-animate`        | Don't animate GIFs                                        | Animate ON     |
 | `-s, --speed`         | Animation speed multiplier                                | 1.0            |
 | `-l, --loop`          | Animation loop count (0 = infinite)                       | 0              |
+| `-S, --status`        | Show status line with progress, timing, file info         | OFF            |
 | `-r, --framerate`     | Fixed framerate in FPS (overrides GIF timing)             | GIF timing     |
 | `-f, --frame-sample`  | Frame sampling rate (skip frames)                         | 1              |
+| `--dejitter`          | Enable temporal stability to reduce color flickering      | OFF            |
+| `--color-threshold`   | Color similarity threshold for dejitter (0-255)           | 15             |
 | `-e, --edge`          | Enable edge detection                                     | OFF            |
 | `--bg-threshold`      | Light background threshold (0.0-1.0)                      | Auto           |
 | `--dark-bg-threshold` | Dark background threshold (0.0-1.0)                       | Auto           |

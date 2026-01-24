@@ -116,7 +116,9 @@ consoleimage movie.cidz -o movie.gif      # Document to GIF
 |--------|-------------|---------|
 | `-s, --speed` | Playback speed multiplier | 1.0 |
 | `-l, --loop` | Loop count (0 = infinite) | 0 |
+| `-S, --status` | Show status line with progress | OFF |
 | `--no-animate` | Show first frame only | OFF |
+| `--dejitter` | Reduce color flickering in animations | OFF |
 
 ### Video Options (requires FFmpeg)
 

@@ -84,7 +84,9 @@
       "Bash(git worktree:*)",
       "Bash(tasklist:*)",
       "Bash(Select-String -Pattern \"color\")",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "Bash(pushd:*)",
+      "Bash(popd)"
     ]
   },
   "enableAllProjectMcpServers": true,

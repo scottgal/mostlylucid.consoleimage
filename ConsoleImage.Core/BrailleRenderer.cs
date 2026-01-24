@@ -794,17 +794,10 @@ public class BrailleRenderer : IDisposable
     private const int PatternDiagTLBR = 0xFF ^ 0x01 ^ 0x80;  // ⢾ missing TL and BR
     private const int PatternDiagTRBL = 0xFF ^ 0x08 ^ 0x40;  // ⡷ missing TR and BL
 
-    // Additional subtle patterns for fine detail
-    // Half-block patterns (4 dots each)
-    private const int PatternTopHalf = 0x1B;      // ⠛ top 2 rows only
-    private const int PatternBottomHalf = 0xE4;   // ⣤ bottom 2 rows only
-    private const int PatternLeftHalf = 0x47;     // ⡇ left column
-    private const int PatternRightHalf = 0xB8;    // ⢸ right column
-
     /// <summary>
-    ///     Calculate braille code for colored mode with refined edge detection.
-    ///     Balances detail (edge patterns) with solid color aesthetics (full blocks).
-    ///     Uses graduated patterns based on edge strength.
+    ///     Calculate braille code for colored output.
+    ///     Strategy: Keep 6-7 dots always (minimal black), but WHICH dots are removed
+    ///     indicates edge direction. This gives detail without holes.
     /// </summary>
     private static int CalculateHybridBrailleCode(
         ReadOnlySpan<float> cellBrightness,
@@ -816,169 +809,90 @@ public class BrailleRenderer : IDisposable
     {
         if (colorCount == 0) return 0xFF;
 
-        // Calculate cell brightness statistics
+        // Calculate cell statistics
         var minCell = 1f;
         var maxCell = 0f;
+        var totalBright = 0f;
         for (var i = 0; i < colorCount; i++)
         {
             var b = cellBrightness[i];
+            totalBright += b;
             if (b < minCell) minCell = b;
             if (b > maxCell) maxCell = b;
         }
         var cellRange = maxCell - minCell;
 
-        // Very uniform cells get full blocks - preserves solid color look
-        if (cellRange < 0.12f)
+        // Very uniform - full block
+        if (cellRange < 0.15f)
         {
             return 0xFF;
         }
 
-        // Calculate brightness for each quadrant of the 2x4 cell
-        // Top half (rows 0-1) and bottom half (rows 2-3)
-        float topLeft = 0, topRight = 0, bottomLeft = 0, bottomRight = 0;
-        int tlCount = 0, trCount = 0, blCount = 0, brCount = 0;
+        // Find the 1-2 darkest pixels (in invert mode) or brightest (normal mode)
+        // These become the "missing" dots, showing edge detail
 
+        // Find indices sorted by brightness
+        Span<(float bright, int idx)> pixels = stackalloc (float, int)[colorCount];
         for (var i = 0; i < colorCount; i++)
         {
-            var idx = cellIndices[i];
-            var b = cellBrightness[i];
-            var dy = idx / 2;  // 0-3 (row)
-            var dx = idx % 2;  // 0-1 (column)
-
-            if (dy < 2)
-            {
-                if (dx == 0) { topLeft += b; tlCount++; }
-                else { topRight += b; trCount++; }
-            }
-            else
-            {
-                if (dx == 0) { bottomLeft += b; blCount++; }
-                else { bottomRight += b; brCount++; }
-            }
+            pixels[i] = (cellBrightness[i], cellIndices[i]);
         }
 
-        // Average each quadrant
-        topLeft = tlCount > 0 ? topLeft / tlCount : 0.5f;
-        topRight = trCount > 0 ? topRight / trCount : 0.5f;
-        bottomLeft = blCount > 0 ? bottomLeft / blCount : 0.5f;
-        bottomRight = brCount > 0 ? bottomRight / brCount : 0.5f;
-
-        // Calculate edge directions
-        var top = (topLeft + topRight) / 2;
-        var bottom = (bottomLeft + bottomRight) / 2;
-        var left = (topLeft + bottomLeft) / 2;
-        var right = (topRight + bottomRight) / 2;
-
-        var vertDiff = MathF.Abs(top - bottom);
-        var horizDiff = MathF.Abs(left - right);
-
-        // Check for diagonal edges (corner-to-corner contrast)
-        var diagTLBR = (topLeft + bottomRight) / 2;
-        var diagTRBL = (topRight + bottomLeft) / 2;
-        var diagDiff = MathF.Abs(diagTLBR - diagTRBL);
-
-        // Find darkest corner for subtle edge removal
-        var corners = new[] { topLeft, topRight, bottomLeft, bottomRight };
-        var darkestCorner = 0;
-        var darkestVal = corners[0];
-        var brightestCorner = 0;
-        var brightestVal = corners[0];
-        for (var i = 1; i < 4; i++)
+        // Sort by brightness (ascending)
+        for (var i = 0; i < colorCount - 1; i++)
         {
-            if (corners[i] < darkestVal) { darkestVal = corners[i]; darkestCorner = i; }
-            if (corners[i] > brightestVal) { brightestVal = corners[i]; brightestCorner = i; }
+            for (var j = i + 1; j < colorCount; j++)
+            {
+                if (pixels[j].bright < pixels[i].bright)
+                {
+                    var tmp = pixels[i];
+                    pixels[i] = pixels[j];
+                    pixels[j] = tmp;
+                }
+            }
         }
 
-        // Determine which corner to remove based on terminal mode
-        // Dark terminal (invert=true): remove darkest corner (show bright areas)
-        // Light terminal (invert=false): remove brightest corner (show dark areas)
-        var cornerToRemove = invertMode ? darkestCorner : brightestCorner;
+        // Start with full block
+        var brailleCode = 0xFF;
 
-        // Graduated edge detection thresholds
-        const float subtleThreshold = 0.15f;   // Subtle edges - single corner removed
-        const float moderateThreshold = 0.25f; // Moderate edges - 2 corners removed
-        const float strongThreshold = 0.40f;   // Strong edges - half block
+        // In invert mode (dark terminal): remove darkest 1-2 dots (they'd be invisible anyway)
+        // In normal mode: remove brightest 1-2 dots
+        // This shows edge detail while keeping most dots visible
 
-        // Strong diagonal edges
-        if (diagDiff > vertDiff && diagDiff > horizDiff && diagDiff > moderateThreshold)
+        int dotsToRemove = cellRange > 0.3f ? 2 : 1;
+
+        if (invertMode)
         {
-            var tlbrBrighter = diagTLBR > diagTRBL;
-            if (diagDiff > strongThreshold)
+            // Remove darkest pixels (they blend with terminal)
+            for (var i = 0; i < dotsToRemove && i < colorCount; i++)
             {
-                // Very strong diagonal - use half patterns
-                if (tlbrBrighter == invertMode)
-                    return PatternDiagTRBL;  // Remove TR+BL corners
-                else
-                    return PatternDiagTLBR;  // Remove TL+BR corners
-            }
-            else
-            {
-                // Moderate diagonal - remove single corner
-                if (tlbrBrighter == invertMode)
-                    return PatternNoTR;  // Darker diagonal is TR-BL
-                else
-                    return PatternNoTL;  // Darker diagonal is TL-BR
+                brailleCode &= ~DotBits[pixels[i].idx];
             }
         }
-
-        // Strong horizontal edges (top vs bottom)
-        if (vertDiff > horizDiff && vertDiff > subtleThreshold)
+        else
         {
-            var topBrighter = top > bottom;
-            if (vertDiff > strongThreshold)
+            // Remove brightest pixels (they blend with terminal)
+            for (var i = 0; i < dotsToRemove && i < colorCount; i++)
             {
-                // Very strong horizontal edge - half block
-                return (topBrighter == invertMode) ? PatternTopHalf : PatternBottomHalf;
-            }
-            else if (vertDiff > moderateThreshold)
-            {
-                // Moderate horizontal - row removed
-                return (topBrighter == invertMode) ? PatternTopFilled : PatternBottomFilled;
-            }
-            else
-            {
-                // Subtle horizontal - single corner
-                return (topBrighter == invertMode) ? PatternNoBL : PatternNoTR;
+                brailleCode &= ~DotBits[pixels[colorCount - 1 - i].idx];
             }
         }
 
-        // Strong vertical edges (left vs right)
-        if (horizDiff > subtleThreshold)
+        return brailleCode;
+    }
+
+    /// <summary>
+    ///     Count the number of set bits in an integer.
+    /// </summary>
+    private static int BitCount(int n)
+    {
+        var count = 0;
+        while (n != 0)
         {
-            var leftBrighter = left > right;
-            if (horizDiff > strongThreshold)
-            {
-                // Very strong vertical edge - half block
-                return (leftBrighter == invertMode) ? PatternLeftHalf : PatternRightHalf;
-            }
-            else if (horizDiff > moderateThreshold)
-            {
-                // Moderate vertical - column removed
-                return (leftBrighter == invertMode) ? PatternLeftFilled : PatternRightFilled;
-            }
-            else
-            {
-                // Subtle vertical - single corner
-                return (leftBrighter == invertMode) ? PatternNoTR : PatternNoBL;
-            }
+            count += n & 1;
+            n >>= 1;
         }
-
-        // Cell has contrast but no clear edge direction
-        // Use subtle single-corner removal based on darkest/brightest corner
-        if (cellRange > subtleThreshold)
-        {
-            return cornerToRemove switch
-            {
-                0 => PatternNoTL,  // Remove top-left
-                1 => PatternNoTR,  // Remove top-right
-                2 => PatternNoBL,  // Remove bottom-left
-                3 => PatternNoBR,  // Remove bottom-right
-                _ => 0xFF
-            };
-        }
-
-        // Default to full block for moderate contrast without clear edges
-        return 0xFF;
+        return count;
     }
 }
 

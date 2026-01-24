@@ -2,6 +2,105 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.0] - 2025-01-24
+
+### Major Features
+
+#### Unified CLI
+- **Single CLI for everything** - `consoleimage` now handles images, GIFs, videos, AND document playback
+- **No separate `consolevideo`** - All functionality merged into the unified CLI
+- **FFmpeg-style time options** - Use `--ss` for start time, `-t` for duration on videos
+
+```bash
+# Images, GIFs, videos, documents - all with one CLI
+consoleimage photo.jpg
+consoleimage animation.gif
+consoleimage movie.mp4 --ss 60 -t 30
+consoleimage saved.cidz
+```
+
+#### Compressed Document Format (.cidz)
+- **Delta encoding** - Only changed cells stored between frames (~7:1 compression)
+- **Global color palette** - Colors stored once, referenced by index
+- **Keyframe interval** - Full frames every N frames (default: 30) for seeking
+- **Loop count in metadata** - Frames NOT duplicated for loops
+
+```bash
+# Save as compressed document
+consoleimage animation.gif -o output.cidz
+consoleimage movie.mp4 -o movie.cidz --blocks
+
+# Play documents (no original source needed)
+consoleimage output.cidz --speed 1.5
+
+# Convert document to GIF
+consoleimage movie.cidz -o movie.gif
+```
+
+#### Status Line
+- **Progress indicator** - `-S, --status` shows real-time playback info
+- **File info** - Displays filename, resolution (source → output), render mode
+- **Frame counter** - Shows current frame / total frames for animations
+- **Time position** - Shows elapsed time / total duration for videos
+
+```bash
+consoleimage animation.gif --status
+consoleimage movie.mp4 -S -w 120
+```
+
+#### Temporal Stability (De-jitter)
+- **Reduces color flickering** - `--dejitter` stabilizes similar colors between frames
+- **Configurable threshold** - `--color-threshold` sets similarity (0-255, default: 15)
+- **Better compression** - More stable colors = smaller delta frames
+
+```bash
+consoleimage animation.gif -o output.cidz --dejitter
+consoleimage animation.gif -o output.cidz --dejitter --color-threshold 20
+```
+
+### New Packages
+
+#### ConsoleImage.Player (`mostlylucid.consoleimage.player`)
+- **Standalone playback** - Play .cidz documents without ImageSharp or FFmpeg
+- **Perfect for embedding** - Add animated startup logos with minimal dependencies
+- **Spectre.Console variant** - `mostlylucid.consoleimage.player.spectre` for native integration
+
+```csharp
+// One-liner document playback
+var player = await ConsolePlayer.FromFileAsync("logo.cidz");
+await player.PlayAsync(loopCount: 1);
+```
+
+### Improvements
+
+#### Braille Rendering
+- **Better full-color mode** - Improved hybrid algorithm for edge-preserving dot selection
+- **Smart dot removal** - Removes darkest dots on dark terminals (blend with background)
+- **Edge detail** - Shows edges by WHICH dots are removed, not by creating holes
+
+#### Build & Release
+- **Single release workflow** - Builds consoleimage and consoleimage-mcp for all platforms
+- **Updated GitHub Actions** - Uses actions/checkout@v6, actions/setup-dotnet@v5
+- **Fixed solution file** - Added Player projects, removed obsolete entries
+
+### Bug Fixes
+
+- **Fixed braille solarization** - Colors now sampled from visible dots only
+- **Fixed animation extra lines** - Corrected cursor positioning math
+- **Fixed color artifacts** - Proper ANSI reset at end of each line
+
+### New CLI Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-S, --status` | Show status line with progress | OFF |
+| `--dejitter, --stabilize` | Enable temporal stability | OFF |
+| `--color-threshold` | De-jitter color threshold (0-255) | 15 |
+| `--ss, --start` | Start time in seconds (videos) | 0 |
+| `-t, --duration` | Duration to play (videos) | Full |
+
+---
+
 ## [2.6.0] - 2025-01-22
 
 ### Major Features
