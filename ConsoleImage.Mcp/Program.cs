@@ -8,6 +8,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Gif;
+using SixLabors.ImageSharp.PixelFormats;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
@@ -29,6 +31,7 @@ await app.RunAsync();
 [JsonSerializable(typeof(RenderResult))]
 [JsonSerializable(typeof(DetailedImageInfo))]
 [JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSerializable(typeof(ExtractFramesResult))]
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 internal partial class McpJsonContext : JsonSerializerContext
 {
@@ -69,6 +72,16 @@ internal record DetailedImageInfo(
     string PixelFormat,
     double MegaPixels,
     Dictionary<string, string>? Metadata
+);
+
+internal record ExtractFramesResult(
+    bool Success,
+    string OutputPath,
+    int FrameCount,
+    int Width,
+    int Height,
+    double FileSizeKB,
+    string? Message = null
 );
 
 /// <summary>
@@ -515,6 +528,120 @@ public sealed class ConsoleImageTools
             new("FullColor", "varies", "Uses source image colors with Matrix lighting")
         };
         return JsonSerializer.Serialize(presets, McpJsonContext.Default.MatrixPresetArray);
+    }
+
+    /// <summary>
+    ///     Extract raw video frames to GIF (no ASCII rendering)
+    /// </summary>
+    [McpServerTool(Name = "extract_frames")]
+    [Description("Extract raw video frames to an animated GIF file. No ASCII rendering - preserves actual video frames. Useful for creating thumbnails, previews, or scene slideshows.")]
+    public static async Task<string> ExtractFrames(
+        [Description("Path to video file (MP4, MKV, AVI, WebM, etc.)")]
+        string inputPath,
+        [Description("Path for the output GIF file")]
+        string outputPath,
+        [Description("Output width in pixels (default: 320)")]
+        int width = 320,
+        [Description("Maximum number of frames to extract (default: 8)")]
+        int maxFrames = 8,
+        [Description("Maximum duration in seconds to sample from (default: 10)")]
+        double maxLength = 10,
+        [Description("Start time in seconds (default: 0)")]
+        double startTime = 0,
+        [Description("Use smart scene detection instead of uniform sampling (default: false)")]
+        bool smartKeyframes = false,
+        [Description("Scene detection threshold 0.0-1.0 (default: 0.4, lower = more sensitive)")]
+        double sceneThreshold = 0.4)
+    {
+        if (!File.Exists(inputPath))
+            return $"Error: File not found: {inputPath}";
+
+        try
+        {
+            using var ffmpeg = new FFmpegService();
+            await ffmpeg.InitializeAsync(null, CancellationToken.None);
+
+            var videoInfo = await ffmpeg.GetVideoInfoAsync(inputPath);
+            if (videoInfo == null)
+                return "Error: Could not read video info";
+
+            var targetHeight = (int)(width * videoInfo.Height / (double)videoInfo.Width);
+            var endTime = startTime + maxLength;
+
+            if (smartKeyframes)
+            {
+                // Scene detection mode
+                var sceneTimestamps = await ffmpeg.DetectSceneChangesAsync(
+                    inputPath, sceneThreshold, startTime, endTime, CancellationToken.None);
+
+                List<double> keyframeTimes = new() { startTime };
+                keyframeTimes.AddRange(sceneTimestamps);
+
+                if (keyframeTimes.Count > maxFrames)
+                    keyframeTimes = keyframeTimes.Take(maxFrames).ToList();
+
+                using var gif = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(width, targetHeight);
+                var gifMeta = gif.Metadata.GetGifMetadata();
+                gifMeta.RepeatCount = 0;
+
+                var frameCount = 0;
+                foreach (var timestamp in keyframeTimes)
+                {
+                    var frame = await ffmpeg.ExtractFrameAsync(inputPath, timestamp, width, targetHeight, CancellationToken.None);
+                    if (frame != null)
+                    {
+                        var frameMeta = frame.Frames.RootFrame.Metadata.GetGifMetadata();
+                        frameMeta.FrameDelay = 100; // 1 second between frames
+                        gif.Frames.AddFrame(frame.Frames.RootFrame);
+                        frame.Dispose();
+                        frameCount++;
+                    }
+                }
+
+                if (gif.Frames.Count > 1)
+                    gif.Frames.RemoveFrame(0);
+
+                await gif.SaveAsGifAsync(outputPath);
+
+                var fileInfo = new FileInfo(outputPath);
+                var result = new ExtractFramesResult(true, outputPath, frameCount, width, targetHeight,
+                    fileInfo.Length / 1024.0, $"Extracted {frameCount} keyframes using scene detection");
+                return JsonSerializer.Serialize(result, McpJsonContext.Default.ExtractFramesResult);
+            }
+            else
+            {
+                // Uniform sampling mode
+                var targetFps = Math.Min(videoInfo.FrameRate, maxFrames / maxLength);
+
+                await using var streamingGif = new FFmpegGifWriter(
+                    outputPath, width, targetHeight,
+                    (int)Math.Max(1, targetFps), 0, 64, maxLength, maxFrames);
+
+                await streamingGif.StartAsync(null, CancellationToken.None);
+
+                var frameCount = 0;
+                await foreach (var frame in ffmpeg.StreamFramesAsync(
+                    inputPath, width, targetHeight, startTime, endTime, 1, targetFps,
+                    videoInfo.VideoCodec, CancellationToken.None))
+                {
+                    if (streamingGif.ShouldStop) { frame.Dispose(); break; }
+                    await streamingGif.AddFrameAsync(frame, CancellationToken.None);
+                    frame.Dispose();
+                    frameCount++;
+                }
+
+                await streamingGif.FinishAsync(CancellationToken.None);
+
+                var fileInfo = new FileInfo(outputPath);
+                var result = new ExtractFramesResult(true, outputPath, frameCount, width, targetHeight,
+                    fileInfo.Length / 1024.0, $"Extracted {frameCount} frames with uniform sampling");
+                return JsonSerializer.Serialize(result, McpJsonContext.Default.ExtractFramesResult);
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Error extracting frames: {ex.Message}";
+        }
     }
 
     /// <summary>

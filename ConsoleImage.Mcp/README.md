@@ -48,6 +48,7 @@ Provides the following MCP tools:
 |------------------------|----------------------------------------------------------------------|
 | `render_image`         | Render image/GIF to ASCII art (ascii, blocks, braille, matrix modes) |
 | `render_to_gif`        | Create animated GIF from image/GIF source                            |
+| `extract_frames`       | Extract raw video frames to GIF (no ASCII rendering)                 |
 | `get_image_info`       | Get detailed image metadata (format, dimensions, EXIF, color depth)  |
 | `get_gif_info`         | Get GIF metadata (dimensions, frame count)                           |
 | `get_video_info`       | Get video file info via FFmpeg                                       |
@@ -285,6 +286,28 @@ Returns comprehensive metadata about any image file. Useful for understanding an
 - "Show info for photo.jpg"
 - "What are the details of this image?"
 - "Get metadata for screenshot.png"
+
+### extract_frames
+
+Extracts raw video frames to an animated GIF file. No ASCII rendering - preserves actual video frames. Useful for creating thumbnails, previews, or scene slideshows.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `inputPath` | string | (required) | Path to video file (MP4, MKV, AVI, WebM, etc.) |
+| `outputPath` | string | (required) | Path for the output GIF file |
+| `width` | int | `320` | Output width in pixels |
+| `maxFrames` | int | `8` | Maximum number of frames to extract |
+| `maxLength` | double | `10` | Maximum duration in seconds to sample from |
+| `startTime` | double | `0` | Start time in seconds |
+| `smartKeyframes` | bool | `false` | Use scene detection instead of uniform sampling |
+| `sceneThreshold` | double | `0.4` | Scene detection threshold (0.0-1.0, lower = more sensitive) |
+
+**Example prompts:**
+
+- "Extract 8 keyframes from video.mp4 as a GIF"
+- "Create a thumbnail GIF from the first 5 seconds of movie.mp4"
+- "Extract scene changes from video.mp4 using smart keyframe detection"
 
 ### get_gif_info
 

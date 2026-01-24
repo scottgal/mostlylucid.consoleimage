@@ -33,6 +33,22 @@ consoleimage photo.jpg -B
 #### Easter Egg
 - **Star Wars ASCII animation** - Run `consoleimage` with no arguments to see a surprise!
 
+#### Raw Frame Extraction
+- **Multiple output formats** - `--raw` now supports GIF, WebP, PNG/JPG sequence, or video output
+- **`-q, --quality`** - Output quality control (1-100, default: 85)
+- **Smart keyframes** - `--smart-keyframes` uses scene detection for representative frames
+- **Video re-encoding** - Output to MP4/WebM/MKV/AVI for re-encoded video clips
+
+```bash
+consoleimage movie.mp4 --raw -o frames.gif          # Animated GIF
+consoleimage movie.mp4 --raw -o frames.webp -q 90   # Animated WebP
+consoleimage movie.mp4 --raw -o clip.mp4 --ss 30 -t 5  # Video clip
+consoleimage movie.mp4 --raw -o frame.png --gif-frames 10  # Image sequence
+```
+
+#### MCP Server
+- **`extract_frames` tool** - Extract raw video frames to GIF via MCP API
+
 ### Improvements
 
 #### Braille Rendering

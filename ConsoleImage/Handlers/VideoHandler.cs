@@ -5,6 +5,10 @@ using ConsoleImage.Core;
 using ConsoleImage.Video.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Gif;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.Metadata;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace ConsoleImage.Cli.Handlers;
@@ -169,12 +173,30 @@ public static class VideoHandler
             return 1;
         }
 
-        // RAW MODE - extract actual video frames as GIF
+        // RAW MODE - extract actual video frames to various formats
         if (opts.RawMode)
-            return await HandleRawGifOutput(ffmpeg, inputPath, videoInfo, opts, end, ct);
+            return await HandleRawOutput(ffmpeg, inputPath, videoInfo, opts, end, ct);
 
         // Rendered ASCII/Blocks/Braille to GIF
         return await HandleRenderedGifOutput(ffmpeg, inputPath, inputInfo, videoInfo, opts, end, ct);
+    }
+
+    private static async Task<int> HandleRawOutput(
+        FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo,
+        VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var outputPath = opts.OutputGif!.FullName;
+        var ext = Path.GetExtension(outputPath).ToLowerInvariant();
+
+        // Route to appropriate handler based on output format
+        return ext switch
+        {
+            ".gif" => await HandleRawGifOutput(ffmpeg, inputPath, videoInfo, opts, end, ct),
+            ".webp" => await HandleRawWebpOutput(ffmpeg, inputPath, videoInfo, opts, end, ct),
+            ".png" or ".jpg" or ".jpeg" or ".bmp" => await HandleRawImageOutput(ffmpeg, inputPath, videoInfo, opts, end, ct),
+            ".mp4" or ".webm" or ".mkv" or ".avi" or ".mov" => await HandleRawVideoOutput(ffmpeg, inputPath, opts, end, ct),
+            _ => await HandleRawGifOutput(ffmpeg, inputPath, videoInfo, opts, end, ct) // Default to GIF
+        };
     }
 
     private static async Task<int> HandleRawGifOutput(
@@ -241,6 +263,182 @@ public static class VideoHandler
         Console.WriteLine($" Saved to {opts.OutputGif.FullName}");
 
         return 0;
+    }
+
+    private static async Task<int> HandleRawWebpOutput(
+        FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo,
+        VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var targetWidth = opts.RawWidth ?? 320;
+        var targetHeight = opts.RawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+        var maxFrames = opts.GifFrames ?? 30;
+        var maxLength = opts.GifLength ?? opts.Duration ?? 10.0;
+        var rawStartTime = opts.Start ?? 0;
+        var rawEndTime = end ?? rawStartTime + maxLength;
+        var targetFps = opts.Fps ?? Math.Min(videoInfo.FrameRate, 15.0);
+
+        Console.WriteLine("Extracting video frames to animated WebP...");
+        Console.WriteLine($"  Output: {opts.OutputGif!.FullName}");
+        Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
+        Console.WriteLine($"  Target: {targetWidth}x{targetHeight}, quality {opts.Quality}");
+
+        using var webpImage = new Image<Rgba32>(targetWidth, targetHeight);
+        var webpMeta = webpImage.Metadata.GetWebpMetadata();
+        webpMeta.RepeatCount = (ushort)(opts.Loop != 1 ? opts.Loop : 0);
+
+        var frameCount = 0;
+
+        await foreach (var frameImage in ffmpeg.StreamFramesAsync(
+                           inputPath, targetWidth, targetHeight,
+                           rawStartTime, rawEndTime, opts.FrameStep, targetFps, videoInfo.VideoCodec, ct))
+        {
+            if (maxFrames > 0 && frameCount >= maxFrames)
+            {
+                frameImage.Dispose();
+                break;
+            }
+
+            webpImage.Frames.AddFrame(frameImage.Frames.RootFrame);
+            frameImage.Dispose();
+            frameCount++;
+            Console.Write($"\rExtracting frame {frameCount}...");
+        }
+
+        if (webpImage.Frames.Count > 1)
+            webpImage.Frames.RemoveFrame(0);
+
+        Console.WriteLine($" Done! ({frameCount} frames)");
+        Console.Write("Encoding WebP...");
+        var encoder = new WebpEncoder { Quality = opts.Quality, FileFormat = WebpFileFormatType.Lossy };
+        await webpImage.SaveAsWebpAsync(opts.OutputGif.FullName, encoder, ct);
+        Console.WriteLine($" Saved to {opts.OutputGif.FullName}");
+
+        return 0;
+    }
+
+    private static async Task<int> HandleRawImageOutput(
+        FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo,
+        VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var targetWidth = opts.RawWidth ?? 320;
+        var targetHeight = opts.RawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+        var maxFrames = opts.GifFrames ?? 1;
+        var rawStartTime = opts.Start ?? 0;
+        var rawEndTime = end ?? rawStartTime + (opts.GifLength ?? opts.Duration ?? 10.0);
+        var outputPath = opts.OutputGif!.FullName;
+        var ext = Path.GetExtension(outputPath).ToLowerInvariant();
+
+        // Single frame or sequence?
+        if (maxFrames == 1 || opts.SmartKeyframes)
+        {
+            // Smart keyframes - extract scene changes
+            if (opts.SmartKeyframes)
+            {
+                Console.WriteLine("Extracting keyframes as image sequence...");
+                var sceneTimestamps = await ffmpeg.DetectSceneChangesAsync(
+                    inputPath, opts.SceneThreshold, rawStartTime, rawEndTime, ct);
+
+                var times = new List<double> { rawStartTime };
+                times.AddRange(sceneTimestamps.Take(maxFrames - 1));
+
+                var baseName = Path.GetFileNameWithoutExtension(outputPath);
+                var dir = Path.GetDirectoryName(outputPath) ?? ".";
+
+                for (var i = 0; i < times.Count; i++)
+                {
+                    var frame = await ffmpeg.ExtractFrameAsync(inputPath, times[i], targetWidth, targetHeight, ct);
+                    if (frame != null)
+                    {
+                        var framePath = Path.Combine(dir, $"{baseName}_{i + 1:D3}{ext}");
+                        await SaveImageAsync(frame, framePath, ext, opts.Quality, ct);
+                        frame.Dispose();
+                        Console.WriteLine($"Saved {framePath}");
+                    }
+                }
+                return 0;
+            }
+
+            // Single frame
+            Console.WriteLine($"Extracting single frame at {rawStartTime:F1}s...");
+            var singleFrame = await ffmpeg.ExtractFrameAsync(inputPath, rawStartTime, targetWidth, targetHeight, ct);
+            if (singleFrame != null)
+            {
+                await SaveImageAsync(singleFrame, outputPath, ext, opts.Quality, ct);
+                singleFrame.Dispose();
+                Console.WriteLine($"Saved to {outputPath}");
+            }
+            return 0;
+        }
+
+        // Multiple frames - save as sequence
+        Console.WriteLine($"Extracting {maxFrames} frames as image sequence...");
+        var basePath = Path.GetFileNameWithoutExtension(outputPath);
+        var directory = Path.GetDirectoryName(outputPath) ?? ".";
+        var targetFps = opts.Fps ?? Math.Min(videoInfo.FrameRate, 10.0);
+
+        var frameCount = 0;
+        await foreach (var frameImage in ffmpeg.StreamFramesAsync(
+                           inputPath, targetWidth, targetHeight,
+                           rawStartTime, rawEndTime, opts.FrameStep, targetFps, videoInfo.VideoCodec, ct))
+        {
+            if (frameCount >= maxFrames)
+            {
+                frameImage.Dispose();
+                break;
+            }
+
+            var framePath = Path.Combine(directory, $"{basePath}_{frameCount + 1:D3}{ext}");
+            await SaveImageAsync(frameImage, framePath, ext, opts.Quality, ct);
+            frameImage.Dispose();
+            frameCount++;
+            Console.Write($"\rExtracting frame {frameCount}/{maxFrames}...");
+        }
+
+        Console.WriteLine($" Done! Saved {frameCount} frames to {directory}");
+        return 0;
+    }
+
+    private static async Task SaveImageAsync(Image<Rgba32> image, string path, string ext, int quality, CancellationToken ct)
+    {
+        switch (ext)
+        {
+            case ".jpg" or ".jpeg":
+                await image.SaveAsJpegAsync(path, new JpegEncoder { Quality = quality }, ct);
+                break;
+            case ".png":
+                await image.SaveAsPngAsync(path, new PngEncoder { CompressionLevel = PngCompressionLevel.BestCompression }, ct);
+                break;
+            case ".bmp":
+                await image.SaveAsBmpAsync(path, ct);
+                break;
+            default:
+                await image.SaveAsPngAsync(path, ct);
+                break;
+        }
+    }
+
+    private static async Task<int> HandleRawVideoOutput(
+        FFmpegService ffmpeg, string inputPath, VideoHandlerOptions opts, double? end, CancellationToken ct)
+    {
+        var outputPath = opts.OutputGif!.FullName;
+        var targetWidth = opts.RawWidth ?? 320;
+        var rawStartTime = opts.Start ?? 0;
+        var duration = opts.Duration ?? (end.HasValue ? end.Value - rawStartTime : 10.0);
+
+        Console.WriteLine("Re-encoding video with FFmpeg...");
+        Console.WriteLine($"  Output: {outputPath}");
+        Console.WriteLine($"  Width: {targetWidth}, Duration: {duration:F1}s");
+
+        // Use FFmpeg directly for video output
+        var success = await ffmpeg.ExtractClipAsync(
+            inputPath, outputPath, rawStartTime, duration, targetWidth, opts.Quality, ct);
+
+        if (success)
+            Console.WriteLine($"Saved to {outputPath}");
+        else
+            Console.Error.WriteLine("Failed to create video output");
+
+        return success ? 0 : 1;
     }
 
     private static async Task<int> HandleSmartKeyframeExtraction(
@@ -863,6 +1061,7 @@ public class VideoHandlerOptions
     public int? RawWidth { get; init; }
     public int? RawHeight { get; init; }
     public bool SmartKeyframes { get; init; }
+    public int Quality { get; init; } = 85;
 
     // Image adjustments
     public bool NoInvert { get; init; }

@@ -185,6 +185,13 @@ consoleimage output.cidz                  # Play saved document
 consoleimage movie.cidz --speed 2.0       # Playback with options
 consoleimage movie.cidz -o movie.gif      # Convert document to GIF
 
+# === RAW FRAME EXTRACTION (no ASCII, just video frames) ===
+consoleimage movie.mp4 --raw -o frames.gif                    # Extract to GIF
+consoleimage movie.mp4 --raw -o frames.webp -q 90             # Extract to WebP
+consoleimage movie.mp4 --raw -o clip.mp4 --ss 30 -t 5         # Re-encode video clip
+consoleimage movie.mp4 --raw --smart-keyframes -o scenes.gif  # Scene detection
+consoleimage movie.mp4 --raw -o frame.png --gif-frames 10     # Image sequence
+
 # === CALIBRATION ===
 consoleimage --calibrate --aspect-ratio 0.5 --save
 ```
@@ -223,6 +230,7 @@ this image as ASCII art" and it will use the tools automatically.
 |------|-------------|
 | `render_image` | Render image/GIF to ASCII art (ascii, blocks, braille, matrix) |
 | `render_to_gif` | Create animated GIF output |
+| `extract_frames` | Extract raw video frames to GIF (no ASCII, just frames) |
 | `get_gif_info` | Get GIF metadata (dimensions, frame count) |
 | `get_video_info` | Get video file info via FFmpeg |
 | `list_render_modes` | List available render modes with descriptions |

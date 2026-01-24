@@ -133,6 +133,42 @@ consoleimage movie.cidz -o movie.gif      # Document to GIF
 | `--no-hw` | Disable hardware acceleration | HW enabled |
 | `--ffmpeg-path` | Path to FFmpeg installation | Auto-download |
 
+### Raw Frame Extraction
+
+Extract actual video/GIF frames without ASCII rendering. Supports multiple output formats:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--raw` | Extract raw frames (no ASCII) | OFF |
+| `--raw-width` | Output width in pixels | 320 |
+| `--raw-height` | Output height in pixels | Auto |
+| `--smart-keyframes` | Use scene detection | OFF |
+| `--scene-threshold` | Scene sensitivity (0.0-1.0) | 0.4 |
+| `-q, --quality` | Output quality 1-100 | 85 |
+
+**Supported output formats:**
+- `.gif` - Animated GIF (default)
+- `.webp` - Animated WebP
+- `.png`, `.jpg`, `.bmp` - Image sequence (frame_001.png, etc.)
+- `.mp4`, `.webm`, `.mkv`, `.avi`, `.mov` - Re-encoded video
+
+```bash
+# Extract frames to GIF
+consoleimage movie.mp4 --raw -o frames.gif
+
+# Extract to animated WebP (better quality)
+consoleimage movie.mp4 --raw -o frames.webp --quality 90
+
+# Smart keyframe extraction (scene detection)
+consoleimage movie.mp4 --raw --smart-keyframes -o scenes.gif --gif-frames 8
+
+# Extract to image sequence
+consoleimage movie.mp4 --raw -o frame.png --gif-frames 10
+
+# Re-encode video clip
+consoleimage movie.mp4 --raw -o clip.mp4 --ss 30 -t 5 --raw-width 480
+```
+
 ### GIF Output Options
 
 | Option | Description | Default |

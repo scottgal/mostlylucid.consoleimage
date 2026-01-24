@@ -85,6 +85,7 @@ public class CliOptions
     public Option<int?> RawWidth { get; }
     public Option<int?> RawHeight { get; }
     public Option<bool> SmartKeyframes { get; }
+    public Option<int> Quality { get; }
 
     // Calibration
     public Option<bool> Calibrate { get; }
@@ -265,6 +266,10 @@ public class CliOptions
         SmartKeyframes = new Option<bool>("--smart-keyframes") { Description = "Use smart scene detection" };
         SmartKeyframes.Aliases.Add("--smart");
 
+        Quality = new Option<int>("--quality") { Description = "Output quality 1-100 (for JPEG, WebP)" };
+        Quality.DefaultValueFactory = _ => 85;
+        Quality.Aliases.Add("-q");
+
         // Calibration
         Calibrate = new Option<bool>("--calibrate") { Description = "Display calibration pattern" };
         SaveCalibration = new Option<bool>("--save") { Description = "Save calibration to calibration.json" };
@@ -358,6 +363,7 @@ public class CliOptions
         command.Options.Add(RawWidth);
         command.Options.Add(RawHeight);
         command.Options.Add(SmartKeyframes);
+        command.Options.Add(Quality);
 
         command.Options.Add(Calibrate);
         command.Options.Add(SaveCalibration);

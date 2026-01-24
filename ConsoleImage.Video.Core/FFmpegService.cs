@@ -928,6 +928,79 @@ public sealed class FFmpegService : IDisposable
         return name;
     }
 
+    /// <summary>
+    /// Extract a clip from video and re-encode to a new file.
+    /// Supports various output formats based on file extension.
+    /// </summary>
+    public async Task<bool> ExtractClipAsync(
+        string inputPath,
+        string outputPath,
+        double startTime,
+        double duration,
+        int targetWidth,
+        int quality,
+        CancellationToken ct = default)
+    {
+        await EnsureInitializedAsync(ct);
+
+        var ext = Path.GetExtension(outputPath).ToLowerInvariant();
+
+        // Build FFmpeg arguments based on output format
+        var args = $"-y -ss {startTime:F3} -t {duration:F3} -i \"{inputPath}\"";
+
+        // Scale filter
+        args += $" -vf \"scale={targetWidth}:-2\"";
+
+        // Format-specific encoding
+        args += ext switch
+        {
+            ".mp4" => $" -c:v libx264 -crf {Math.Max(0, 51 - quality / 2)} -preset fast -an",
+            ".webm" => $" -c:v libvpx-vp9 -crf {Math.Max(0, 63 - quality * 63 / 100)} -b:v 0 -an",
+            ".mkv" => $" -c:v libx264 -crf {Math.Max(0, 51 - quality / 2)} -preset fast -an",
+            ".avi" => $" -c:v mpeg4 -q:v {Math.Max(1, 31 - quality * 30 / 100)} -an",
+            ".mov" => $" -c:v libx264 -crf {Math.Max(0, 51 - quality / 2)} -preset fast -an",
+            _ => $" -c:v libx264 -crf {Math.Max(0, 51 - quality / 2)} -preset fast -an"
+        };
+
+        args += $" \"{outputPath}\"";
+
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = _ffmpegPath,
+                    Arguments = args,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true
+                }
+            };
+
+            process.Start();
+
+            // Read stderr to completion
+            var errorOutput = await process.StandardError.ReadToEndAsync(ct);
+
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode != 0)
+            {
+                var lines = errorOutput.Split('\n').TakeLast(5);
+                Console.Error.WriteLine($"FFmpeg error: {string.Join("\n", lines)}");
+                return false;
+            }
+
+            return File.Exists(outputPath);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error extracting clip: {ex.Message}");
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         // No managed resources to dispose

@@ -84,6 +84,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var rawWidth = parseResult.GetValue(cliOptions.RawWidth);
     var rawHeight = parseResult.GetValue(cliOptions.RawHeight);
     var smartKeyframes = parseResult.GetValue(cliOptions.SmartKeyframes);
+    var quality = parseResult.GetValue(cliOptions.Quality);
     var noAutoDownload = parseResult.GetValue(cliOptions.NoFfmpegDownload);
     var autoConfirmDownload = parseResult.GetValue(cliOptions.FfmpegYes);
     var output = parseResult.GetValue(cliOptions.Output);
@@ -196,8 +197,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             input.FullName, speed, loop, outputGif,
             gifFontSize, gifScale, gifColors, cancellationToken);
 
-    // Image files (jpg, png, gif, etc.)
-    if (IsImageFile(extension))
+    // Raw mode for GIFs routes to VideoHandler (FFmpeg can extract frames)
+    // This extracts actual video frames, not ASCII-rendered output
+    if (rawMode && extension == ".gif")
+    {
+        // Fall through to VideoHandler below - FFmpeg handles GIFs
+    }
+    // Image files (jpg, png, gif, etc.) - normal rendering
+    else if (IsImageFile(extension))
         return await ImageHandler.HandleAsync(
             input, width, height, maxWidth, maxHeight,
             charAspect, savedCalibration,
@@ -283,6 +290,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         RawWidth = rawWidth,
         RawHeight = rawHeight,
         SmartKeyframes = smartKeyframes,
+        Quality = quality,
 
         // Image adjustments
         NoInvert = noInvert,
