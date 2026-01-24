@@ -193,6 +193,10 @@ consoleimage photo.png --blocks
 # Braille mode (ultra-high resolution) - DEFAULT
 consoleimage photo.png --braille
 
+# Monochrome mode (braille without color - compact, fast)
+consoleimage photo.png --monochrome
+consoleimage movie.mp4 --mono -w 80
+
 # Matrix mode (digital rain effect)
 consoleimage photo.png --matrix
 
@@ -307,6 +311,7 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `-b, --blocks` - Use colored Unicode blocks
 - `-B, --braille` - Use braille characters (DEFAULT - 2x4 dots per cell)
 - `-M, --matrix` - Use Matrix digital rain effect
+- `--monochrome, --mono` - Braille mode without color (compact, high-detail greyscale)
 - `--matrix-color` - Matrix color: green, red, blue, amber, cyan, purple, or hex (#RRGGBB)
 - `--matrix-fullcolor` - Use source image colors with Matrix lighting
 - `--matrix-density` - Rain density (0.1-2.0, default 0.5)
@@ -318,6 +323,49 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `--save` - Save calibration to calibration.json
 - `--no-color` - Disable color output (greyscale for blocks/braille)
 - `--no-animate` - Show first frame only
+
+### Subtitle Options
+- `--srt, --subtitles, --sub <file>` - Path to SRT/VTT subtitle file
+- `--subs, --auto-subs` - Auto-download subtitles for YouTube videos
+- `--sub-lang <lang>` - Preferred subtitle language (default: "en")
+- `--no-subs` - Disable subtitle display
+
+Subtitles are displayed as 2 centered lines below the video frame, constrained to the frame width. Long text is automatically balanced across both lines for readability.
+
+**Supported formats:**
+- **SRT** (SubRip) - Standard format with `.srt` extension
+- **VTT** (WebVTT) - Web format with `.vtt` extension
+
+```bash
+# Local video with SRT file (common setup)
+consoleimage "X:\Movies\movie.mkv" --srt "X:\Movies\movie.srt"
+consoleimage movie.mp4 --sub movie.en.srt
+
+# VTT subtitles work too
+consoleimage video.mp4 --srt subtitles.vtt
+
+# YouTube with auto-downloaded subtitles
+consoleimage "https://youtu.be/VIDEO_ID" --subs
+
+# YouTube with specific language (Spanish, Japanese, etc.)
+consoleimage "https://youtu.be/VIDEO_ID" --subs --sub-lang es
+consoleimage "https://youtu.be/VIDEO_ID" --subs --sub-lang ja
+
+# Save to GIF with burned-in subtitles
+consoleimage movie.mp4 --srt movie.srt -o output.gif
+consoleimage "https://youtu.be/VIDEO_ID" --subs -o output.gif
+
+# Save to document (subtitles stored in metadata)
+consoleimage movie.mp4 --srt movie.srt -o movie.cidz
+
+# Disable subtitles even if --subs was specified
+consoleimage "https://youtu.be/VIDEO_ID" --subs --no-subs
+```
+
+**Notes:**
+- SRT files are typically named to match the video: `movie.mkv` → `movie.srt` or `movie.en.srt`
+- HTML tags in subtitles (`<b>`, `<i>`, etc.) are automatically stripped
+- For YouTube, subtitles are downloaded to a temp directory and auto-cleaned
 
 ### Slideshow Mode
 

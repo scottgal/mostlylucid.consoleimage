@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using ConsoleImage.Core;
+using ConsoleImage.Core.Subtitles;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
@@ -29,6 +30,10 @@ public class VideoAnimationPlayer : IDisposable
 
     // Delta rendering support for braille mode
     private CellData[,]? _previousBrailleCells;
+
+    // Subtitle rendering
+    private SubtitleRenderer? _subtitleRenderer;
+    private string? _lastSubtitleContent;
 
     public VideoAnimationPlayer(string videoPath, VideoRenderOptions? options = null)
     {
@@ -76,6 +81,19 @@ public class VideoAnimationPlayer : IDisposable
         Console.Write("\x1b[?25l"); // Hide cursor
         Console.Write("\x1b[2J");   // Clear screen
         Console.Out.Flush();
+
+        // Initialize subtitle renderer if subtitles are available
+        if (_options.Subtitles?.HasEntries == true)
+        {
+            int subtitleWidth = _renderWidth;
+            // For blocks/braille, convert pixel width to char width
+            if (_options.RenderMode == VideoRenderMode.ColorBlocks)
+                subtitleWidth = _renderWidth;
+            else if (_options.RenderMode == VideoRenderMode.Braille)
+                subtitleWidth = _renderWidth / 2;
+
+            _subtitleRenderer = new SubtitleRenderer(subtitleWidth, 2, _options.RenderOptions.UseColor);
+        }
 
         int loopsDone = 0;
         _currentLoop = 1;
@@ -208,9 +226,20 @@ public class VideoAnimationPlayer : IDisposable
                     statusContent = _statusLine.Render(statusInfo);
                 }
 
-                // Build optimized frame buffer with status line included
-                var buffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent);
+                // Render subtitle if available
+                string? subtitleContent = null;
+                if (_subtitleRenderer != null && _options.Subtitles != null)
+                {
+                    var currentTime = _options.StartTime ?? 0;
+                    currentTime += frameIndex / effectiveFps;
+                    var entry = _options.Subtitles.GetActiveAt(currentTime);
+                    subtitleContent = _subtitleRenderer.RenderEntry(entry);
+                }
+
+                // Build optimized frame buffer with status line and subtitles included
+                var buffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent, subtitleContent, _lastSubtitleContent);
                 previousFrame = frameContent;
+                _lastSubtitleContent = subtitleContent;
 
                 // Write frame
                 Console.Write(buffer);
@@ -332,12 +361,18 @@ public class VideoAnimationPlayer : IDisposable
     /// <summary>
     /// Build optimized frame buffer with diff-based rendering.
     /// </summary>
-    private static string BuildFrameBuffer(string content, string? previousContent, bool isFirstFrame, string? statusLine = null)
+    private static string BuildFrameBuffer(
+        string content,
+        string? previousContent,
+        bool isFirstFrame,
+        string? statusLine = null,
+        string? subtitleContent = null,
+        string? previousSubtitle = null)
     {
         var sb = new StringBuilder();
         sb.Append("\x1b[?2026h"); // Begin synchronized output
 
-        // Count frame lines for status positioning
+        // Count frame lines for status/subtitle positioning
         var frameLines = content.Split('\n').Length;
 
         if (isFirstFrame || previousContent == null)
@@ -394,10 +429,37 @@ public class VideoAnimationPlayer : IDisposable
             }
         }
 
-        // Render status line at fixed position below frame
+        // Track extra rows used for positioning
+        var extraRows = 0;
+
+        // Render subtitles at fixed position below frame
+        if (!string.IsNullOrEmpty(subtitleContent))
+        {
+            var subtitleLines = subtitleContent.Split('\n');
+            for (var i = 0; i < subtitleLines.Length; i++)
+            {
+                sb.Append($"\x1b[{frameLines + 1 + i};1H"); // Move to subtitle row
+                sb.Append("\x1b[2K"); // Clear the line
+                sb.Append(subtitleLines[i].TrimEnd('\r'));
+            }
+            extraRows = subtitleLines.Length;
+        }
+        else if (!string.IsNullOrEmpty(previousSubtitle))
+        {
+            // Clear previous subtitle lines
+            var prevSubtitleLines = previousSubtitle.Split('\n').Length;
+            for (var i = 0; i < prevSubtitleLines; i++)
+            {
+                sb.Append($"\x1b[{frameLines + 1 + i};1H");
+                sb.Append("\x1b[2K");
+            }
+        }
+
+        // Render status line at fixed position below subtitles
         if (!string.IsNullOrEmpty(statusLine))
         {
-            sb.Append($"\x1b[{frameLines + 1};1H"); // Move to status line row
+            var statusRow = frameLines + 1 + (subtitleContent?.Split('\n').Length ?? 0);
+            sb.Append($"\x1b[{statusRow};1H"); // Move to status line row
             sb.Append("\x1b[2K"); // Clear the line
             sb.Append(statusLine);
         }

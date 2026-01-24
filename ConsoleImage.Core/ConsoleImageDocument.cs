@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ConsoleImage.Core.Subtitles;
 
 namespace ConsoleImage.Core;
 
@@ -16,6 +17,9 @@ namespace ConsoleImage.Core;
 [JsonSerializable(typeof(DocumentRenderSettings))]
 [JsonSerializable(typeof(DocumentFrame))]
 [JsonSerializable(typeof(List<DocumentFrame>))]
+[JsonSerializable(typeof(SubtitleTrackData))]
+[JsonSerializable(typeof(SubtitleEntryData))]
+[JsonSerializable(typeof(List<SubtitleEntryData>))]
 public partial class ConsoleImageJsonContext : JsonSerializerContext
 {
 }
@@ -74,6 +78,11 @@ public class ConsoleImageDocument
     ///     The rendered frames
     /// </summary>
     public List<DocumentFrame> Frames { get; set; } = new();
+
+    /// <summary>
+    ///     Subtitle track data (if subtitles were included).
+    /// </summary>
+    public SubtitleTrackData? Subtitles { get; set; }
 
     /// <summary>
     ///     Total number of frames
@@ -402,6 +411,11 @@ public class DocumentFrame
     ///     Height of this frame in lines
     /// </summary>
     public int Height { get; set; }
+
+    /// <summary>
+    ///     Subtitle text active during this frame (if any).
+    /// </summary>
+    public string? SubtitleText { get; set; }
 
     /// <summary>
     ///     Create from AsciiFrame

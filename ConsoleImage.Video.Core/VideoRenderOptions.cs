@@ -1,4 +1,5 @@
 using ConsoleImage.Core;
+using ConsoleImage.Core.Subtitles;
 
 namespace ConsoleImage.Video.Core;
 
@@ -89,6 +90,11 @@ public class VideoRenderOptions
     /// Source filename for status display.
     /// </summary>
     public string? SourceFileName { get; set; }
+
+    /// <summary>
+    /// Subtitle track to display during playback.
+    /// </summary>
+    public SubtitleTrack? Subtitles { get; set; }
 
     /// <summary>
     /// Create default options suitable for most videos.
@@ -187,7 +193,8 @@ public class VideoRenderOptions
         RenderMode = RenderMode,
         SceneThreshold = SceneThreshold,
         ShowStatus = ShowStatus,
-        SourceFileName = SourceFileName
+        SourceFileName = SourceFileName,
+        Subtitles = Subtitles // Shared reference, not deep copy
     };
 }
 

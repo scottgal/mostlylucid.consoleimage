@@ -7,6 +7,8 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Processing.Processors.Quantization;
 
+using ConsoleImage.Core.Subtitles;
+
 namespace ConsoleImage.Core;
 
 /// <summary>
@@ -80,6 +82,163 @@ public class GifWriter : IDisposable
         _useImageMode = true;
         // Clone the image since the caller may dispose it
         _imageFrames.Add((image.Clone(), delayMs));
+    }
+
+    /// <summary>
+    ///     Add a frame with subtitle text appended (for ASCII mode).
+    /// </summary>
+    /// <param name="asciiContent">The ASCII art content.</param>
+    /// <param name="subtitle">Subtitle text to display below the content.</param>
+    /// <param name="maxWidth">Maximum width for centering subtitles.</param>
+    /// <param name="delayMs">Frame delay in milliseconds.</param>
+    public void AddFrameWithSubtitle(string asciiContent, string? subtitle, int maxWidth, int delayMs = 100)
+    {
+        if (string.IsNullOrEmpty(subtitle))
+        {
+            AddFrame(asciiContent, delayMs);
+            return;
+        }
+
+        // Split subtitle into lines and center each
+        var subtitleLines = subtitle.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var sb = new System.Text.StringBuilder(asciiContent);
+
+        // Add separator line
+        sb.AppendLine();
+
+        foreach (var line in subtitleLines.Take(2)) // Max 2 lines
+        {
+            var trimmed = line.Trim();
+            var padding = Math.Max(0, (maxWidth - trimmed.Length) / 2);
+            sb.AppendLine(new string(' ', padding) + trimmed);
+        }
+
+        AddFrame(sb.ToString(), delayMs);
+    }
+
+    /// <summary>
+    ///     Add an image frame with burned-in subtitle (for pixel-based modes).
+    /// </summary>
+    /// <param name="image">The source image.</param>
+    /// <param name="subtitle">Subtitle text to burn into the image.</param>
+    /// <param name="delayMs">Frame delay in milliseconds.</param>
+    public void AddImageFrameWithSubtitle(Image<Rgba32> image, string? subtitle, int delayMs = 100)
+    {
+        if (string.IsNullOrEmpty(subtitle))
+        {
+            AddImageFrame(image, delayMs);
+            return;
+        }
+
+        // Clone and burn subtitle into the image
+        var withSubtitle = image.Clone();
+        BurnSubtitleIntoImage(withSubtitle, subtitle);
+
+        _useImageMode = true;
+        _imageFrames.Add((withSubtitle, delayMs));
+    }
+
+    /// <summary>
+    ///     Burn subtitle text into an image at the bottom with outline effect.
+    /// </summary>
+    private void BurnSubtitleIntoImage(Image<Rgba32> image, string subtitle)
+    {
+        var lines = subtitle.Split('\n', StringSplitOptions.RemoveEmptyEntries).Take(2).ToArray();
+        if (lines.Length == 0) return;
+
+        var fontSize = Math.Max(12, image.Height / 15);
+        Font font;
+
+        try
+        {
+            font = GetSubtitleFont(fontSize);
+        }
+        catch
+        {
+            // If font loading fails, skip subtitle
+            return;
+        }
+
+        var textColor = Color.White;
+        var outlineColor = Color.Black;
+
+        // Calculate positions - center text at bottom of image
+        var bottomMargin = image.Height / 20;
+        var lineHeight = fontSize + 4;
+        var startY = image.Height - bottomMargin - (lines.Length * lineHeight);
+
+        image.Mutate(ctx =>
+        {
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var text = lines[i].Trim();
+                if (string.IsNullOrEmpty(text)) continue;
+
+                // Measure text to center it
+                var textOptions = new RichTextOptions(font)
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Origin = new PointF(image.Width / 2f, startY + i * lineHeight)
+                };
+
+                // Draw outline (4 offsets)
+                var outlineOffset = Math.Max(1, fontSize / 10);
+                var offsets = new[] {
+                    (-outlineOffset, 0), (outlineOffset, 0),
+                    (0, -outlineOffset), (0, outlineOffset)
+                };
+
+                foreach (var (dx, dy) in offsets)
+                {
+                    var outlineOptions = new RichTextOptions(font)
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Origin = new PointF(image.Width / 2f + dx, startY + i * lineHeight + dy)
+                    };
+                    ctx.DrawText(outlineOptions, text, outlineColor);
+                }
+
+                // Draw main text
+                ctx.DrawText(textOptions, text, textColor);
+            }
+        });
+    }
+
+    /// <summary>
+    ///     Get a font suitable for subtitle rendering.
+    /// </summary>
+    private static Font GetSubtitleFont(int size)
+    {
+        // Prefer sans-serif fonts for subtitle readability
+        string[] preferredFonts =
+        {
+            "Arial",
+            "Helvetica",
+            "Segoe UI",
+            "DejaVu Sans",
+            "Liberation Sans",
+            "Noto Sans",
+            "Verdana",
+            "Tahoma"
+        };
+
+        try
+        {
+            foreach (var fontName in preferredFonts)
+                if (SystemFonts.TryGet(fontName, out var family))
+                    return family.CreateFont(size, FontStyle.Bold);
+
+            // Fall back to any available font
+            var fallback = SystemFonts.Families.FirstOrDefault();
+            if (fallback.Name != null)
+                return fallback.CreateFont(size, FontStyle.Bold);
+        }
+        catch
+        {
+            // Font loading failed
+        }
+
+        throw new InvalidOperationException("No fonts available for subtitle rendering.");
     }
 
     /// <summary>

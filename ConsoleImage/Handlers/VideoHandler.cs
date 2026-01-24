@@ -2,6 +2,7 @@
 
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
+using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Video.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Gif;
@@ -930,7 +931,8 @@ public static class VideoHandler
             UseHardwareAcceleration = !opts.NoHwAccel,
             RenderMode = renderMode,
             ShowStatus = opts.ShowStatus,
-            SourceFileName = inputPath
+            SourceFileName = inputPath,
+            Subtitles = opts.Subtitles
         };
 
         try
@@ -1075,4 +1077,7 @@ public class VideoHandlerOptions
     // Temporal stability
     public bool Dejitter { get; init; }
     public int? ColorThreshold { get; init; }
+
+    // Subtitles
+    public SubtitleTrack? Subtitles { get; init; }
 }

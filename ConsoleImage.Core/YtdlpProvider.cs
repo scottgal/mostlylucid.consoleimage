@@ -253,6 +253,117 @@ public static class YtdlpProvider
         }
     }
 
+    /// <summary>
+    /// Download subtitles for a YouTube video.
+    /// </summary>
+    /// <param name="youtubeUrl">YouTube video URL.</param>
+    /// <param name="outputDirectory">Directory to save subtitle file.</param>
+    /// <param name="preferredLanguage">Preferred language code (default: "en").</param>
+    /// <param name="ytdlpPath">Optional custom yt-dlp path.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Path to downloaded subtitle file, or null if not available.</returns>
+    public static async Task<string?> DownloadSubtitlesAsync(
+        string youtubeUrl,
+        string outputDirectory,
+        string? preferredLanguage = null,
+        string? ytdlpPath = null,
+        CancellationToken ct = default)
+    {
+        var ytdlp = ytdlpPath ?? FindInPath() ?? FindInCache();
+        if (ytdlp == null)
+            return null;
+
+        var lang = preferredLanguage ?? "en";
+        Directory.CreateDirectory(outputDirectory);
+
+        // Extract video ID for output filename
+        var videoId = ExtractVideoId(youtubeUrl) ?? "video";
+        var outputTemplate = Path.Combine(outputDirectory, $"{videoId}.%(ext)s");
+
+        // Try to download subtitles (prefer manual subs, fall back to auto-generated)
+        var args = $"--skip-download --write-sub --write-auto-sub --sub-lang \"{lang}\" --sub-format srt --convert-subs srt -o \"{outputTemplate}\" --no-warnings --no-playlist \"{youtubeUrl}\"";
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = ytdlp,
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = outputDirectory
+            };
+
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+
+            var outputTask = process.StandardOutput.ReadToEndAsync(ct);
+            var errorTask = process.StandardError.ReadToEndAsync(ct);
+
+            await process.WaitForExitAsync(ct);
+
+            // yt-dlp may return non-zero even when subtitles are downloaded
+            // Check for actual subtitle file
+
+            // Look for downloaded subtitle file
+            var possiblePaths = new[]
+            {
+                Path.Combine(outputDirectory, $"{videoId}.{lang}.srt"),
+                Path.Combine(outputDirectory, $"{videoId}.srt"),
+            };
+
+            foreach (var path in possiblePaths)
+            {
+                if (File.Exists(path))
+                    return path;
+            }
+
+            // Search for any .srt file with the video ID
+            var srtFiles = Directory.GetFiles(outputDirectory, $"{videoId}*.srt");
+            if (srtFiles.Length > 0)
+                return srtFiles[0];
+
+            return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.Error.WriteLine($"Failed to download subtitles: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extract video ID from a YouTube URL.
+    /// </summary>
+    private static string? ExtractVideoId(string url)
+    {
+        // Match patterns:
+        // https://www.youtube.com/watch?v=VIDEO_ID
+        // https://youtu.be/VIDEO_ID
+        // https://youtube.com/shorts/VIDEO_ID
+        // https://www.youtube.com/embed/VIDEO_ID
+
+        var patterns = new[]
+        {
+            @"[?&]v=([a-zA-Z0-9_-]{11})",
+            @"youtu\.be/([a-zA-Z0-9_-]{11})",
+            @"/shorts/([a-zA-Z0-9_-]{11})",
+            @"/embed/([a-zA-Z0-9_-]{11})",
+            @"/v/([a-zA-Z0-9_-]{11})"
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = Regex.Match(url, pattern);
+            if (match.Success)
+                return match.Groups[1].Value;
+        }
+
+        return null;
+    }
+
     private static async Task<string?> GetTitleAsync(string ytdlp, string youtubeUrl, CancellationToken ct)
     {
         try

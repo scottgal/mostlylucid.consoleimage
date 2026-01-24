@@ -36,6 +36,7 @@ public class CliOptions
     public Option<bool> Blocks { get; }
     public Option<bool> Braille { get; }
     public Option<bool> Matrix { get; }
+    public Option<bool> Monochrome { get; }
     public Option<string?> MatrixColor { get; }
     public Option<bool> MatrixFullColor { get; }
     public Option<float?> MatrixDensity { get; }
@@ -67,6 +68,12 @@ public class CliOptions
 
     // yt-dlp (YouTube support)
     public Option<string?> YtdlpPath { get; }
+
+    // Subtitles
+    public Option<string?> SubtitleFile { get; }
+    public Option<bool> AutoSubtitles { get; }
+    public Option<string> SubtitleLang { get; }
+    public Option<bool> NoSubtitles { get; }
 
     // Output
     public Option<string?> Output { get; }
@@ -197,6 +204,9 @@ public class CliOptions
         Matrix = new Option<bool>("--matrix") { Description = "Use Matrix digital rain effect" };
         Matrix.Aliases.Add("-M");
 
+        Monochrome = new Option<bool>("--monochrome") { Description = "Use braille mode without color (compact, high-detail greyscale)" };
+        Monochrome.Aliases.Add("--mono");
+
         MatrixColor = new Option<string?>("--matrix-color") { Description = "Matrix color: green, red, blue, amber, cyan, purple, or hex (#RRGGBB)" };
         MatrixFullColor = new Option<bool>("--matrix-fullcolor") { Description = "Use source image colors with Matrix lighting" };
         MatrixDensity = new Option<float?>("--matrix-density") { Description = "Rain density (0.1-2.0, default 0.5)" };
@@ -223,7 +233,7 @@ public class CliOptions
         Preset = new Option<string?>("--preset") { Description = "Preset: extended, simple, block, classic" };
         Preset.Aliases.Add("-p");
 
-        Mode = new Option<string?>("--mode") { Description = "Render mode: ascii, blocks, braille, sixel, iterm2, kitty" };
+        Mode = new Option<string?>("--mode") { Description = "Render mode: ascii, blocks, braille, mono (greyscale braille), matrix" };
         Mode.Aliases.Add("-m");
 
         // Performance
@@ -243,6 +253,19 @@ public class CliOptions
         FfmpegYes.Aliases.Add("-y");
 
         YtdlpPath = new Option<string?>("--ytdlp-path") { Description = "Path to yt-dlp executable (for YouTube URLs)" };
+
+        // Subtitles
+        SubtitleFile = new Option<string?>("--srt") { Description = "Path to SRT/VTT subtitle file" };
+        SubtitleFile.Aliases.Add("--subtitles");
+        SubtitleFile.Aliases.Add("--sub");
+
+        AutoSubtitles = new Option<bool>("--subs") { Description = "Auto-download subtitles for YouTube videos" };
+        AutoSubtitles.Aliases.Add("--auto-subs");
+
+        SubtitleLang = new Option<string>("--sub-lang") { Description = "Preferred subtitle language (default: en)" };
+        SubtitleLang.DefaultValueFactory = _ => "en";
+
+        NoSubtitles = new Option<bool>("--no-subs") { Description = "Disable subtitle display" };
 
         // Output
         Output = new Option<string?>("--output") { Description = "Output file (.gif, .cidz, .json)" };
@@ -386,6 +409,7 @@ public class CliOptions
         command.Options.Add(Blocks);
         command.Options.Add(Braille);
         command.Options.Add(Matrix);
+        command.Options.Add(Monochrome);
         command.Options.Add(MatrixColor);
         command.Options.Add(MatrixFullColor);
         command.Options.Add(MatrixDensity);
@@ -412,6 +436,12 @@ public class CliOptions
         command.Options.Add(NoFfmpegDownload);
         command.Options.Add(FfmpegYes);
         command.Options.Add(YtdlpPath);
+
+        // Subtitles
+        command.Options.Add(SubtitleFile);
+        command.Options.Add(AutoSubtitles);
+        command.Options.Add(SubtitleLang);
+        command.Options.Add(NoSubtitles);
 
         command.Options.Add(Output);
         command.Options.Add(Info);

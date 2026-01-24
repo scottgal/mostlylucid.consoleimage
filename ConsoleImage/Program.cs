@@ -7,6 +7,7 @@ using ConsoleImage.Cli;
 using ConsoleImage.Cli.Handlers;
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
+using ConsoleImage.Core.Subtitles;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
@@ -49,7 +50,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var useBlocksOpt = parseResult.GetValue(cliOptions.Blocks);
     var useBrailleOpt = parseResult.GetValue(cliOptions.Braille);
     var useMatrixOpt = parseResult.GetValue(cliOptions.Matrix);
+    var useMonochromeOpt = parseResult.GetValue(cliOptions.Monochrome);
     var modeOpt = parseResult.GetValue(cliOptions.Mode);
+    var noColor = parseResult.GetValue(cliOptions.NoColor);
 
     // Resolve render mode: -m/--mode takes priority, then individual flags, then default (braille)
     bool useAscii, useBlocks, useBraille, useMatrix;
@@ -59,8 +62,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         var modeLower = modeOpt.ToLowerInvariant();
         useAscii = modeLower == "ascii";
         useBlocks = modeLower == "blocks";
-        useBraille = modeLower == "braille";
+        useBraille = modeLower == "braille" || modeLower == "mono" || modeLower == "monochrome";
         useMatrix = modeLower == "matrix";
+        // Monochrome mode = braille + no-color
+        if (modeLower == "mono" || modeLower == "monochrome")
+            noColor = true;
         // Unknown modes fall back to braille
         if (!useAscii && !useBlocks && !useBraille && !useMatrix)
             useBraille = true;
@@ -71,15 +77,23 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         useAscii = useAsciiOpt;
         useBlocks = useBlocksOpt;
         useMatrix = useMatrixOpt;
-        // Braille is default, but --ascii, --blocks, or --matrix override it
-        useBraille = !useAscii && !useBlocks && !useMatrix;
+        // --monochrome is shorthand for braille + no-color
+        if (useMonochromeOpt)
+        {
+            useBraille = true;
+            noColor = true;
+        }
+        else
+        {
+            // Braille is default, but --ascii, --blocks, or --matrix override it
+            useBraille = !useAscii && !useBlocks && !useMatrix;
+        }
     }
     var matrixColor = parseResult.GetValue(cliOptions.MatrixColor);
     var matrixFullColor = parseResult.GetValue(cliOptions.MatrixFullColor);
     var matrixDensity = parseResult.GetValue(cliOptions.MatrixDensity);
     var matrixSpeed = parseResult.GetValue(cliOptions.MatrixSpeed);
     var matrixAlphabet = parseResult.GetValue(cliOptions.MatrixAlphabet);
-    var noColor = parseResult.GetValue(cliOptions.NoColor);
     var colorCount = parseResult.GetValue(cliOptions.Colors);
     var contrast = parseResult.GetValue(cliOptions.Contrast);
     var gamma = parseResult.GetValue(cliOptions.Gamma);
@@ -123,6 +137,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var lightCutoff = parseResult.GetValue(cliOptions.LightCutoff);
     var dejitter = parseResult.GetValue(cliOptions.Dejitter);
     var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold);
+
+    // Subtitle options
+    var subtitleFile = parseResult.GetValue(cliOptions.SubtitleFile);
+    var autoSubtitles = parseResult.GetValue(cliOptions.AutoSubtitles);
+    var subtitleLang = parseResult.GetValue(cliOptions.SubtitleLang);
+    var noSubtitles = parseResult.GetValue(cliOptions.NoSubtitles);
 
     // Slideshow mode
     var slideDelay = parseResult.GetValue(cliOptions.SlideDelay);
@@ -292,6 +312,25 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // Use the video URL directly with FFmpeg
         inputFullPath = streamInfo.VideoUrl;
         input = new FileInfo("youtube.mp4"); // Dummy for extension detection
+
+        // Download subtitles if requested
+        if (autoSubtitles && !noSubtitles)
+        {
+            Console.Error.Write($"Downloading subtitles ({subtitleLang})... ");
+            var tempDir = Path.Combine(Path.GetTempPath(), "consoleimage_subs");
+            var srtPath = await YtdlpProvider.DownloadSubtitlesAsync(
+                inputPath, tempDir, subtitleLang, ytdlpPath, cancellationToken);
+
+            if (!string.IsNullOrEmpty(srtPath))
+            {
+                Console.Error.WriteLine("done.");
+                subtitleFile = srtPath;
+            }
+            else
+            {
+                Console.Error.WriteLine("not available.");
+            }
+        }
     }
     else if (isUrl)
     {
@@ -380,6 +419,28 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             outputAsJson, jsonOutputPath,
             showStatus, cancellationToken);
 
+    // Load subtitles if specified
+    SubtitleTrack? subtitles = null;
+    if (!noSubtitles && !string.IsNullOrEmpty(subtitleFile))
+    {
+        try
+        {
+            if (File.Exists(subtitleFile))
+            {
+                subtitles = await SubtitleParser.ParseAsync(subtitleFile, cancellationToken);
+                Console.Error.WriteLine($"Loaded {subtitles.Count} subtitles from {Path.GetFileName(subtitleFile)}");
+            }
+            else
+            {
+                Console.Error.WriteLine($"Warning: Subtitle file not found: {subtitleFile}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Warning: Failed to load subtitles: {ex.Message}");
+        }
+    }
+
     // Video files - requires FFmpeg
     // Default width for braille video is 50 (more CPU intensive)
     var videoWidth = width ?? (useBraille ? 50 : null);
@@ -467,7 +528,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
         // Temporal stability
         Dejitter = dejitter,
-        ColorThreshold = colorThreshold
+        ColorThreshold = colorThreshold,
+
+        // Subtitles
+        Subtitles = subtitles
     };
 
     var result = await VideoHandler.HandleAsync(inputFullPath, input, videoOpts, cancellationToken);
