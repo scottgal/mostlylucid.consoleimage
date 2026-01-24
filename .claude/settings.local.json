@@ -89,7 +89,8 @@
       "Bash(popd)",
       "WebFetch(domain:lachlanarthur.github.io)",
       "WebFetch(domain:tannerhelland.com)",
-      "Bash(exit 0)"
+      "Bash(exit 0)",
+      "Bash(file:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

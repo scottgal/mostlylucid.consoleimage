@@ -45,13 +45,35 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var frameStep = parseResult.GetValue(cliOptions.FrameStep);
     var sampling = parseResult.GetValue(cliOptions.Sampling);
     var sceneThreshold = parseResult.GetValue(cliOptions.SceneThreshold);
-    var useAscii = parseResult.GetValue(cliOptions.Ascii);
-    var useBlocks = parseResult.GetValue(cliOptions.Blocks);
+    var useAsciiOpt = parseResult.GetValue(cliOptions.Ascii);
+    var useBlocksOpt = parseResult.GetValue(cliOptions.Blocks);
     var useBrailleOpt = parseResult.GetValue(cliOptions.Braille);
-    var useMatrix = parseResult.GetValue(cliOptions.Matrix);
+    var useMatrixOpt = parseResult.GetValue(cliOptions.Matrix);
+    var modeOpt = parseResult.GetValue(cliOptions.Mode);
 
-    // Braille is default, but --ascii, --blocks, or --matrix override it
-    var useBraille = useBrailleOpt && !useAscii && !useBlocks && !useMatrix;
+    // Resolve render mode: -m/--mode takes priority, then individual flags, then default (braille)
+    bool useAscii, useBlocks, useBraille, useMatrix;
+    if (!string.IsNullOrEmpty(modeOpt))
+    {
+        // Mode string specified - use that exclusively
+        var modeLower = modeOpt.ToLowerInvariant();
+        useAscii = modeLower == "ascii";
+        useBlocks = modeLower == "blocks";
+        useBraille = modeLower == "braille";
+        useMatrix = modeLower == "matrix";
+        // Unknown modes fall back to braille
+        if (!useAscii && !useBlocks && !useBraille && !useMatrix)
+            useBraille = true;
+    }
+    else
+    {
+        // Use individual flags - braille is default unless other flags are set
+        useAscii = useAsciiOpt;
+        useBlocks = useBlocksOpt;
+        useMatrix = useMatrixOpt;
+        // Braille is default, but --ascii, --blocks, or --matrix override it
+        useBraille = !useAscii && !useBlocks && !useMatrix;
+    }
     var matrixColor = parseResult.GetValue(cliOptions.MatrixColor);
     var matrixFullColor = parseResult.GetValue(cliOptions.MatrixFullColor);
     var matrixDensity = parseResult.GetValue(cliOptions.MatrixDensity);
@@ -99,7 +121,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var jsonOutput = parseResult.GetValue(cliOptions.Json);
     var darkCutoff = parseResult.GetValue(cliOptions.DarkCutoff);
     var lightCutoff = parseResult.GetValue(cliOptions.LightCutoff);
-    var mode = parseResult.GetValue(cliOptions.Mode);
     var dejitter = parseResult.GetValue(cliOptions.Dejitter);
     var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold);
 
