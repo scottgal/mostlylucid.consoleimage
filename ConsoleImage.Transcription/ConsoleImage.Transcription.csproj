@@ -22,9 +22,16 @@
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
-  <!-- Whisper.NET - includes cross-platform native binaries -->
+  <!-- Whisper.NET - managed API only, native runtimes are user's choice -->
   <ItemGroup>
     <PackageReference Include="Whisper.net" Version="1.9.0" />
+    <!-- AllRuntimes excluded from package - users install appropriate runtime for their platform -->
+    <!-- Options: Whisper.net.Runtime.Cpu, Whisper.net.Runtime.Cuda, Whisper.net.Runtime.CoreML, etc. -->
+    <!-- For all platforms: Whisper.net.AllRuntimes -->
+  </ItemGroup>
+
+  <!-- Local development: include AllRuntimes for convenience -->
+  <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
     <PackageReference Include="Whisper.net.AllRuntimes" Version="1.9.0" />
   </ItemGroup>
 

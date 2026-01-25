@@ -210,7 +210,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                         if (consecutiveErrors >= maxConsecutiveErrors)
                         {
                             // Too many errors in a row - stop background transcription
-                            Console.Error.WriteLine($"\nBackground transcription stopped after {maxConsecutiveErrors} consecutive errors");
+                            OnProgress?.Invoke(_lastTranscribedEndTime, "Transcription paused: too many errors");
                             break;
                         }
 
@@ -240,6 +240,9 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         }
     }
 
+    private int _extractionFailures;
+    private const int MaxExtractionRetries = 3;
+
     private async Task TranscribeNextChunkAsync(CancellationToken ct)
     {
         if (_isComplete) return;
@@ -260,20 +263,36 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
 
             if (!success || actualDuration <= 0)
             {
-                // No more audio or extraction failed - we're done
-                if (_lastTranscribedEndTime == _startTimeOffset)
+                _extractionFailures++;
+
+                // Only mark complete if this is the first chunk (truly no audio)
+                // or if we've had multiple consecutive failures
+                if (_lastTranscribedEndTime == _startTimeOffset && _extractionFailures >= MaxExtractionRetries)
                 {
-                    // Failed on first chunk - let user know
-                    Console.Error.WriteLine($"\nCould not extract audio from {FormatTime(startTime)}. The video may not have audio at this position.");
+                    OnProgress?.Invoke(startTime, "No audio found at start position");
+                    _isComplete = true;
+                    return;
                 }
-                _isComplete = true;
+
+                // For non-first chunks, skip ahead and try the next chunk
+                // This handles temporary extraction issues or silent sections
+                if (_extractionFailures >= MaxExtractionRetries)
+                {
+                    OnProgress?.Invoke(startTime, $"Skipping chunk after {_extractionFailures} failures");
+                    _lastTranscribedEndTime = startTime + _chunkDurationSeconds;
+                    _extractionFailures = 0; // Reset for next chunk
+                }
+
                 return;
             }
+
+            // Reset failure counter on success
+            _extractionFailures = 0;
 
             // Ensure we have enough audio to transcribe (at least 0.5 seconds)
             if (actualDuration < 0.5)
             {
-                Console.Error.WriteLine($"\nAudio chunk too short at {FormatTime(startTime)} ({actualDuration:F1}s) - skipping.");
+                // Chunk too short - skip ahead
                 _lastTranscribedEndTime = startTime + _chunkDurationSeconds;
                 return;
             }
@@ -286,7 +305,6 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                 // Verify the audio file is valid before sending to Whisper
                 if (!File.Exists(chunkPath))
                 {
-                    Console.Error.WriteLine($"\nAudio file missing at {FormatTime(startTime)} - skipping.");
                     _lastTranscribedEndTime = startTime + actualDuration;
                     return;
                 }
@@ -316,17 +334,20 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Log the error but continue processing - audio may have silent segments
+                // Silent error - continue processing. Audio may have silent segments
                 // or other issues that cause transcription to fail for a chunk
-                Console.Error.WriteLine($"\nTranscription error at {FormatTime(startTime)}: {ex.Message}");
+                OnProgress?.Invoke(startTime, $"Chunk error: {ex.Message[..Math.Min(30, ex.Message.Length)]}");
             }
 
             _lastTranscribedEndTime = startTime + actualDuration;
 
-            // If we got less than requested, we've reached the end
-            if (actualDuration < _chunkDurationSeconds - 0.5)
+            // Only mark complete if we got a very short chunk (likely at end of media)
+            // A chunk that's half the requested duration or less indicates end of content
+            // Be more lenient - short chunks can happen due to buffering with streams
+            if (actualDuration < _chunkDurationSeconds * 0.3)
             {
                 _isComplete = true;
+                OnProgress?.Invoke(_lastTranscribedEndTime, "Transcription complete");
             }
         }
         finally

@@ -14,7 +14,14 @@ Whisper-based audio transcription for ConsoleImage. Auto-generates subtitles fro
 ## Installation
 
 ```bash
+# Install the transcription library
 dotnet add package mostlylucid.consoleimage.transcription
+
+# Install a Whisper runtime for your platform (choose one):
+dotnet add package Whisper.net.AllRuntimes    # All platforms (~400MB)
+dotnet add package Whisper.net.Runtime.Cpu    # CPU only (smaller)
+dotnet add package Whisper.net.Runtime.Cuda   # NVIDIA GPU acceleration
+dotnet add package Whisper.net.Runtime.CoreML # Apple Silicon acceleration
 ```
 
 ## Usage

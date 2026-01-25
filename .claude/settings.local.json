@@ -106,7 +106,8 @@
       "WebFetch(domain:northflank.com)",
       "Bash(cd:*)",
       "Bash($env:PATH = \"C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\Installer;$env:PATH\")",
-      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Debug\\\\net10.0\\\\consoleimage.exe\" --version)"
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Debug\\\\net10.0\\\\consoleimage.exe\" --version)",
+      "Bash(xargs:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

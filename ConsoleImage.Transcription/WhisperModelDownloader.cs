@@ -39,6 +39,24 @@ public class WhisperModelDownloader
     }
 
     /// <summary>
+    /// Check if model is already downloaded locally.
+    /// </summary>
+    public static bool IsModelCached(string modelSize = "base", string language = "en")
+    {
+        var fileName = GetModelFileName(modelSize, language);
+        var modelPath = Path.Combine(CacheDirectory, fileName);
+        return File.Exists(modelPath);
+    }
+
+    /// <summary>
+    /// Get model info for prompting user.
+    /// </summary>
+    public static (string fileName, int sizeMB) GetModelInfo(string modelSize = "base", string language = "en")
+    {
+        return (GetModelFileName(modelSize, language), GetModelSizeMB(modelSize));
+    }
+
+    /// <summary>
     /// Ensure model is downloaded and return local path.
     /// </summary>
     public static async Task<string> EnsureModelAsync(

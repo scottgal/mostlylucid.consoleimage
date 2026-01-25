@@ -552,6 +552,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     catch { /* ignore */ }
                 }
                 var effectiveStart = start ?? 0.0;
+
+                // Check model availability and prompt if needed
+                if (!EnsureWhisperModelOrPrompt(whisperModel ?? "base", subtitleLang ?? "en", autoConfirmDownload))
+                {
+                    Console.Error.WriteLine("Continuing without subtitles.");
+                    subtitleSource = "off";
+                }
+                else
+                {
                 Console.Error.WriteLine($"Starting live transcription with Whisper ({whisperModel ?? "base"})...");
                 chunkedTranscriber = new ChunkedTranscriber(
                     inputFullPath,
@@ -595,6 +604,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
                 // Start background transcription to buffer ahead
                 chunkedTranscriber.StartBackgroundTranscription();
+                }
             }
         }
         else
@@ -602,7 +612,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             // For file sources or output mode, use full batch transcription
             subtitles = await LoadSubtitlesAsync(
                 subtitleSource, subtitleFilePath, inputFullPath, subtitleLang ?? "en",
-                whisperModel ?? "base", whisperThreads, diarize, start, duration, cancellationToken);
+                whisperModel ?? "base", whisperThreads, diarize, start, duration, autoConfirmDownload, cancellationToken);
         }
     }
 
@@ -1027,6 +1037,7 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
     bool diarize,
     double? startTime,
     double? duration,
+    bool autoConfirm,
     CancellationToken ct)
 {
     try
@@ -1044,14 +1055,14 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                 return null;
 
             case "whisper":
-                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, ct);
+                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, ct);
 
             case "auto":
                 // For auto mode, whisper is fallback if YouTube subs not available
                 // (YouTube subs handled separately in the YouTube URL flow)
                 if (WhisperTranscriptionService.IsAvailable())
                 {
-                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, ct);
+                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, ct);
                 }
                 Console.Error.WriteLine("Note: Whisper not available for auto-transcription. Run: consoleimage transcribe --help");
                 return null;
@@ -1067,6 +1078,35 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
     }
 }
 
+/// <summary>
+/// Check if Whisper model is cached, prompt to download if not.
+/// Returns true if model is available, false if user declined.
+/// </summary>
+static bool EnsureWhisperModelOrPrompt(string model, string lang, bool autoConfirm)
+{
+    if (WhisperModelDownloader.IsModelCached(model, lang))
+        return true;
+
+    var (fileName, sizeMB) = WhisperModelDownloader.GetModelInfo(model, lang);
+
+    Console.Error.WriteLine($"Whisper model '{fileName}' not found locally.");
+    Console.Error.WriteLine($"Download required: ~{sizeMB}MB");
+
+    if (autoConfirm)
+    {
+        Console.Error.WriteLine("Auto-downloading (--yes flag)...");
+        return true;
+    }
+
+    Console.Error.Write("Download now? [y/N] ");
+    var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+    if (response is "y" or "yes")
+        return true;
+
+    Console.Error.WriteLine("Transcription cancelled. Use -y to auto-download.");
+    return false;
+}
+
 static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
     string inputPath,
     string lang,
@@ -1075,8 +1115,13 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
     bool diarize,
     double? startTime,
     double? duration,
+    bool autoConfirm,
     CancellationToken ct)
 {
+    // Check model availability and prompt if needed
+    if (!EnsureWhisperModelOrPrompt(model, lang, autoConfirm))
+        return null;
+
     Console.Error.WriteLine($"Transcribing with Whisper ({model})...");
 
     // Create temp output file
