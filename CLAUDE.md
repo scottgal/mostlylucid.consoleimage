@@ -29,7 +29,13 @@ ConsoleImage/
 │   ├── UrlHelper.cs             # URL detection and download helpers
 │   ├── YtdlpProvider.cs         # YouTube support via yt-dlp (auto-download)
 │   ├── FrameHasher.cs           # Perceptual hashing for frame deduplication
-│   └── SmartFrameSampler.cs     # Intelligent frame skipping using perceptual hashing
+│   ├── SmartFrameSampler.cs     # Intelligent frame skipping using perceptual hashing
+│   └── Subtitles/
+│       ├── SubtitleEntry.cs     # Single subtitle entry with timing
+│       ├── SubtitleTrack.cs     # Collection of subtitle entries
+│       ├── SubtitleParser.cs    # SRT/VTT file parser
+│       ├── SubtitleRenderer.cs  # Console subtitle display with speaker colors
+│       └── ILiveSubtitleProvider.cs  # Interface for streaming transcription
 ├── ConsoleImage/                # CLI tool for images/GIFs
 │   ├── Program.cs               # Command-line interface
 │   ├── CliOptions.cs            # CLI option definitions
@@ -38,10 +44,17 @@ ConsoleImage/
 │   │   ├── ImageHandler.cs      # Single image/GIF rendering
 │   │   └── VideoHandler.cs      # Video playback via FFmpeg
 │   └── calibration.json         # Saved aspect ratio calibration
+├── ConsoleImage.Transcription/  # Whisper AI transcription library (v4.0)
+│   ├── WhisperTranscriptionService.cs # Whisper.NET wrapper
+│   ├── WhisperModelDownloader.cs # Model download with progress
+│   ├── ChunkedTranscriber.cs    # Streaming transcription with buffering
+│   ├── TranscriptSegment.cs     # Transcription result segment
+│   ├── SrtFormatter.cs          # SRT output formatter
+│   └── VttFormatter.cs          # VTT output formatter
 ├── ConsoleImage.Video.Core/     # Video playback library (FFmpeg-based)
 │   ├── FFmpegService.cs         # FFmpeg process management
-│   ├── VideoAnimationPlayer.cs  # Video streaming player
-│   └── VideoRenderOptions.cs    # Video-specific options
+│   ├── VideoAnimationPlayer.cs  # Video streaming player with live subtitles
+│   └── VideoRenderOptions.cs    # Video-specific options (incl. LiveSubtitleProvider)
 ├── ConsoleImage.Video/          # CLI tool for video files
 │   ├── Program.cs               # Video CLI
 │   └── calibration.json         # Saved aspect ratio calibration
@@ -343,48 +356,99 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `--no-color` - Disable color output (greyscale for blocks/braille)
 - `--no-animate` - Show first frame only
 
-### Subtitle Options
-- `--srt, --subtitles, --sub <file>` - Path to SRT/VTT subtitle file
-- `--subs, --auto-subs` - Auto-download subtitles for YouTube videos
-- `--sub-lang <lang>` - Preferred subtitle language (default: "en")
-- `--no-subs` - Disable subtitle display
+### Subtitle Options (Unified)
 
-Subtitles are displayed as 2 centered lines below the video frame, constrained to the frame width. Long text is automatically balanced across both lines for readability.
+The `--subs` flag accepts different sources:
+- `--subs <path>` - Load from SRT/VTT file
+- `--subs auto` - Try YouTube subtitles, fall back to Whisper
+- `--subs whisper` - Real-time Whisper transcription during playback
+- `--subs off` - Disable subtitles
+
+Additional options:
+- `--sub-lang <lang>` - Preferred language (default: "en")
+- `--whisper-model <size>` - Model: tiny, base (default), small, medium, large
+- `--whisper-threads <n>` - CPU threads for transcription
+
+### Transcript-Only Mode (v4.0)
+
+Generate subtitles without video rendering. For YouTube, tries existing subtitles first:
+
+```bash
+# Auto mode (default): YouTube subs first, then Whisper if none
+consoleimage https://youtu.be/VIDEO_ID --transcript
+consoleimage https://youtu.be/VIDEO_ID --transcript --subs auto  # Explicit auto
+
+# Force Whisper transcription (skip YouTube subs check)
+consoleimage https://youtu.be/VIDEO_ID --transcript --subs whisper
+
+# Force YouTube subs only (fail if not available)
+consoleimage https://youtu.be/VIDEO_ID --transcript --subs yt
+
+# Local files always use Whisper
+consoleimage movie.mp4 --transcript
+
+# Save VTT file using transcribe subcommand
+consoleimage transcribe movie.mp4 -o output.vtt
+consoleimage transcribe https://youtu.be/VIDEO_ID -o output.vtt
+
+# Stream to stdout AND save file
+consoleimage transcribe movie.mp4 -o output.vtt --stream
+
+# Quiet mode (only output text, no progress)
+consoleimage transcribe movie.mp4 -o output.vtt --stream --quiet
+```
+
+Output format for `--transcript` and `--stream`:
+```
+[00:00:01.500 --> 00:00:04.200] Hello, welcome to the video.
+[00:00:04.500 --> 00:00:07.800] Today we'll be discussing...
+```
+
+Subtitles are displayed as 2 centered lines below the video frame, constrained to frame width.
 
 **Supported formats:**
 - **SRT** (SubRip) - Standard format with `.srt` extension
 - **VTT** (WebVTT) - Web format with `.vtt` extension
 
+**Live transcription features:**
+- Audio extracted and transcribed in 15-second chunks
+- Background transcription runs ahead of playback (30s buffer)
+- Shows "⏳ Transcribing..." if playback catches up
+- Subtitles auto-saved as `.vtt` files for instant replay
+- Respects `--ss` start time for seeking
+
+**Note:** Speaker diarization requires pyannote integration (not yet implemented).
+
 ```bash
-# Local video with SRT file (common setup)
-consoleimage "X:\Movies\movie.mkv" --srt "X:\Movies\movie.srt"
-consoleimage movie.mp4 --sub movie.en.srt
+# Local video with SRT file
+consoleimage movie.mp4 --subs movie.srt
 
-# VTT subtitles work too
-consoleimage video.mp4 --srt subtitles.vtt
+# Live transcription during playback
+consoleimage movie.mp4 --subs whisper
+consoleimage movie.mp4 --subs whisper --whisper-model small
 
-# YouTube with auto-downloaded subtitles
-consoleimage "https://youtu.be/VIDEO_ID" --subs
+# YouTube with Whisper transcription
+consoleimage "https://youtu.be/VIDEO_ID" --subs whisper
+consoleimage "https://youtu.be/VIDEO_ID" --subs whisper --ss 3600
 
-# YouTube with specific language (Spanish, Japanese, etc.)
-consoleimage "https://youtu.be/VIDEO_ID" --subs --sub-lang es
-consoleimage "https://youtu.be/VIDEO_ID" --subs --sub-lang ja
+# YouTube with auto subtitles
+consoleimage "https://youtu.be/VIDEO_ID" --subs auto
 
-# Save to GIF with burned-in subtitles
-consoleimage movie.mp4 --srt movie.srt -o output.gif
-consoleimage "https://youtu.be/VIDEO_ID" --subs -o output.gif
+# Subtitles are cached - subsequent plays use saved .vtt
+consoleimage movie.mp4 --subs whisper  # First: transcribes
+consoleimage movie.mp4 --subs whisper  # Second: uses cached movie.vtt
 
-# Save to document (subtitles stored in metadata)
-consoleimage movie.mp4 --srt movie.srt -o movie.cidz
+# Save to GIF with subtitles
+consoleimage movie.mp4 --subs movie.srt -o output.gif
 
-# Disable subtitles even if --subs was specified
-consoleimage "https://youtu.be/VIDEO_ID" --subs --no-subs
+# Disable subtitles
+consoleimage "https://youtu.be/VIDEO_ID" --subs off
 ```
 
 **Notes:**
-- SRT files are typically named to match the video: `movie.mkv` → `movie.srt` or `movie.en.srt`
-- HTML tags in subtitles (`<b>`, `<i>`, etc.) are automatically stripped
-- For YouTube, subtitles are downloaded to a temp directory and auto-cleaned
+- Whisper models auto-download on first use (75MB - 3GB)
+- HTML tags in subtitles are automatically stripped
+- SRT files typically match video name: `movie.mkv` → `movie.srt`
 
 ### Slideshow Mode
 

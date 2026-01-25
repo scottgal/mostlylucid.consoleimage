@@ -33,6 +33,7 @@
     <!-- Local development: use ProjectReference -->
     <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
         <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj" />
+        <ProjectReference Include="..\ConsoleImage.Transcription\ConsoleImage.Transcription.csproj" />
     </ItemGroup>
 
     <!-- CI/Release: use NuGet packages -->

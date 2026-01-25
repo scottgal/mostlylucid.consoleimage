@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ConsoleImage.Transcription</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Whisper transcription support for ConsoleImage - cross-platform</Description>
+  </PropertyGroup>
+
+  <!-- Whisper.NET - includes cross-platform native binaries -->
+  <ItemGroup>
+    <PackageReference Include="Whisper.net" Version="1.9.0" />
+    <PackageReference Include="Whisper.net.AllRuntimes" Version="1.9.0" />
+  </ItemGroup>
+
+  <!-- Audio processing (pure .NET, cross-platform) -->
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <!-- Reference to Core for subtitle types -->
+  <ItemGroup>
+    <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+  </ItemGroup>
+
+</Project>

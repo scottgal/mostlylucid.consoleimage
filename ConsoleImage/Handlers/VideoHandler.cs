@@ -595,11 +595,16 @@ public static class VideoHandler
         var statusRenderer = opts.ShowStatus ? new StatusLine(charWidth, !opts.NoColor) : null;
         var renderModeName = opts.UseBraille ? "Braille" : opts.UseBlocks ? "Blocks" : "ASCII";
 
-        if (opts.ShowStatus && (opts.UseBraille || opts.UseBlocks))
+        // Create subtitle renderer if subtitles are available
+        SubtitleRenderer? subtitleRenderer = null;
+        if (opts.Subtitles != null)
         {
-            Console.WriteLine("Note: Status line in GIF output is only supported for ASCII mode.");
-            statusRenderer = null;
+            subtitleRenderer = new SubtitleRenderer(charWidth, 2, !opts.NoColor);
         }
+
+        // For pixel modes (Braille/Blocks), we now support burning subtitles/status into the image
+        // Keep statusRenderer for building status text even for pixel modes
+        var pixelModeNeedsOverlays = (opts.UseBraille || opts.UseBlocks) && (opts.ShowStatus || opts.Subtitles != null);
 
         var renderedCount = 0;
         var gifStartTime = opts.Start ?? 0;
@@ -615,19 +620,74 @@ public static class VideoHandler
                            videoInfo.VideoCodec,
                            ct))
         {
+            // Calculate current time for subtitle lookup
+            var currentSeconds = effectiveStart + renderedCount * opts.FrameStepValue / gifTargetFps;
+            var currentTime = TimeSpan.FromSeconds(currentSeconds);
+
+            // Get subtitle text for current frame
+            string? subtitleText = null;
+            if (subtitleRenderer != null && opts.Subtitles != null)
+            {
+                var entry = opts.Subtitles.GetActiveAt(currentTime);
+                subtitleText = subtitleRenderer.GetPlainText(entry);
+            }
+
+            // Build status info for current frame
+            string? statusText = null;
+            if (opts.ShowStatus && statusRenderer != null)
+            {
+                var statusInfo = new StatusLine.StatusInfo
+                {
+                    FileName = inputInfo.Name,
+                    SourceWidth = videoInfo.Width,
+                    SourceHeight = videoInfo.Height,
+                    OutputWidth = charWidth,
+                    OutputHeight = charHeight,
+                    RenderMode = renderModeName,
+                    CurrentFrame = renderedCount + 1,
+                    TotalFrames = estimatedTotalFrames,
+                    CurrentTime = currentTime,
+                    TotalDuration = TimeSpan.FromSeconds(effectiveDuration),
+                    Fps = gifTargetFps
+                };
+                statusText = statusRenderer.Render(statusInfo);
+            }
+
             if (opts.UseBraille)
             {
                 using var renderer = new BrailleRenderer(gifRenderOptions);
                 var content = renderer.RenderImage(frameImage);
                 var frame = new BrailleFrame(content, frameDelayMs);
-                gifWriter.AddBrailleFrame(frame, frameDelayMs);
+
+                if (pixelModeNeedsOverlays)
+                {
+                    // Render braille to image and add overlays
+                    var brailleImage = GifWriter.RenderBrailleFrameToImage(frame, gifOptions.Scale);
+                    gifWriter.AddImageFrameWithOverlays(brailleImage, subtitleText, statusText, frameDelayMs);
+                    brailleImage.Dispose();
+                }
+                else
+                {
+                    gifWriter.AddBrailleFrame(frame, frameDelayMs);
+                }
             }
             else if (opts.UseBlocks)
             {
                 using var renderer = new ColorBlockRenderer(gifRenderOptions);
                 var content = renderer.RenderImage(frameImage);
                 var frame = new ColorBlockFrame(content, frameDelayMs);
-                gifWriter.AddColorBlockFrame(frame, frameDelayMs);
+
+                if (pixelModeNeedsOverlays)
+                {
+                    // Render blocks to image and add overlays
+                    var blocksImage = GifWriter.RenderColorBlockFrameToImage(frame, gifOptions.Scale);
+                    gifWriter.AddImageFrameWithOverlays(blocksImage, subtitleText, statusText, frameDelayMs);
+                    blocksImage.Dispose();
+                }
+                else
+                {
+                    gifWriter.AddColorBlockFrame(frame, frameDelayMs);
+                }
             }
             else
             {
@@ -635,23 +695,15 @@ public static class VideoHandler
                 var asciiFrame = renderer.RenderImage(frameImage);
                 var content = asciiFrame.ToAnsiString();
 
-                if (statusRenderer != null)
+                // For ASCII mode, append subtitle and status as text
+                if (!string.IsNullOrEmpty(subtitleText))
                 {
-                    var statusInfo = new StatusLine.StatusInfo
-                    {
-                        FileName = inputInfo.Name,
-                        SourceWidth = videoInfo.Width,
-                        SourceHeight = videoInfo.Height,
-                        OutputWidth = charWidth,
-                        OutputHeight = charHeight,
-                        RenderMode = renderModeName,
-                        CurrentFrame = renderedCount + 1,
-                        TotalFrames = estimatedTotalFrames,
-                        CurrentTime = TimeSpan.FromSeconds(effectiveStart + renderedCount * opts.FrameStepValue / gifTargetFps),
-                        TotalDuration = TimeSpan.FromSeconds(effectiveDuration),
-                        Fps = gifTargetFps
-                    };
-                    content += "\n" + statusRenderer.Render(statusInfo);
+                    content += "\n" + subtitleText;
+                }
+
+                if (!string.IsNullOrEmpty(statusText))
+                {
+                    content += "\n" + statusText;
                 }
 
                 gifWriter.AddFrame(content, frameDelayMs);
@@ -721,81 +773,117 @@ public static class VideoHandler
         var renderModeName = opts.UseBraille ? "Braille" : opts.UseBlocks ? "ColorBlocks" : "ASCII";
 
         if (opts.OutputAsCompressed)
-            return await HandleCompressedJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts,
-                pixelWidth, pixelHeight, charWidth, charHeight, frameDelayMs, jsonTargetFps, end, renderModeName, videoInfo.VideoCodec, ct);
+            return await HandleCompressedJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts, videoInfo,
+                pixelWidth, pixelHeight, charWidth, charHeight, frameDelayMs, jsonTargetFps, end, renderModeName, ct);
 
-        return await HandleStreamingJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts,
-            pixelWidth, pixelHeight, frameDelayMs, jsonTargetFps, end, renderModeName, videoInfo.VideoCodec, ct);
+        return await HandleStreamingJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts, videoInfo,
+            pixelWidth, pixelHeight, charWidth, charHeight, frameDelayMs, jsonTargetFps, end, renderModeName, ct);
     }
 
     private static async Task<int> HandleCompressedJsonOutput(
         FFmpegService ffmpeg, string inputPath, RenderOptions jsonRenderOptions, VideoHandlerOptions opts,
-        int pixelWidth, int pixelHeight, int charWidth, int charHeight,
-        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName, string? videoCodec,
+        VideoInfo videoInfo, int pixelWidth, int pixelHeight, int charWidth, int charHeight,
+        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName,
         CancellationToken ct)
     {
-        var doc = new ConsoleImageDocument
-        {
-            RenderMode = renderModeName,
-            SourceFile = inputPath,
-            Settings = DocumentRenderSettings.FromRenderOptions(jsonRenderOptions)
-        };
+        // Stream to temp NDJSON file first to avoid memory buildup for long videos
+        var tempPath = Path.Combine(Path.GetTempPath(), $"consoleimage_{Guid.NewGuid():N}.ndjson");
 
         var renderedCount = 0;
         var jsonStartTime = opts.Start ?? 0;
 
+        // Status renderer only - subtitles stored separately in document metadata
+        var statusRenderer = opts.ShowStatus
+            ? new StatusLine(charWidth, !opts.NoColor)
+            : null;
+
+        // Calculate timing info
+        var effectiveStart = opts.Start ?? 0;
+        var effectiveEnd = end ?? videoInfo.Duration;
+        var effectiveDuration = effectiveEnd - effectiveStart;
+        var estimatedTotalFrames = (int)(effectiveDuration * jsonTargetFps / opts.FrameStepValue);
+
         try
         {
-            await foreach (var frameImage in ffmpeg.StreamFramesAsync(
-                               inputPath,
-                               pixelWidth,
-                               pixelHeight,
-                               jsonStartTime > 0 ? jsonStartTime : null,
-                               end,
-                               opts.FrameStepValue,
-                               jsonTargetFps,
-                               videoCodec,
-                               ct))
+            // Stream frames to temp NDJSON (no memory buildup)
+            // NOTE: Subtitles are stored separately in document metadata, NOT embedded in frames
+            // This avoids delta compression issues and allows subtitles to be toggled during playback
+            await using (var docWriter = new StreamingDocumentWriter(
+                tempPath, renderModeName, jsonRenderOptions, inputPath))
             {
-                string content;
-                if (opts.UseBraille)
+                await docWriter.WriteHeaderAsync(ct);
+
+                await foreach (var frameImage in ffmpeg.StreamFramesAsync(
+                                   inputPath,
+                                   pixelWidth,
+                                   pixelHeight,
+                                   jsonStartTime > 0 ? jsonStartTime : null,
+                                   end,
+                                   opts.FrameStepValue,
+                                   jsonTargetFps,
+                                   videoInfo.VideoCodec,
+                                   ct))
                 {
-                    using var renderer = new BrailleRenderer(jsonRenderOptions);
-                    content = renderer.RenderImage(frameImage);
-                }
-                else if (opts.UseBlocks)
-                {
-                    using var renderer = new ColorBlockRenderer(jsonRenderOptions);
-                    content = renderer.RenderImage(frameImage);
-                }
-                else
-                {
-                    using var renderer = new AsciiRenderer(jsonRenderOptions);
-                    var asciiFrame = renderer.RenderImage(frameImage);
-                    content = asciiFrame.ToAnsiString();
+                    // Calculate current time for status line (subtitles handled separately)
+                    var currentSeconds = effectiveStart + renderedCount * opts.FrameStepValue / jsonTargetFps;
+                    var currentTime = TimeSpan.FromSeconds(currentSeconds);
+
+                    // Render frame content - NO subtitles embedded (stored separately)
+                    var content = RenderFrameContent(frameImage, jsonRenderOptions, opts);
+                    // Only add status line if requested - subtitles are stored separately
+                    content = AppendOverlays(content, null, statusRenderer, opts,
+                        inputPath, videoInfo, charWidth, charHeight, renderModeName,
+                        renderedCount + 1, estimatedTotalFrames, currentTime, effectiveDuration, jsonTargetFps);
+
+                    await docWriter.WriteFrameAsync(content, frameDelayMs, charWidth, charHeight, ct);
+                    frameImage.Dispose();
+                    renderedCount++;
+                    Console.Write($"\rRendering frames: {renderedCount} processed");
                 }
 
-                doc.AddFrame(content, frameDelayMs, charWidth, charHeight);
-                frameImage.Dispose();
-                renderedCount++;
-                Console.Write($"\rRendering frames: {renderedCount} processed");
+                await docWriter.FinalizeAsync(!ct.IsCancellationRequested, ct);
             }
+
+            // Load streamed document and compress
+            Console.Write("\rCompressing document...                         ");
+            var doc = await StreamingDocumentReader.LoadAsync(tempPath, ct);
+
+            // Store subtitles separately in document metadata (not in frame content)
+            // This allows playback to toggle subtitles on/off and avoids compression issues
+            if (opts.Subtitles != null)
+            {
+                doc.Subtitles = SubtitleTrackData.FromTrack(opts.Subtitles);
+            }
+
+            // Apply settings from render options
+            doc.Settings.EnableTemporalStability = opts.Dejitter;
+            doc.Settings.ColorStabilityThreshold = opts.ColorThreshold ?? 15;
+
+            await CompressedDocumentArchive.SaveAsync(doc, opts.JsonOutputPath!, 30, ct);
+
+            Console.WriteLine($"\rSaved {renderedCount} frames to {opts.JsonOutputPath}              ");
         }
         catch (OperationCanceledException)
         {
             Console.WriteLine($"\rRendering frames: stopped at frame {renderedCount}");
         }
+        finally
+        {
+            // Cleanup temp file
+            if (File.Exists(tempPath))
+            {
+                try { File.Delete(tempPath); }
+                catch { /* Ignore cleanup errors */ }
+            }
+        }
 
-        Console.Write("\rSaving compressed document...                    ");
-        await doc.SaveAsync(opts.JsonOutputPath!, ct);
-        Console.WriteLine($"\rSaved {renderedCount} frames to {opts.JsonOutputPath}              ");
         return 0;
     }
 
     private static async Task<int> HandleStreamingJsonOutput(
         FFmpegService ffmpeg, string inputPath, RenderOptions jsonRenderOptions, VideoHandlerOptions opts,
-        int pixelWidth, int pixelHeight,
-        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName, string? videoCodec,
+        VideoInfo videoInfo, int pixelWidth, int pixelHeight, int charWidth, int charHeight,
+        int frameDelayMs, double jsonTargetFps, double? end, string renderModeName,
         CancellationToken ct)
     {
         await using var docWriter = new StreamingDocumentWriter(
@@ -804,10 +892,28 @@ public static class VideoHandler
             jsonRenderOptions,
             inputPath);
 
+        // Store subtitles separately in document metadata (not embedded in frames)
+        // This avoids delta compression issues and allows subtitles to be toggled during playback
+        if (opts.Subtitles != null)
+        {
+            docWriter.SetSubtitles(SubtitleTrackData.FromTrack(opts.Subtitles));
+        }
+
         await docWriter.WriteHeaderAsync(ct);
 
         var streamRenderedCount = 0;
         var streamStartTime = opts.Start ?? 0;
+
+        // Status renderer only - subtitles stored separately, not embedded in frames
+        var statusRenderer = opts.ShowStatus
+            ? new StatusLine(charWidth, !opts.NoColor)
+            : null;
+
+        // Calculate timing info
+        var effectiveStart = opts.Start ?? 0;
+        var effectiveEnd = end ?? videoInfo.Duration;
+        var effectiveDuration = effectiveEnd - effectiveStart;
+        var estimatedTotalFrames = (int)(effectiveDuration * jsonTargetFps / opts.FrameStepValue);
 
         try
         {
@@ -819,28 +925,20 @@ public static class VideoHandler
                                end,
                                opts.FrameStepValue,
                                jsonTargetFps,
-                               videoCodec,
+                               videoInfo.VideoCodec,
                                ct))
             {
-                if (opts.UseBraille)
-                {
-                    using var renderer = new BrailleRenderer(jsonRenderOptions);
-                    var content = renderer.RenderImage(frameImage);
-                    await docWriter.WriteFrameAsync(content, frameDelayMs, ct: ct);
-                }
-                else if (opts.UseBlocks)
-                {
-                    using var renderer = new ColorBlockRenderer(jsonRenderOptions);
-                    var content = renderer.RenderImage(frameImage);
-                    await docWriter.WriteFrameAsync(content, frameDelayMs, ct: ct);
-                }
-                else
-                {
-                    using var renderer = new AsciiRenderer(jsonRenderOptions);
-                    var frame = renderer.RenderImage(frameImage);
-                    await docWriter.WriteFrameAsync(frame, jsonRenderOptions, ct);
-                }
+                // Calculate current time for status display
+                var currentSeconds = effectiveStart + streamRenderedCount * opts.FrameStepValue / jsonTargetFps;
+                var currentTime = TimeSpan.FromSeconds(currentSeconds);
 
+                // Render frame content - subtitles NOT embedded (stored in document metadata)
+                var content = RenderFrameContent(frameImage, jsonRenderOptions, opts);
+                content = AppendOverlays(content, null, statusRenderer, opts,
+                    inputPath, videoInfo, charWidth, charHeight, renderModeName,
+                    streamRenderedCount + 1, estimatedTotalFrames, currentTime, effectiveDuration, jsonTargetFps);
+
+                await docWriter.WriteFrameAsync(content, frameDelayMs, charWidth, charHeight, ct);
                 frameImage.Dispose();
                 streamRenderedCount++;
                 Console.Write($"\rRendering frames to JSON: {streamRenderedCount} written");
@@ -938,7 +1036,8 @@ public static class VideoHandler
             RenderMode = renderMode,
             ShowStatus = opts.ShowStatus,
             SourceFileName = inputPath,
-            Subtitles = opts.Subtitles
+            Subtitles = opts.Subtitles,
+            LiveSubtitleProvider = opts.LiveSubtitleProvider
         };
 
         try
@@ -992,6 +1091,91 @@ public static class VideoHandler
             LightTerminalBrightnessThreshold = opts.LightCutoff,
             EnableTemporalStability = opts.Dejitter,
             ColorStabilityThreshold = opts.ColorThreshold ?? 15
+        };
+    }
+
+    /// <summary>
+    /// Render a frame to string content based on render mode.
+    /// </summary>
+    private static string RenderFrameContent(
+        Image<Rgba32> frameImage, RenderOptions renderOptions, VideoHandlerOptions opts)
+    {
+        if (opts.UseBraille)
+        {
+            using var renderer = new BrailleRenderer(renderOptions);
+            return renderer.RenderImage(frameImage);
+        }
+
+        if (opts.UseBlocks)
+        {
+            using var renderer = new ColorBlockRenderer(renderOptions);
+            return renderer.RenderImage(frameImage);
+        }
+
+        using var asciiRenderer = new AsciiRenderer(renderOptions);
+        var frame = asciiRenderer.RenderImage(frameImage);
+        return frame.ToAnsiString();
+    }
+
+    /// <summary>
+    /// Append subtitle and status overlays to frame content.
+    /// </summary>
+    private static string AppendOverlays(
+        string content,
+        SubtitleRenderer? subtitleRenderer,
+        StatusLine? statusRenderer,
+        VideoHandlerOptions opts,
+        string inputPath,
+        VideoInfo videoInfo,
+        int charWidth, int charHeight,
+        string renderModeName,
+        int currentFrame, int totalFrames,
+        TimeSpan currentTime, double totalDuration, double fps)
+    {
+        // Append subtitle if available
+        if (subtitleRenderer != null && opts.Subtitles != null)
+        {
+            var entry = opts.Subtitles.GetActiveAt(currentTime);
+            var subtitleText = subtitleRenderer.RenderEntry(entry);
+            if (!string.IsNullOrEmpty(subtitleText))
+            {
+                content += "\n" + subtitleText;
+            }
+        }
+
+        // Append status line if enabled
+        if (statusRenderer != null)
+        {
+            content += "\n" + statusRenderer.Render(BuildStatusInfo(
+                inputPath, videoInfo, charWidth, charHeight, renderModeName,
+                currentFrame, totalFrames, currentTime, totalDuration, fps));
+        }
+
+        return content;
+    }
+
+    /// <summary>
+    /// Build a StatusLine.StatusInfo for the current frame.
+    /// </summary>
+    private static StatusLine.StatusInfo BuildStatusInfo(
+        string inputPath, VideoInfo videoInfo,
+        int charWidth, int charHeight, string renderModeName,
+        int currentFrame, int totalFrames,
+        TimeSpan currentTime, double totalDuration, double fps)
+    {
+        return new StatusLine.StatusInfo
+        {
+            FileName = Path.GetFileName(inputPath),
+            SourceWidth = videoInfo.Width,
+            SourceHeight = videoInfo.Height,
+            OutputWidth = charWidth,
+            OutputHeight = charHeight,
+            RenderMode = renderModeName,
+            CurrentFrame = currentFrame,
+            TotalFrames = totalFrames,
+            CurrentTime = currentTime,
+            TotalDuration = TimeSpan.FromSeconds(totalDuration),
+            Fps = fps
         };
     }
 }
@@ -1113,6 +1297,12 @@ public class VideoHandlerOptions
 
     // Subtitles
     public SubtitleTrack? Subtitles { get; init; }
+
+    /// <summary>
+    /// Live subtitle provider for streaming transcription during playback.
+    /// Takes precedence over static Subtitles when set.
+    /// </summary>
+    public ILiveSubtitleProvider? LiveSubtitleProvider { get; init; }
 
     // Debug
     public bool DebugMode { get; init; }

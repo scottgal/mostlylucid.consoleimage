@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ConsoleImage.Core.Subtitles;
 
 namespace ConsoleImage.Core;
 
@@ -17,6 +18,9 @@ namespace ConsoleImage.Core;
 [JsonSerializable(typeof(StreamingDocumentHeader))]
 [JsonSerializable(typeof(StreamingDocumentFrame))]
 [JsonSerializable(typeof(StreamingDocumentFooter))]
+[JsonSerializable(typeof(SubtitleTrackData))]
+[JsonSerializable(typeof(SubtitleEntryData))]
+[JsonSerializable(typeof(List<SubtitleEntryData>))]
 public partial class StreamingDocumentJsonContext : JsonSerializerContext
 {
 }
@@ -35,6 +39,11 @@ public class StreamingDocumentHeader
     public string? SourceFile { get; set; }
     public string RenderMode { get; set; } = "ASCII";
     public DocumentRenderSettings Settings { get; set; } = new();
+
+    /// <summary>
+    /// Subtitle track data (stored separately, not embedded in frames).
+    /// </summary>
+    public SubtitleTrackData? Subtitles { get; set; }
 }
 
 /// <summary>
@@ -109,6 +118,16 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     ///     Total duration of all frames in milliseconds
     /// </summary>
     public int TotalDurationMs { get; private set; }
+
+    /// <summary>
+    ///     Set subtitle track data (must be called before WriteHeader)
+    /// </summary>
+    public void SetSubtitles(SubtitleTrackData? subtitles)
+    {
+        if (_headerWritten)
+            throw new InvalidOperationException("Cannot set subtitles after header has been written");
+        _header.Subtitles = subtitles;
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -337,6 +356,7 @@ public static class StreamingDocumentReader
                     doc.RenderMode = header.RenderMode;
                     doc.Settings = header.Settings;
                     doc.Created = header.Created;
+                    doc.Subtitles = header.Subtitles;
                 }
             }
             else if (line.Contains("\"@type\":\"Frame\"") ||

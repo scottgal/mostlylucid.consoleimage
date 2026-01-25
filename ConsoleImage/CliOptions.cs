@@ -69,11 +69,14 @@ public class CliOptions
     // yt-dlp (YouTube support)
     public Option<string?> YtdlpPath { get; }
 
-    // Subtitles
-    public Option<string?> SubtitleFile { get; }
-    public Option<bool> AutoSubtitles { get; }
+    // Subtitles - unified flag: auto|off|<path>|yt|whisper|whisper+diarize
+    public Option<string?> Subs { get; }
     public Option<string> SubtitleLang { get; }
-    public Option<bool> NoSubtitles { get; }
+    public Option<string> WhisperModel { get; }
+    public Option<int?> WhisperThreads { get; }
+
+    // Transcript-only mode (no video rendering)
+    public Option<bool> Transcript { get; }
 
     // Output
     public Option<string?> Output { get; }
@@ -260,18 +263,25 @@ public class CliOptions
 
         YtdlpPath = new Option<string?>("--ytdlp-path") { Description = "Path to yt-dlp executable (for YouTube URLs)" };
 
-        // Subtitles
-        SubtitleFile = new Option<string?>("--srt") { Description = "Path to SRT/VTT subtitle file" };
-        SubtitleFile.Aliases.Add("--subtitles");
-        SubtitleFile.Aliases.Add("--sub");
+        // Subtitles - unified: auto|off|<path>|yt|whisper|whisper+diarize
+        Subs = new Option<string?>("--subs") { Description = "Subtitles: auto, off, <path>, yt, whisper, whisper+diarize" };
+        Subs.Aliases.Add("--sub");
+        Subs.Aliases.Add("--srt");
 
-        AutoSubtitles = new Option<bool>("--subs") { Description = "Auto-download subtitles for YouTube videos" };
-        AutoSubtitles.Aliases.Add("--auto-subs");
-
-        SubtitleLang = new Option<string>("--sub-lang") { Description = "Preferred subtitle language (default: en)" };
+        SubtitleLang = new Option<string>("--sub-lang") { Description = "Subtitle language (default: en)" };
         SubtitleLang.DefaultValueFactory = _ => "en";
 
-        NoSubtitles = new Option<bool>("--no-subs") { Description = "Disable subtitle display" };
+        // Whisper options (used with --subs whisper)
+        WhisperModel = new Option<string>("--whisper-model") { Description = "Whisper model: tiny, base, small, medium, large" };
+        WhisperModel.DefaultValueFactory = _ => "base";
+        WhisperModel.Aliases.Add("-wm");
+
+        WhisperThreads = new Option<int?>("--whisper-threads") { Description = "CPU threads for Whisper (default: half available)" };
+
+        // Transcript-only mode - generates subtitles, no video rendering
+        Transcript = new Option<bool>("--transcript") { Description = "Transcript only: generate subtitles without video (streams text to stdout)" };
+        Transcript.Aliases.Add("-T");
+        Transcript.Aliases.Add("--transcribe");
 
         // Output
         Output = new Option<string?>("--output") { Description = "Output file (.gif, .cidz, .json)" };
@@ -449,10 +459,11 @@ public class CliOptions
         command.Options.Add(YtdlpPath);
 
         // Subtitles
-        command.Options.Add(SubtitleFile);
-        command.Options.Add(AutoSubtitles);
+        command.Options.Add(Subs);
         command.Options.Add(SubtitleLang);
-        command.Options.Add(NoSubtitles);
+        command.Options.Add(WhisperModel);
+        command.Options.Add(WhisperThreads);
+        command.Options.Add(Transcript);
 
         command.Options.Add(Output);
         command.Options.Add(Info);

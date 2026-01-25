@@ -26,6 +26,12 @@ public class SubtitleEntry
     public string Text { get; set; } = "";
 
     /// <summary>
+    /// Speaker identifier for diarization (e.g., "SPEAKER_00", "SPEAKER_01").
+    /// Null if diarization is not enabled.
+    /// </summary>
+    public string? SpeakerId { get; set; }
+
+    /// <summary>
     /// Duration of the subtitle display.
     /// </summary>
     public TimeSpan Duration => EndTime - StartTime;

@@ -2,6 +2,114 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.0] - 2025-01-25
+
+### Major Features
+
+#### 🎤 Live Transcription with Whisper AI
+- **Real-time subtitle generation** - `--subs whisper` streams subtitles while watching videos
+- **Chunked audio processing** - Audio extracted and transcribed in 15-second chunks
+- **Background transcription** - Runs ahead of playback, buffers 30 seconds ahead
+- **Sync-waiting** - Playback pauses briefly with "⏳ Transcribing..." if it catches up
+- **Auto-caching** - Subtitles automatically saved as `.vtt` files for instant replay
+- **Start time support** - `--ss` works with transcription, starts from that position
+
+```bash
+# Live transcription during playback
+consoleimage movie.mp4 --subs whisper
+
+# With start time (efficient - only transcribes from start position)
+consoleimage movie.mp4 --subs whisper --ss 3600
+
+# YouTube with live transcription
+consoleimage "https://youtu.be/VIDEO_ID" --subs whisper
+
+# Choose model size for speed vs accuracy
+consoleimage movie.mp4 --subs whisper --whisper-model tiny   # Fastest
+consoleimage movie.mp4 --subs whisper --whisper-model small  # Better accuracy
+```
+
+#### 📝 Transcript-Only Mode (No Video)
+- **`--transcript` flag** - Generate subtitles without rendering video
+- **Streaming output** - Streams text to stdout as it's transcribed (for piping)
+- **`transcribe` subcommand** - Enhanced with `--stream` and `--quiet` options
+
+```bash
+# Stream transcript to stdout (for piping to other tools)
+consoleimage movie.mp4 --transcript
+consoleimage https://youtu.be/VIDEO_ID --transcript
+
+# Save VTT file with transcribe subcommand
+consoleimage transcribe movie.mp4 -o output.vtt
+
+# Stream AND save
+consoleimage transcribe movie.mp4 -o output.vtt --stream
+
+# Quiet mode (only output text, no progress)
+consoleimage transcribe movie.mp4 --stream --quiet
+```
+
+Output format for streaming:
+```
+[00:00:01.500 --> 00:00:04.200] Hello, welcome to the video.
+[00:00:04.500 --> 00:00:07.800] Today we'll be discussing...
+```
+
+#### Unified Subtitle CLI
+- **`--subs <source>`** - Unified flag for all subtitle sources:
+  - `--subs <path>` - Load from SRT/VTT file
+  - `--subs auto` - Try YouTube, fall back to Whisper
+  - `--subs whisper` - Real-time Whisper transcription
+  - `--subs off` - Disable subtitles
+
+#### Speaker Diarization Support (Infrastructure)
+- **Color-coded speakers** - Infrastructure ready for different speakers in different colors
+- **8 distinct colors** - White, yellow, cyan, pink, green, purple, orange, blue
+- **Speaker labels** - "Speaker 1:", "Speaker 2:" prefixes when diarization data available
+- **Note:** Requires pyannote integration (not yet implemented) - `--diarize` flag reserved for future use
+
+#### YouTube Start Time
+- **Efficient seeking** - `--ss` with YouTube URLs seeks via FFmpeg
+- **Works with transcription** - Transcription starts from `--ss` position
+
+```bash
+# Start 1 hour into a YouTube video
+consoleimage "https://youtu.be/VIDEO_ID" --ss 3600 --subs whisper
+```
+
+### New Classes
+
+- **`ChunkedTranscriber`** - Streaming transcription with ahead-of-playback buffering
+- **`ILiveSubtitleProvider`** - Interface for live subtitle providers (decouples transcription from video)
+
+### Improvements
+
+#### Transcription Progress Feedback
+- **Visual progress** - Shows "Extracting audio at 01:00:00..." and "Transcribing 01:00:00 - 01:00:15..."
+- **No more "stuck"** - Clear feedback during initial buffering phase
+- **OnProgress event** - Hook for custom progress UI
+
+#### CIDZ Streaming Fix
+- **Memory efficient** - Long videos no longer buffer all frames before compression
+- **Stream-then-compress** - Frames written to temp NDJSON, then compressed to .cidz
+- **Automatic cleanup** - Temp files removed after compression
+
+### New CLI Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--whisper` | Enable live transcription during playback | OFF |
+| `--whisper-model` | Model size: tiny, base, small, medium, large | base |
+| `--whisper-threads` | CPU threads for transcription | Auto |
+
+### Bug Fixes
+
+- **Fixed initial buffer hang** - Reduced initial buffer from 90s to 15s (one chunk)
+- **Fixed --ss with transcription** - Start time now properly passed to ChunkedTranscriber
+- **Fixed speaker color assignment** - Colors now properly cycle through 8-color palette
+
+---
+
 ## [3.1.0] - 2025-01-24
 
 ### Major Features

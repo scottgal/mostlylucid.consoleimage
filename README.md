@@ -1,9 +1,30 @@
 # mostlylucid.consoleimage
 
-**Version 3.1** - High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
+**Version 4.0** - High-quality ASCII art renderer for .NET 10 with live AI transcription.
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [CLI Guide](#cli-guide)
+- [Features](#features)
+- [Installation](#installation)
+- [Requirements](#requirements)
+- [CLI Cookbook](#cli-cookbook)
+- [MCP Server](#mcp-server)
+- [Library](#library)
+- [CLI Reference](#cli-reference)
+- [JSON Document Format](#json-document-format)
+- [Library API](#library-api)
+- [Documentation](#documentation)
+- [Architecture](#architecture)
+- [How It Works](#how-it-works)
+- [Performance](#performance)
+- [Building from Source](#building-from-source)
+- [Credits](#credits)
+- [License](#license)
 
 ## Quick Start
 
@@ -25,6 +46,49 @@ consoleimage "https://youtu.be/dQw4w9WgXcQ"
 ```
 
 That's it! Colors and animation are enabled by default. **Braille mode is now the default** for maximum detail.
+
+## CLI Guide
+
+### Live Transcription
+
+Generate subtitles automatically while watching videos using local Whisper AI:
+
+```bash
+# Auto-generate subtitles while playing (streams in real-time!)
+consoleimage movie.mp4 --subs whisper
+
+# Works with YouTube too - skip ahead with --ss
+consoleimage "https://youtu.be/dQw4w9WgXcQ" --subs whisper
+consoleimage "https://youtu.be/dQw4w9WgXcQ" --subs whisper --ss 3600  # Start at 1 hour
+
+# Use different model sizes for quality vs speed
+consoleimage movie.mp4 --subs whisper --whisper-model tiny   # Fastest
+consoleimage movie.mp4 --subs whisper --whisper-model small  # Better accuracy
+
+# Subtitles are cached automatically - replay without re-transcribing
+consoleimage movie.mp4 --subs whisper  # First time: transcribes
+consoleimage movie.mp4 --subs whisper  # Second time: uses cached .vtt file
+```
+
+**Transcript-only mode** (no video - for piping to other tools):
+
+```bash
+# Stream transcript to stdout
+consoleimage movie.mp4 --transcript
+consoleimage https://youtu.be/VIDEO_ID --transcript
+
+# Save to file
+consoleimage transcribe movie.mp4 -o output.vtt
+```
+
+**How it works:**
+- Audio is extracted and transcribed in 15-second chunks
+- Transcription runs ahead of playback in the background
+- If playback catches up, it briefly pauses showing "⏳ Transcribing..."
+- Subtitles are auto-saved as `.vtt` files for instant replay
+
+**Whisper models auto-download** on first use (~75MB-3GB depending on model).
+> - YouTube videos with `--ss` may have audio extraction issues at certain positions. Try a different start time if transcription fails.
 
 ### Choosing a Render Mode
 
@@ -71,14 +135,14 @@ consoleimage animation.gif -o output.gif
 consoleimage movie.mp4 -o movie.cidz
 ```
 
-## Render Mode Comparison
+### Render Mode Comparison
 
 | Braille (DEFAULT) | ASCII | ColorBlocks |
 |-------------------|-------|-------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> |
 | 2×4 dot patterns (8x resolution) | Shape-matched characters | Unicode half-blocks (▀▄) |
 
-## Video Example
+### Video Example
 
 | Braille | ASCII | ColorBlocks |
 |---------|-------|-------------|
@@ -89,7 +153,7 @@ consoleimage movie.mp4           # Braille by default
 consoleimage movie.mp4 -a -w 120 # ASCII mode, wider
 ```
 
-## Matrix Mode
+### Matrix Mode
 
 | Classic Green | Full Color |
 |---------------|------------|
@@ -100,7 +164,7 @@ consoleimage photo.jpg --matrix              # Classic green
 consoleimage photo.jpg --matrix --matrix-fullcolor  # Source colors
 ```
 
-## Slideshow Mode (v3.1)
+### Slideshow Mode (v3.1)
 
 Browse directories of images with keyboard controls:
 
@@ -131,7 +195,7 @@ consoleimage ./photos --shuffle
 | `R` | Toggle shuffle |
 | `Q` / `Esc` | Quit |
 
-## YouTube Support (v3.1)
+### YouTube Support (v3.1)
 
 Play YouTube videos directly in your terminal:
 
@@ -155,6 +219,118 @@ consoleimage "https://youtu.be/VIDEO_ID" -o video.cidz
 - **FFmpeg** - Auto-downloads on first video use
 
 Use `--ytdlp-path` to specify a custom yt-dlp location.
+
+### Subtitles & Transcription
+
+Display subtitles during video playback or generate them automatically with Whisper AI.
+
+#### Subtitle Sources
+
+| Source | Command | Description |
+|--------|---------|-------------|
+| **File** | `--subs movie.srt` | Load from SRT/VTT file |
+| **YouTube** | `--subs auto` | Auto-download from YouTube |
+| **Live Whisper** | `--subs whisper` | Real-time transcription during playback |
+
+#### Live Transcription Mode (`--subs whisper`)
+
+Stream subtitles in real-time while watching - no waiting for full transcription:
+
+```bash
+# Live transcription during playback
+consoleimage movie.mp4 --subs whisper
+
+# With start time (transcription starts from that position)
+consoleimage "https://youtu.be/VIDEO_ID" --subs whisper --ss 3600
+
+# Choose model size (tiny/base/small/medium/large)
+consoleimage movie.mp4 --subs whisper --whisper-model small
+
+# Subtitles are cached - second play uses saved .vtt file
+consoleimage movie.mp4 --subs whisper  # Uses movie.vtt if it exists
+```
+
+**Features:**
+- Audio transcribed in 15-second chunks, buffered 30s ahead
+- Background transcription continues during playback
+- Brief pause with "⏳ Transcribing..." if playback catches up
+- Auto-saves to `.vtt` file for instant replay
+
+#### Transcript-Only Mode (No Video)
+
+Generate subtitles without video rendering - perfect for piping to other tools:
+
+```bash
+# Stream transcript to stdout (for piping)
+consoleimage movie.mp4 --transcript
+consoleimage https://youtu.be/VIDEO_ID --transcript
+
+# Save VTT file using transcribe subcommand
+consoleimage transcribe movie.mp4 -o movie.vtt
+consoleimage transcribe https://youtu.be/VIDEO_ID -o output.vtt
+
+# Stream to stdout AND save file
+consoleimage transcribe movie.mp4 -o movie.vtt --stream
+
+# Quiet mode (only output, no progress)
+consoleimage transcribe movie.mp4 --stream --quiet
+```
+
+**Output format:**
+```
+[00:00:01.500 --> 00:00:04.200] Hello, welcome to the video.
+[00:00:04.500 --> 00:00:07.800] Today we'll be discussing...
+```
+
+#### Playing with External Subtitles
+
+```bash
+# Load subtitles from SRT/VTT file
+consoleimage movie.mp4 --subs movie.srt
+consoleimage movie.mp4 --subs subtitles.vtt
+
+# Auto-download YouTube subtitles
+consoleimage "https://youtu.be/VIDEO_ID" --subs auto
+consoleimage "https://youtu.be/VIDEO_ID" --subs auto --sub-lang es  # Spanish
+
+# Disable subtitles
+consoleimage movie.mp4 --subs off
+```
+
+#### Transcribe Subcommand
+
+Generate VTT/SRT subtitle files from any video or audio:
+
+```bash
+# Generate WebVTT subtitles (default)
+consoleimage transcribe movie.mp4 -o movie.vtt
+
+# Generate SRT format
+consoleimage transcribe movie.mp4 -o movie.srt
+
+# Use a larger model for better accuracy
+consoleimage transcribe movie.mp4 --model small -o movie.vtt
+consoleimage transcribe movie.mp4 --model medium -o movie.vtt
+
+# Specify language (or 'auto' for detection)
+consoleimage transcribe movie.mp4 --lang ja -o movie.vtt  # Japanese
+consoleimage transcribe movie.mp4 --lang auto -o movie.vtt
+
+# Use a hosted Whisper API
+consoleimage transcribe movie.mp4 --whisper-url https://api.example.com/transcribe
+```
+
+**Whisper Models:**
+
+| Model | Size | Speed | Accuracy | Best For |
+|-------|------|-------|----------|----------|
+| `tiny` | 75MB | Fastest | Good | Quick previews |
+| `base` | 142MB | Fast | Better | **Default** |
+| `small` | 466MB | Medium | Great | General use |
+| `medium` | 1.5GB | Slow | Excellent | Professional |
+| `large` | 3GB | Slowest | Best | Maximum accuracy |
+
+Models are automatically downloaded on first use (~30s-5min depending on size).
 
 ## Features
 
@@ -208,6 +384,47 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
 | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
 | macOS ARM64 | `consoleimage-osx-arm64.tar.gz`   | `consoleimage-osx-arm64-mcp.tar.gz`   |
 
+#### Quick Install (Command Line)
+
+**Windows (PowerShell):**
+```powershell
+# Download and extract to user bin folder
+$version = "3.1.0"  # Check releases for latest
+Invoke-WebRequest -Uri "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v$version/consoleimage-win-x64.zip" -OutFile "$env:TEMP\consoleimage.zip"
+Expand-Archive -Path "$env:TEMP\consoleimage.zip" -DestinationPath "$env:LOCALAPPDATA\consoleimage" -Force
+# Add to PATH (run once)
+$env:PATH += ";$env:LOCALAPPDATA\consoleimage"
+[Environment]::SetEnvironmentVariable("PATH", $env:PATH, "User")
+```
+
+**Linux x64:**
+```bash
+# Download and install to /usr/local/bin
+VERSION="3.1.0"  # Check releases for latest
+curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-linux-x64.tar.gz" | sudo tar -xz -C /usr/local/bin
+sudo chmod +x /usr/local/bin/consoleimage
+```
+
+**Linux ARM64 (Raspberry Pi, etc.):**
+```bash
+VERSION="3.1.0"
+curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-linux-arm64.tar.gz" | sudo tar -xz -C /usr/local/bin
+sudo chmod +x /usr/local/bin/consoleimage
+```
+
+**macOS (Apple Silicon):**
+```bash
+VERSION="3.1.0"
+curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-osx-arm64.tar.gz" | tar -xz -C /usr/local/bin
+chmod +x /usr/local/bin/consoleimage
+# If blocked by Gatekeeper, run: xattr -d com.apple.quarantine /usr/local/bin/consoleimage
+```
+
+**Verify installation:**
+```bash
+consoleimage --version
+```
+
 ## Requirements
 
 - **.NET 10** runtime (or use standalone binaries)
@@ -218,7 +435,7 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
   - Images, GIFs, and cidz/json documents work without FFmpeg
   - Manual install: `winget install FFmpeg` (Windows), `brew install ffmpeg` (macOS), `apt install ffmpeg` (Linux)
 
-## Quick Start
+## CLI Cookbook
 
 ### CLI
 
@@ -240,6 +457,15 @@ consoleimage movie.mp4                    # Play video as ASCII
 consoleimage movie.mkv --blocks -w 120    # Color blocks mode
 consoleimage movie.mp4 --ss 60 -t 30      # Start at 60s, play 30s
 
+# === SUBTITLES ===
+consoleimage movie.mp4 --subs movie.srt   # Play with SRT/VTT subtitles
+consoleimage movie.mp4 --subs auto        # Auto-download YouTube subs
+consoleimage movie.mp4 --subs whisper     # Generate with local Whisper AI
+
+# === TRANSCRIPTION (Generate subtitles) ===
+consoleimage transcribe movie.mp4 -o movie.vtt           # Generate VTT
+consoleimage transcribe movie.mp4 --model small --diarize  # Better quality
+
 # === SAVE & PLAYBACK ===
 consoleimage animation.gif -o output.cidz # Save compressed document
 consoleimage movie.mp4 -o movie.cidz      # Save video as document
@@ -258,7 +484,7 @@ consoleimage movie.mp4 --raw -o frame.png --gif-frames 10     # Image sequence
 consoleimage --calibrate --aspect-ratio 0.5 --save
 ```
 
-### MCP Server (AI Tool Integration)
+## MCP Server
 
 The MCP server exposes ConsoleImage as tools for AI assistants. Once configured, you can simply ask Claude to "render
 this image as ASCII art" and it will use the tools automatically.
@@ -305,7 +531,7 @@ this image as ASCII art" and it will use the tools automatically.
 
 See [ConsoleImage.Mcp/README.md](ConsoleImage.Mcp/README.md) for full documentation.
 
-### Library
+## Library
 
 ```csharp
 using ConsoleImage.Core;
@@ -333,7 +559,9 @@ Console.WriteLine(AsciiArt.Render("photo.jpg"));
 ::QMQ%%MQ::::::K%Q%%M7:::::^K%Q%%K^::.\yQ@@@QQE\::
 ```
 
-## Render Modes
+## CLI Reference
+
+### Render Modes
 
 | Mode            | CLI Option                        | Description                                     | Best For                          |
 |-----------------|-----------------------------------|-------------------------------------------------|-----------------------------------|
@@ -347,7 +575,7 @@ Console.WriteLine(AsciiArt.Render("photo.jpg"));
 **Note:** Braille mode is now the default (v3.0+). Protocol modes (iTerm2, Kitty, Sixel) display true images in supported terminals. Use `--mode list` to see all
 available modes.
 
-## CLI Usage
+### CLI Usage
 
 ```bash
 # Basic - color and animation ON by default
@@ -503,7 +731,7 @@ consoleimage movie.cidz -o movie.gif
 consoleimage long_movie.mp4 -o movie.ndjson
 ```
 
-### Library API
+### Document API (Library)
 
 ```csharp
 using ConsoleImage.Core;
@@ -759,7 +987,7 @@ var config = builder.Configuration.GetSection("AsciiRenderer").Get<RenderOptions
 Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 ```
 
-## Character Set Presets
+### Character Set Presets
 
 | Preset     | Characters     | Use Case                     |
 |------------|----------------|------------------------------|

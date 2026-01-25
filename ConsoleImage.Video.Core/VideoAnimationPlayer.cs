@@ -242,12 +242,35 @@ public class VideoAnimationPlayer : IDisposable
                     statusContent = _statusLine.Render(statusInfo);
                 }
 
-                // Render subtitle if available
+                // Render subtitle if available (live transcription or static subtitles)
                 string? subtitleContent = null;
-                if (_subtitleRenderer != null && _options.Subtitles != null)
+                var currentTime = _options.StartTime ?? 0;
+                currentTime += frameIndex / effectiveFps;
+
+                // Use live subtitle provider if available (takes precedence)
+                if (_subtitleRenderer != null && _options.LiveSubtitleProvider != null)
                 {
-                    var currentTime = _options.StartTime ?? 0;
-                    currentTime += frameIndex / effectiveFps;
+                    // Wait for transcription to catch up if needed - prevents subtitle desync
+                    if (!_options.LiveSubtitleProvider.HasSubtitlesReadyFor(currentTime))
+                    {
+                        // Show "Transcribing..." indicator while waiting
+                        subtitleContent = _subtitleRenderer.RenderText("⏳ Transcribing...");
+                        var waitingBuffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent, subtitleContent, _lastSubtitleContent);
+                        Console.Write(waitingBuffer);
+                        Console.Out.Flush();
+
+                        var waitResult = await _options.LiveSubtitleProvider.WaitForTranscriptionAsync(
+                            currentTime, timeoutMs: 15000, ct);
+
+                        // Kick off transcription for upcoming frames
+                        _ = _options.LiveSubtitleProvider.EnsureTranscribedUpToAsync(currentTime + 30, ct);
+                    }
+
+                    var entry = _options.LiveSubtitleProvider.Track.GetActiveAt(currentTime);
+                    subtitleContent = _subtitleRenderer.RenderEntry(entry);
+                }
+                else if (_subtitleRenderer != null && _options.Subtitles != null)
+                {
                     var entry = _options.Subtitles.GetActiveAt(currentTime);
                     subtitleContent = _subtitleRenderer.RenderEntry(entry);
                 }
@@ -447,37 +470,46 @@ public class VideoAnimationPlayer : IDisposable
 
         // Track extra rows used for positioning
         var extraRows = 0;
+        var maxSubtitleLines = 2; // Fixed subtitle area height
 
-        // Render subtitles at fixed position below frame
+        // Render subtitles at fixed position below frame (overwrite, don't clear)
         if (!string.IsNullOrEmpty(subtitleContent))
         {
             var subtitleLines = subtitleContent.Split('\n');
-            for (var i = 0; i < subtitleLines.Length; i++)
+            for (var i = 0; i < maxSubtitleLines; i++)
             {
                 sb.Append($"\x1b[{frameLines + 1 + i};1H"); // Move to subtitle row
-                sb.Append("\x1b[2K"); // Clear the line
-                sb.Append(subtitleLines[i].TrimEnd('\r'));
+                if (i < subtitleLines.Length)
+                {
+                    // Write subtitle line (already padded to width by SubtitleRenderer)
+                    sb.Append(subtitleLines[i].TrimEnd('\r'));
+                }
+                else
+                {
+                    // Blank line for unused subtitle rows - pad with spaces
+                    sb.Append(new string(' ', 120)); // Clear unused line
+                }
+                sb.Append("\x1b[0m"); // Reset colors after each line
             }
-            extraRows = subtitleLines.Length;
+            extraRows = maxSubtitleLines;
         }
         else if (!string.IsNullOrEmpty(previousSubtitle))
         {
-            // Clear previous subtitle lines
-            var prevSubtitleLines = previousSubtitle.Split('\n').Length;
-            for (var i = 0; i < prevSubtitleLines; i++)
+            // Clear previous subtitle lines by overwriting with spaces
+            for (var i = 0; i < maxSubtitleLines; i++)
             {
                 sb.Append($"\x1b[{frameLines + 1 + i};1H");
-                sb.Append("\x1b[2K");
+                sb.Append(new string(' ', 120)); // Overwrite with spaces
             }
         }
 
-        // Render status line at fixed position below subtitles
+        // Render status line at fixed position below subtitles (overwrite, don't clear)
         if (!string.IsNullOrEmpty(statusLine))
         {
-            var statusRow = frameLines + 1 + (subtitleContent?.Split('\n').Length ?? 0);
+            var statusRow = frameLines + 1 + maxSubtitleLines;
             sb.Append($"\x1b[{statusRow};1H"); // Move to status line row
-            sb.Append("\x1b[2K"); // Clear the line
             sb.Append(statusLine);
+            sb.Append("\x1b[0m"); // Reset colors
         }
 
         sb.Append("\x1b[?2026l"); // End synchronized output
@@ -655,7 +687,11 @@ public class VideoAnimationPlayer : IDisposable
     /// </summary>
     private void UpdateSubtitleRenderer()
     {
-        if (_options.Subtitles?.HasEntries != true)
+        // Check if we have any subtitle source (static or live)
+        var hasStaticSubtitles = _options.Subtitles?.HasEntries == true;
+        var hasLiveSubtitles = _options.LiveSubtitleProvider != null;
+
+        if (!hasStaticSubtitles && !hasLiveSubtitles)
             return;
 
         int subtitleWidth = _renderWidth;

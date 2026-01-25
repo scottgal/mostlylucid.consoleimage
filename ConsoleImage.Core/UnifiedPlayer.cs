@@ -3,6 +3,7 @@
 // Supports all document formats including compressed archives
 
 using System.Text;
+using ConsoleImage.Core.Subtitles;
 
 namespace ConsoleImage.Core;
 
@@ -16,6 +17,8 @@ public class UnifiedPlayer : IDisposable
     private readonly ConsoleImageDocument _document;
     private readonly UnifiedPlayerOptions _options;
     private readonly StatusLine? _statusLine;
+    private readonly SubtitleRenderer? _subtitleRenderer;
+    private readonly SubtitleTrack? _subtitleTrack;
     private CancellationTokenSource? _cts;
     private bool _disposed;
 
@@ -37,11 +40,22 @@ public class UnifiedPlayer : IDisposable
         _document = document ?? throw new ArgumentNullException(nameof(document));
         _options = options ?? new UnifiedPlayerOptions();
 
+        // Get frame width for status line and subtitles
+        int frameWidth = 120;
+        if (_document.Frames.Count > 0)
+            frameWidth = _document.Frames[0].Width;
+        try { frameWidth = Math.Min(frameWidth, Console.WindowWidth - 1); } catch { }
+
         if (_options.ShowStatus)
         {
-            int statusWidth = 120;
-            try { statusWidth = Console.WindowWidth - 1; } catch { }
-            _statusLine = new StatusLine(statusWidth, true);
+            _statusLine = new StatusLine(frameWidth, true);
+        }
+
+        // Initialize subtitle support if document has subtitles and display is enabled
+        if (_options.ShowSubtitles && _document.Subtitles != null)
+        {
+            _subtitleTrack = _document.Subtitles.ToTrack();
+            _subtitleRenderer = new SubtitleRenderer(frameWidth, 2, true);
         }
     }
 
@@ -180,6 +194,9 @@ public class UnifiedPlayer : IDisposable
         string? previousFrame = null;
         var totalFrames = _document.Frames.Count;
 
+        // Track current playback time for subtitle sync
+        long currentTimeMs = 0;
+
         for (int i = 0; i < totalFrames; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -187,7 +204,36 @@ public class UnifiedPlayer : IDisposable
             var frame = _document.Frames[i];
             var buffer = BuildFrameBuffer(frame.Content, previousFrame, i == 0);
 
-            // Add status line if enabled
+            // Track lines used for overlays (subtitles + status)
+            int extraLines = 0;
+
+            // Add subtitles if enabled and document has them
+            if (_subtitleRenderer != null && _subtitleTrack != null)
+            {
+                var currentTime = TimeSpan.FromMilliseconds(currentTimeMs);
+                var activeSubtitle = _subtitleTrack.GetActiveAt(currentTime.TotalSeconds);
+                var subtitleContent = _subtitleRenderer.RenderEntry(activeSubtitle);
+
+                if (!string.IsNullOrEmpty(subtitleContent))
+                {
+                    // Position subtitles below frame content
+                    var subtitleLines = subtitleContent.Split('\n');
+                    for (int j = 0; j < subtitleLines.Length; j++)
+                    {
+                        buffer += $"\x1b[{frame.Height + 1 + j};1H\x1b[2K{subtitleLines[j]}";
+                    }
+                    extraLines = subtitleLines.Length;
+                }
+                else
+                {
+                    // Clear subtitle area when no active subtitle
+                    buffer += $"\x1b[{frame.Height + 1};1H\x1b[2K";
+                    buffer += $"\x1b[{frame.Height + 2};1H\x1b[2K";
+                    extraLines = 2; // Reserve space for subtitles
+                }
+            }
+
+            // Add status line if enabled (below subtitles)
             if (_statusLine != null)
             {
                 var statusInfo = new StatusLine.StatusInfo
@@ -201,9 +247,11 @@ public class UnifiedPlayer : IDisposable
                     CurrentFrame = i + 1,
                     TotalFrames = totalFrames,
                     LoopNumber = currentLoop,
-                    TotalLoops = totalLoops
+                    TotalLoops = totalLoops,
+                    CurrentTime = TimeSpan.FromMilliseconds(currentTimeMs),
+                    TotalDuration = TimeSpan.FromMilliseconds(_document.TotalDurationMs)
                 };
-                buffer += $"\x1b[{frame.Height + 1};1H\x1b[2K{_statusLine.Render(statusInfo)}";
+                buffer += $"\x1b[{frame.Height + 1 + extraLines};1H\x1b[2K{_statusLine.Render(statusInfo)}";
             }
 
             // End synchronized output
@@ -221,6 +269,9 @@ public class UnifiedPlayer : IDisposable
             {
                 await ResponsiveDelayAsync(delayMs, ct);
             }
+
+            // Update current time for next frame's subtitle lookup
+            currentTimeMs += frame.DelayMs;
         }
     }
 
@@ -347,6 +398,12 @@ public class UnifiedPlayerOptions
     /// Show status line below output.
     /// </summary>
     public bool ShowStatus { get; set; }
+
+    /// <summary>
+    /// Show subtitles during playback (if document contains subtitle track).
+    /// Default is true - subtitles are shown when available.
+    /// </summary>
+    public bool ShowSubtitles { get; set; } = true;
 
     /// <summary>
     /// Source file name for status display.

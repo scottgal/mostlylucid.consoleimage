@@ -139,6 +139,29 @@ public class GifWriter : IDisposable
     }
 
     /// <summary>
+    ///     Add an image frame with burned-in subtitle and/or status line (for pixel-based modes).
+    /// </summary>
+    /// <param name="image">The source image.</param>
+    /// <param name="subtitle">Subtitle text to burn into the image (displayed above status).</param>
+    /// <param name="statusLine">Status line text to burn at the very bottom.</param>
+    /// <param name="delayMs">Frame delay in milliseconds.</param>
+    public void AddImageFrameWithOverlays(Image<Rgba32> image, string? subtitle, string? statusLine, int delayMs = 100)
+    {
+        if (string.IsNullOrEmpty(subtitle) && string.IsNullOrEmpty(statusLine))
+        {
+            AddImageFrame(image, delayMs);
+            return;
+        }
+
+        // Clone and burn overlays into the image
+        var withOverlays = image.Clone();
+        BurnOverlaysIntoImage(withOverlays, subtitle, statusLine);
+
+        _useImageMode = true;
+        _imageFrames.Add((withOverlays, delayMs));
+    }
+
+    /// <summary>
     ///     Burn subtitle text into an image at the bottom with outline effect.
     /// </summary>
     private void BurnSubtitleIntoImage(Image<Rgba32> image, string subtitle)
@@ -205,6 +228,119 @@ public class GifWriter : IDisposable
     }
 
     /// <summary>
+    ///     Burn subtitle and status line text into an image with outline effect.
+    ///     Subtitle appears above the status line at the bottom of the image.
+    /// </summary>
+    private void BurnOverlaysIntoImage(Image<Rgba32> image, string? subtitle, string? statusLine)
+    {
+        var subtitleLines = string.IsNullOrEmpty(subtitle)
+            ? Array.Empty<string>()
+            : subtitle.Split('\n', StringSplitOptions.RemoveEmptyEntries).Take(2).ToArray();
+        var statusText = statusLine?.Trim();
+        var hasStatus = !string.IsNullOrEmpty(statusText);
+
+        if (subtitleLines.Length == 0 && !hasStatus) return;
+
+        var fontSize = Math.Max(12, image.Height / 15);
+        var statusFontSize = Math.Max(10, image.Height / 20);
+        Font font;
+        Font statusFont;
+
+        try
+        {
+            font = GetSubtitleFont(fontSize);
+            statusFont = GetSubtitleFont(statusFontSize);
+        }
+        catch
+        {
+            // If font loading fails, skip overlays
+            return;
+        }
+
+        var textColor = Color.White;
+        var outlineColor = Color.Black;
+        var statusColor = Color.FromRgb(180, 180, 180); // Dim gray for status
+
+        // Calculate positions from bottom up
+        var bottomMargin = image.Height / 30;
+        var lineHeight = fontSize + 4;
+        var statusLineHeight = statusFontSize + 2;
+
+        // Status line at very bottom
+        var statusY = image.Height - bottomMargin - (hasStatus ? statusLineHeight : 0);
+
+        // Subtitle above status
+        var subtitleStartY = statusY - (subtitleLines.Length * lineHeight) - (hasStatus ? 4 : 0);
+
+        image.Mutate(ctx =>
+        {
+            // Draw subtitle lines
+            for (var i = 0; i < subtitleLines.Length; i++)
+            {
+                var text = subtitleLines[i].Trim();
+                if (string.IsNullOrEmpty(text)) continue;
+
+                var textOptions = new RichTextOptions(font)
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Origin = new PointF(image.Width / 2f, subtitleStartY + i * lineHeight)
+                };
+
+                // Draw outline
+                var outlineOffset = Math.Max(1, fontSize / 10);
+                var offsets = new[] {
+                    (-outlineOffset, 0), (outlineOffset, 0),
+                    (0, -outlineOffset), (0, outlineOffset)
+                };
+
+                foreach (var (dx, dy) in offsets)
+                {
+                    var outlineOptions = new RichTextOptions(font)
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Origin = new PointF(image.Width / 2f + dx, subtitleStartY + i * lineHeight + dy)
+                    };
+                    ctx.DrawText(outlineOptions, text, outlineColor);
+                }
+
+                ctx.DrawText(textOptions, text, textColor);
+            }
+
+            // Draw status line
+            if (hasStatus)
+            {
+                // Strip ANSI codes from status for image rendering
+                var cleanStatus = StripAnsi(statusText!);
+
+                var statusOptions = new RichTextOptions(statusFont)
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Origin = new PointF(image.Width / 2f, statusY)
+                };
+
+                // Draw outline for status
+                var statusOutlineOffset = Math.Max(1, statusFontSize / 12);
+                var offsets = new[] {
+                    (-statusOutlineOffset, 0), (statusOutlineOffset, 0),
+                    (0, -statusOutlineOffset), (0, statusOutlineOffset)
+                };
+
+                foreach (var (dx, dy) in offsets)
+                {
+                    var outlineOptions = new RichTextOptions(statusFont)
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Origin = new PointF(image.Width / 2f + dx, statusY + dy)
+                    };
+                    ctx.DrawText(outlineOptions, cleanStatus, outlineColor);
+                }
+
+                ctx.DrawText(statusOptions, cleanStatus, statusColor);
+            }
+        });
+    }
+
+    /// <summary>
     ///     Get a font suitable for subtitle rendering.
     /// </summary>
     private static Font GetSubtitleFont(int size)
@@ -262,57 +398,13 @@ public class GifWriter : IDisposable
     }
 
     /// <summary>
-    ///     Add a Matrix frame - renders as text with fonts by default, or as pixel blocks if useBlockMode is true.
+    ///     Static helper to render a BrailleFrame to an image (for external use).
     /// </summary>
-    /// <param name="frame">The Matrix frame to add</param>
-    /// <param name="delayMs">Frame delay in milliseconds</param>
-    /// <param name="useBlockMode">If true, render as pixel blocks instead of text</param>
-    public void AddMatrixFrame(MatrixFrame frame, int delayMs = 100, bool useBlockMode = false)
-    {
-        _useImageMode = true;
-        var image = useBlockMode ? RenderMatrixToImageAsBlocks(frame) : RenderMatrixToImage(frame);
-        _imageFrames.Add((image, delayMs));
-    }
-
-    /// <summary>
-    ///     Render ColorBlockFrame to an image (2 pixels per character cell vertically).
-    /// </summary>
-    private Image<Rgba32> RenderColorBlocksToImage(ColorBlockFrame frame)
-    {
-        var lines = frame.Content.Split('\n');
-        var width = lines.Max(l => StripAnsi(l).Length);
-        var height = lines.Length * 2; // 2 pixels per row
-
-        var pixelSize = Math.Max(1, (int)(_options.Scale * 4));
-        var image = new Image<Rgba32>(width * pixelSize, height * pixelSize);
-        image.Mutate(ctx => ctx.Fill(_options.BackgroundColor));
-
-        for (var lineY = 0; lineY < lines.Length; lineY++)
-        {
-            var cells = ParseColorBlockLine(lines[lineY]);
-            for (var x = 0; x < cells.Count; x++)
-            {
-                var (topColor, bottomColor) = cells[x];
-
-                // Draw top pixel
-                for (var py = 0; py < pixelSize; py++)
-                for (var px = 0; px < pixelSize; px++)
-                    image[x * pixelSize + px, lineY * 2 * pixelSize + py] = ToRgba32(topColor);
-
-                // Draw bottom pixel
-                for (var py = 0; py < pixelSize; py++)
-                for (var px = 0; px < pixelSize; px++)
-                    image[x * pixelSize + px, (lineY * 2 + 1) * pixelSize + py] = ToRgba32(bottomColor);
-            }
-        }
-
-        return image;
-    }
-
-    /// <summary>
-    ///     Render BrailleFrame to an image (2x4 dots per character cell).
-    /// </summary>
-    private Image<Rgba32> RenderBrailleToImage(BrailleFrame frame)
+    /// <param name="frame">The braille frame to render.</param>
+    /// <param name="scale">Scale factor for output (default: 1.0).</param>
+    /// <param name="backgroundColor">Background color (default: black).</param>
+    /// <returns>The rendered image.</returns>
+    public static Image<Rgba32> RenderBrailleFrameToImage(BrailleFrame frame, float scale = 1.0f, Color? backgroundColor = null)
     {
         var lines = frame.Content.Split('\n');
         var charWidth = lines.Max(l => StripAnsi(l).Length);
@@ -322,13 +414,13 @@ public class GifWriter : IDisposable
         var pixelWidth = charWidth * 2;
         var pixelHeight = charHeight * 4;
 
-        var dotSize = Math.Max(1, (int)(_options.Scale * 2));
+        var dotSize = Math.Max(1, (int)(scale * 2));
         var image = new Image<Rgba32>(pixelWidth * dotSize, pixelHeight * dotSize);
-        image.Mutate(ctx => ctx.Fill(_options.BackgroundColor));
+        image.Mutate(ctx => ctx.Fill(backgroundColor ?? Color.Black));
 
         for (var lineY = 0; lineY < lines.Length; lineY++)
         {
-            var cells = ParseBrailleLine(lines[lineY]);
+            var cells = ParseBrailleLineStatic(lines[lineY]);
             for (var x = 0; x < cells.Count; x++)
             {
                 var (brailleChar, fgColor) = cells[x];
@@ -350,6 +442,207 @@ public class GifWriter : IDisposable
 
         return image;
     }
+
+    /// <summary>
+    ///     Static helper to render a ColorBlockFrame to an image (for external use).
+    /// </summary>
+    /// <param name="frame">The color block frame to render.</param>
+    /// <param name="scale">Scale factor for output (default: 1.0).</param>
+    /// <param name="backgroundColor">Background color (default: black).</param>
+    /// <returns>The rendered image.</returns>
+    public static Image<Rgba32> RenderColorBlockFrameToImage(ColorBlockFrame frame, float scale = 1.0f, Color? backgroundColor = null)
+    {
+        var lines = frame.Content.Split('\n');
+        var width = lines.Max(l => StripAnsi(l).Length);
+        var height = lines.Length * 2; // 2 pixels per row
+
+        var pixelSize = Math.Max(1, (int)(scale * 4));
+        var image = new Image<Rgba32>(width * pixelSize, height * pixelSize);
+        image.Mutate(ctx => ctx.Fill(backgroundColor ?? Color.Black));
+
+        for (var lineY = 0; lineY < lines.Length; lineY++)
+        {
+            var cells = ParseColorBlockLineStatic(lines[lineY]);
+            for (var x = 0; x < cells.Count; x++)
+            {
+                var (topColor, bottomColor) = cells[x];
+
+                // Draw top pixel
+                for (var py = 0; py < pixelSize; py++)
+                for (var px = 0; px < pixelSize; px++)
+                    image[x * pixelSize + px, lineY * 2 * pixelSize + py] = ToRgba32(topColor);
+
+                // Draw bottom pixel
+                for (var py = 0; py < pixelSize; py++)
+                for (var px = 0; px < pixelSize; px++)
+                    image[x * pixelSize + px, (lineY * 2 + 1) * pixelSize + py] = ToRgba32(bottomColor);
+            }
+        }
+
+        return image;
+    }
+
+    private static List<(char BrailleChar, Color FgColor)> ParseBrailleLineStatic(string line)
+    {
+        var result = new List<(char, Color)>();
+        var currentFg = Color.White;
+
+        foreach (Match match in AnsiOrCharRegex.Matches(line))
+            if (match.Groups[1].Success)
+            {
+                var codes = match.Groups[1].Value.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                currentFg = ParseAnsiCodesStatic(codes, currentFg);
+            }
+            else if (match.Groups[2].Success)
+            {
+                var c = match.Groups[2].Value[0];
+                result.Add((c, currentFg));
+            }
+
+        return result;
+    }
+
+    private static List<(Color Top, Color Bottom)> ParseColorBlockLineStatic(string line)
+    {
+        var result = new List<(Color, Color)>();
+        var currentFg = Color.White;
+        var currentBg = Color.Black;
+
+        foreach (Match match in AnsiOrCharRegex.Matches(line))
+            if (match.Groups[1].Success)
+            {
+                // ANSI escape - parse colors
+                var codes = match.Groups[1].Value.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                (currentFg, currentBg) = ParseColorBlockCodesStatic(codes, currentFg, currentBg);
+            }
+            else if (match.Groups[2].Success)
+            {
+                // Character - determine top/bottom colors based on block type
+                var c = match.Groups[2].Value[0];
+                var (top, bottom) = c switch
+                {
+                    '▀' => (currentFg, currentBg), // Upper half block
+                    '▄' => (currentBg, currentFg), // Lower half block
+                    '█' => (currentFg, currentFg), // Full block
+                    ' ' => (currentBg, currentBg), // Space
+                    _ => (currentFg, currentBg)
+                };
+                result.Add((top, bottom));
+            }
+
+        return result;
+    }
+
+    private static (Color Fg, Color Bg) ParseColorBlockCodesStatic(string[] codes, Color currentFg, Color currentBg)
+    {
+        for (var i = 0; i < codes.Length; i++)
+        {
+            if (!int.TryParse(codes[i], out var code)) continue;
+
+            switch (code)
+            {
+                case 0:
+                    currentFg = Color.White;
+                    currentBg = Color.Black;
+                    break;
+                case 38: // Foreground
+                    if (i + 1 < codes.Length && codes[i + 1] == "2" && i + 4 < codes.Length)
+                        if (int.TryParse(codes[i + 2], out var r) &&
+                            int.TryParse(codes[i + 3], out var g) &&
+                            int.TryParse(codes[i + 4], out var b))
+                        {
+                            currentFg = Color.FromRgb((byte)r, (byte)g, (byte)b);
+                            i += 4;
+                        }
+
+                    break;
+                case 48: // Background
+                    if (i + 1 < codes.Length && codes[i + 1] == "2" && i + 4 < codes.Length)
+                        if (int.TryParse(codes[i + 2], out var r) &&
+                            int.TryParse(codes[i + 3], out var g) &&
+                            int.TryParse(codes[i + 4], out var b))
+                        {
+                            currentBg = Color.FromRgb((byte)r, (byte)g, (byte)b);
+                            i += 4;
+                        }
+
+                    break;
+            }
+        }
+
+        return (currentFg, currentBg);
+    }
+
+    private static Color ParseAnsiCodesStatic(string[] codes, Color currentColor)
+    {
+        if (codes.Length == 0) return Color.White;
+
+        for (var i = 0; i < codes.Length; i++)
+        {
+            if (!int.TryParse(codes[i], out var code)) continue;
+
+            switch (code)
+            {
+                case 0:
+                    currentColor = Color.Black; // Reset to background
+                    break;
+                case 38: // 24-bit or 256 foreground
+                    if (i + 1 < codes.Length && codes[i + 1] == "2" && i + 4 < codes.Length)
+                    {
+                        if (int.TryParse(codes[i + 2], out var r) &&
+                            int.TryParse(codes[i + 3], out var g) &&
+                            int.TryParse(codes[i + 4], out var b))
+                        {
+                            currentColor = Color.FromRgb((byte)r, (byte)g, (byte)b);
+                            i += 4;
+                        }
+                    }
+                    else if (i + 1 < codes.Length && codes[i + 1] == "5" && i + 2 < codes.Length)
+                    {
+                        if (int.TryParse(codes[i + 2], out var colorIndex))
+                        {
+                            currentColor = Get256Color(colorIndex);
+                            i += 2;
+                        }
+                    }
+
+                    break;
+                case >= 30 and <= 37:
+                    currentColor = GetStandardColor(code - 30);
+                    break;
+                case >= 90 and <= 97:
+                    currentColor = GetBrightColor(code - 90);
+                    break;
+            }
+        }
+
+        return currentColor;
+    }
+
+    /// <summary>
+    ///     Add a Matrix frame - renders as text with fonts by default, or as pixel blocks if useBlockMode is true.
+    /// </summary>
+    /// <param name="frame">The Matrix frame to add</param>
+    /// <param name="delayMs">Frame delay in milliseconds</param>
+    /// <param name="useBlockMode">If true, render as pixel blocks instead of text</param>
+    public void AddMatrixFrame(MatrixFrame frame, int delayMs = 100, bool useBlockMode = false)
+    {
+        _useImageMode = true;
+        var image = useBlockMode ? RenderMatrixToImageAsBlocks(frame) : RenderMatrixToImage(frame);
+        _imageFrames.Add((image, delayMs));
+    }
+
+    /// <summary>
+    ///     Render ColorBlockFrame to an image (2 pixels per character cell vertically).
+    /// </summary>
+    private Image<Rgba32> RenderColorBlocksToImage(ColorBlockFrame frame)
+        => RenderColorBlockFrameToImage(frame, _options.Scale, _options.BackgroundColor);
+
+    /// <summary>
+    ///     Render BrailleFrame to an image (2x4 dots per character cell).
+    /// </summary>
+    private Image<Rgba32> RenderBrailleToImage(BrailleFrame frame)
+        => RenderBrailleFrameToImage(frame, _options.Scale, _options.BackgroundColor);
 
     /// <summary>
     ///     Render MatrixFrame to an image with actual text characters (like ASCII mode).

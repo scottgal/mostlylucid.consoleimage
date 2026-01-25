@@ -32,9 +32,28 @@ public static class YtdlpProvider
     /// <summary>
     /// Get the local cache directory for yt-dlp binary.
     /// </summary>
-    public static string CacheDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "consoleimage", "ytdlp");
+    public static string CacheDirectory
+    {
+        get
+        {
+            // Try LocalApplicationData first (works on Windows, macOS)
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrEmpty(localAppData))
+            {
+                return Path.Combine(localAppData, "consoleimage", "ytdlp");
+            }
+
+            // On Linux/WSL, LocalApplicationData may return empty - use $HOME/.local/share
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrEmpty(home))
+            {
+                return Path.Combine(home, ".local", "share", "consoleimage", "ytdlp");
+            }
+
+            // Last resort: use temp directory
+            return Path.Combine(Path.GetTempPath(), "consoleimage", "ytdlp");
+        }
+    }
 
     /// <summary>
     /// Check if a URL is a YouTube video URL.
@@ -180,12 +199,23 @@ public static class YtdlpProvider
     /// <summary>
     /// Get YouTube video stream information using yt-dlp.
     /// </summary>
+    /// <param name="youtubeUrl">YouTube video URL.</param>
+    /// <param name="ytdlpPath">Optional custom yt-dlp path.</param>
+    /// <param name="maxHeight">Maximum video height for quality selection.</param>
+    /// <param name="startTimeSeconds">Reserved for future use - FFmpeg handles seeking via -ss.</param>
+    /// <param name="ct">Cancellation token.</param>
     public static async Task<YouTubeStreamInfo?> GetStreamInfoAsync(
         string youtubeUrl,
         string? ytdlpPath = null,
         int? maxHeight = null,
+        double? startTimeSeconds = null,
         CancellationToken ct = default)
     {
+        // Note: startTimeSeconds is not used here because --download-sections
+        // only works when downloading, not with -g (URL extraction).
+        // FFmpeg handles seeking via -ss when playing the stream.
+        _ = startTimeSeconds; // Suppress unused parameter warning
+
         var ytdlp = ytdlpPath ?? FindInPath() ?? FindInCache();
         if (ytdlp == null)
             return null;

@@ -132,6 +132,13 @@ public class VideoRenderOptions
     public SubtitleTrack? Subtitles { get; set; }
 
     /// <summary>
+    /// Live subtitle provider for streaming transcription.
+    /// When set, subtitles are generated dynamically during playback.
+    /// Takes precedence over the static Subtitles property.
+    /// </summary>
+    public ILiveSubtitleProvider? LiveSubtitleProvider { get; set; }
+
+    /// <summary>
     /// Create default options suitable for most videos.
     /// </summary>
     public static VideoRenderOptions Default => new()
@@ -232,7 +239,8 @@ public class VideoRenderOptions
         SceneThreshold = SceneThreshold,
         ShowStatus = ShowStatus,
         SourceFileName = SourceFileName,
-        Subtitles = Subtitles // Shared reference, not deep copy
+        Subtitles = Subtitles, // Shared reference, not deep copy
+        LiveSubtitleProvider = LiveSubtitleProvider // Shared reference
     };
 }
 

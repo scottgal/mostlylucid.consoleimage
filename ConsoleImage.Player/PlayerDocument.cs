@@ -26,6 +26,9 @@ namespace ConsoleImage.Player;
 [JsonSerializable(typeof(OptimizedFrame))]
 [JsonSerializable(typeof(List<OptimizedFrame>))]
 [JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(PlayerSubtitleTrack))]
+[JsonSerializable(typeof(PlayerSubtitleEntry))]
+[JsonSerializable(typeof(List<PlayerSubtitleEntry>))]
 public partial class PlayerJsonContext : JsonSerializerContext;
 
 /// <summary>
@@ -630,4 +633,53 @@ public class OptimizedFrame
     public int Width { get; set; }
     public int Height { get; set; }
     public int DelayMs { get; set; }
+}
+
+// Subtitle data classes for playback
+
+/// <summary>
+///     Subtitle track data embedded in documents.
+/// </summary>
+public class PlayerSubtitleTrack
+{
+    /// <summary>Language code (e.g., "en", "es").</summary>
+    [JsonPropertyName("language")]
+    public string? Language { get; set; }
+
+    /// <summary>Original source file path.</summary>
+    [JsonPropertyName("sourceFile")]
+    public string? SourceFile { get; set; }
+
+    /// <summary>List of subtitle entries.</summary>
+    [JsonPropertyName("entries")]
+    public List<PlayerSubtitleEntry> Entries { get; set; } = new();
+
+    /// <summary>Get the active subtitle at the given time.</summary>
+    public PlayerSubtitleEntry? GetActiveAt(double seconds)
+    {
+        var ms = (long)(seconds * 1000);
+        return Entries.FirstOrDefault(e => ms >= e.StartMs && ms <= e.EndMs);
+    }
+}
+
+/// <summary>
+///     A single subtitle entry.
+/// </summary>
+public class PlayerSubtitleEntry
+{
+    /// <summary>Sequential index.</summary>
+    [JsonPropertyName("index")]
+    public int Index { get; set; }
+
+    /// <summary>Start time in milliseconds.</summary>
+    [JsonPropertyName("startMs")]
+    public long StartMs { get; set; }
+
+    /// <summary>End time in milliseconds.</summary>
+    [JsonPropertyName("endMs")]
+    public long EndMs { get; set; }
+
+    /// <summary>Subtitle text.</summary>
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = "";
 }

@@ -11,6 +11,22 @@ public class SubtitleRenderer
     private readonly int _maxLines;
     private readonly bool _useColor;
     private readonly SubtitleStyle _style;
+    private readonly Dictionary<string, SubtitleStyle> _speakerStyles = new();
+
+    /// <summary>
+    /// Colors used for different speakers in diarization.
+    /// </summary>
+    private static readonly (byte R, byte G, byte B)[] SpeakerColors =
+    [
+        ((byte)255, (byte)255, (byte)255),  // White (default)
+        ((byte)255, (byte)255, (byte)100),  // Yellow
+        ((byte)100, (byte)255, (byte)255),  // Cyan
+        ((byte)255, (byte)150, (byte)150),  // Light red/pink
+        ((byte)150, (byte)255, (byte)150),  // Light green
+        ((byte)200, (byte)150, (byte)255),  // Light purple
+        ((byte)255, (byte)200, (byte)100),  // Orange
+        ((byte)150, (byte)200, (byte)255),  // Light blue
+    ];
 
     /// <summary>
     /// Create a subtitle renderer.
@@ -71,6 +87,8 @@ public class SubtitleRenderer
             return sb.ToString();
         }
 
+        // Get speaker-specific style if diarization is enabled
+        var style = GetStyleForSpeaker(entry.SpeakerId);
         var lines = FormatText(entry.Text);
 
         for (var i = 0; i < _maxLines; i++)
@@ -78,6 +96,14 @@ public class SubtitleRenderer
             if (i < lines.Length)
             {
                 var line = lines[i];
+
+                // Add speaker prefix on first line if available
+                if (i == 0 && !string.IsNullOrEmpty(entry.SpeakerId))
+                {
+                    var speakerName = GetSpeakerDisplayName(entry.SpeakerId);
+                    line = $"{speakerName}: {line}";
+                }
+
                 var padding = (_maxWidth - line.Length) / 2;
                 var centeredLine = new string(' ', Math.Max(0, padding)) + line;
 
@@ -87,7 +113,7 @@ public class SubtitleRenderer
 
                 if (_useColor)
                 {
-                    sb.Append(_style.GetAnsiPrefix());
+                    sb.Append(style.GetAnsiPrefix());
                     sb.Append(centeredLine);
                     sb.Append("\x1b[0m");
                 }
@@ -110,6 +136,46 @@ public class SubtitleRenderer
     }
 
     /// <summary>
+    /// Get style for a specific speaker, creating one if needed.
+    /// </summary>
+    private SubtitleStyle GetStyleForSpeaker(string? speakerId)
+    {
+        if (string.IsNullOrEmpty(speakerId))
+            return _style;
+
+        if (!_speakerStyles.TryGetValue(speakerId, out var style))
+        {
+            // Assign color based on speaker count
+            var colorIndex = _speakerStyles.Count % SpeakerColors.Length;
+            var color = SpeakerColors[colorIndex];
+
+            style = new SubtitleStyle
+            {
+                Bold = true,
+                ForegroundColor = color
+            };
+            _speakerStyles[speakerId] = style;
+        }
+
+        return style;
+    }
+
+    /// <summary>
+    /// Get display name for a speaker ID.
+    /// </summary>
+    private static string GetSpeakerDisplayName(string speakerId)
+    {
+        // Convert "SPEAKER_00" to "Speaker 1", etc.
+        if (speakerId.StartsWith("SPEAKER_", StringComparison.OrdinalIgnoreCase))
+        {
+            var numPart = speakerId[8..];
+            if (int.TryParse(numPart, out var num))
+                return $"Speaker {num + 1}";
+        }
+        return speakerId;
+    }
+
+    /// <summary>
     /// Render subtitle at a specific cursor position.
     /// </summary>
     /// <param name="entry">The subtitle entry.</param>
@@ -129,6 +195,26 @@ public class SubtitleRenderer
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Render arbitrary text (useful for status messages like "Transcribing...").
+    /// </summary>
+    /// <param name="text">The text to render.</param>
+    /// <returns>Formatted subtitle-style output.</returns>
+    public string RenderText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return RenderEntry(null);
+
+        // Create a temporary entry for rendering
+        var entry = new SubtitleEntry
+        {
+            Text = text,
+            StartTime = TimeSpan.Zero,
+            EndTime = TimeSpan.FromSeconds(1)
+        };
+        return RenderEntry(entry);
     }
 
     /// <summary>

@@ -8,6 +8,7 @@ using ConsoleImage.Cli.Handlers;
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
+using ConsoleImage.Transcription;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
@@ -33,6 +34,10 @@ var savedCalibration = CalibrationHelper.Load();
 var cliOptions = new CliOptions();
 var rootCommand = new RootCommand("Render images, GIFs, videos, and documents as ASCII art");
 cliOptions.AddToCommand(rootCommand);
+
+// Add transcribe subcommand: consoleimage transcribe <input> -o output.vtt
+var transcribeCommand = CreateTranscribeSubcommand();
+rootCommand.Subcommands.Add(transcribeCommand);
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
@@ -145,11 +150,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold);
     var debug = parseResult.GetValue(cliOptions.Debug);
 
-    // Subtitle options
-    var subtitleFile = parseResult.GetValue(cliOptions.SubtitleFile);
-    var autoSubtitles = parseResult.GetValue(cliOptions.AutoSubtitles);
+    // Subtitle options - unified: auto|off|<path>|yt|whisper|whisper+diarize
+    var subsValue = parseResult.GetValue(cliOptions.Subs);
     var subtitleLang = parseResult.GetValue(cliOptions.SubtitleLang);
-    var noSubtitles = parseResult.GetValue(cliOptions.NoSubtitles);
+    var whisperModel = parseResult.GetValue(cliOptions.WhisperModel);
+    var whisperThreads = parseResult.GetValue(cliOptions.WhisperThreads);
+    var transcriptOnly = parseResult.GetValue(cliOptions.Transcript);
 
     // Slideshow mode
     var slideDelay = parseResult.GetValue(cliOptions.SlideDelay);
@@ -303,7 +309,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
         // For ASCII rendering, we don't need high resolution - 480p is plenty
         var ytMaxHeight = useBraille ? 480 : 360;
-        var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, cancellationToken);
+        // Pass start time to yt-dlp so it can use download-sections for efficient seeking
+        var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, start, cancellationToken);
 
         if (streamInfo == null)
         {
@@ -320,8 +327,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         inputFullPath = streamInfo.VideoUrl;
         input = new FileInfo("youtube.mp4"); // Dummy for extension detection
 
-        // Download subtitles if requested
-        if (autoSubtitles && !noSubtitles)
+        // Download YouTube subtitles if requested (--subs auto, yt, or whisper)
+        var (ytSubSource, _, _) = ParseSubsOption(subsValue);
+        if (ytSubSource is "auto" or "yt")
         {
             Console.Error.Write($"Downloading subtitles ({subtitleLang})... ");
             var tempDir = Path.Combine(Path.GetTempPath(), "consoleimage_subs");
@@ -331,11 +339,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             if (!string.IsNullOrEmpty(srtPath))
             {
                 Console.Error.WriteLine("done.");
-                subtitleFile = srtPath;
+                // Override subsValue to use the downloaded file
+                subsValue = srtPath;
             }
             else
             {
                 Console.Error.WriteLine("not available.");
+                // If auto mode and YT subs not available, fall back to whisper
+                if (ytSubSource == "auto")
+                    subsValue = "whisper";
             }
         }
     }
@@ -394,6 +406,71 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         input = new FileInfo(inputFullPath);
     }
 
+    // Transcript-only mode: generate subtitles without video rendering
+    // Works with local files, URLs, and YouTube (after URL resolution above)
+    if (transcriptOnly)
+    {
+        // Determine transcript source: auto, whisper, or existing file
+        var transcriptSource = subsValue?.ToLowerInvariant() ?? "auto";
+
+        // For YouTube with auto mode, try to download existing subtitles first
+        if (isYouTube && transcriptSource is "auto" or "yt")
+        {
+            Console.Error.Write($"Checking for YouTube subtitles ({subtitleLang})... ");
+            var subsTempDir = Path.Combine(Path.GetTempPath(), "consoleimage_subs");
+            var srtPath = await YtdlpProvider.DownloadSubtitlesAsync(
+                inputPath, subsTempDir, subtitleLang, ytdlpPath, cancellationToken);
+
+            if (srtPath != null && File.Exists(srtPath))
+            {
+                Console.Error.WriteLine("found!");
+
+                // Read and output the subtitle file
+                var track = await SubtitleParser.ParseAsync(srtPath, cancellationToken);
+                foreach (var entry in track.Entries)
+                {
+                    var startTime = FormatTranscriptTime(entry.StartTime);
+                    var endTime = FormatTranscriptTime(entry.EndTime);
+                    Console.WriteLine($"[{startTime} --> {endTime}] {entry.Text.Trim()}");
+                }
+
+                // Save to output file if specified
+                if (!string.IsNullOrEmpty(output))
+                {
+                    File.Copy(srtPath, output, overwrite: true);
+                    Console.Error.WriteLine($"Saved: {output}");
+                }
+
+                return 0;
+            }
+            else
+            {
+                Console.Error.WriteLine("not available.");
+                if (transcriptSource == "yt")
+                {
+                    Console.Error.WriteLine("YouTube subtitles not found. Use --subs whisper to generate with Whisper.");
+                    return 1;
+                }
+                Console.Error.WriteLine("Falling back to Whisper transcription...");
+            }
+        }
+
+        // Use Whisper for transcription
+        var transcriptOpts = new TranscriptionHandler.TranscriptionOptions
+        {
+            InputPath = inputFullPath, // Use resolved URL (YouTube stream URL, etc.)
+            OutputPath = output, // null = auto-generate from input path
+            ModelSize = whisperModel ?? "base",
+            Language = subtitleLang ?? "en",
+            Diarize = subsValue?.Contains("diarize", StringComparison.OrdinalIgnoreCase) ?? false,
+            Threads = whisperThreads,
+            StreamToStdout = true, // Stream results to stdout
+            Quiet = false // Show progress on stderr
+        };
+
+        return await TranscriptionHandler.HandleAsync(transcriptOpts, cancellationToken);
+    }
+
     // Determine JSON output path if needed
     if (outputAsJson && string.IsNullOrEmpty(jsonOutputPath))
         jsonOutputPath = Path.ChangeExtension(input.FullName, outputAsCompressed ? ".cidz" : ".json");
@@ -426,25 +503,81 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             outputAsJson, jsonOutputPath,
             showStatus, cancellationToken);
 
-    // Load subtitles if specified
+    // Load subtitles based on --subs value
     SubtitleTrack? subtitles = null;
-    if (!noSubtitles && !string.IsNullOrEmpty(subtitleFile))
+    ChunkedTranscriber? chunkedTranscriber = null;
+    var (subtitleSource, subtitleFilePath, diarize) = ParseSubsOption(subsValue);
+
+    // Determine if this is playback mode (no output file) - enables streaming transcription
+    var isPlaybackMode = outputGif == null && !outputAsJson && string.IsNullOrEmpty(jsonOutputPath);
+
+    // Handle subtitle loading based on source type
+    if (subtitleSource != "off")
     {
-        try
+        // For whisper source in playback mode, use streaming chunked transcription
+        if (subtitleSource == "whisper" && isPlaybackMode)
         {
-            if (File.Exists(subtitleFile))
+            // First, check if we have a cached subtitle file from previous transcription
+            var cachedSubPath = GetSubtitlePathForVideo(inputFullPath);
+            if (File.Exists(cachedSubPath))
             {
-                subtitles = await SubtitleParser.ParseAsync(subtitleFile, cancellationToken);
-                Console.Error.WriteLine($"Loaded {subtitles.Count} subtitles from {Path.GetFileName(subtitleFile)}");
+                Console.Error.WriteLine($"Using cached subtitles: {cachedSubPath}");
+                subtitles = await SubtitleParser.ParseAsync(cachedSubPath, cancellationToken);
             }
             else
             {
-                Console.Error.WriteLine($"Warning: Subtitle file not found: {subtitleFile}");
+                var effectiveStart = start ?? 0.0;
+                Console.Error.WriteLine($"Starting live transcription with Whisper ({whisperModel ?? "base"})...");
+                chunkedTranscriber = new ChunkedTranscriber(
+                    inputFullPath,
+                    modelSize: whisperModel ?? "base",
+                    language: subtitleLang ?? "en",
+                    chunkDurationSeconds: 15.0,  // Smaller chunks for faster initial results
+                    bufferAheadSeconds: 30.0,    // Buffer 30s ahead of playback
+                    startTimeOffset: effectiveStart);  // Start from --ss position
+
+                // Hook up progress events for visual feedback (only during initial setup)
+                var showProgress = true;
+                chunkedTranscriber.OnProgress += (seconds, status) =>
+                {
+                    if (showProgress)
+                        Console.Error.Write($"\r{status,-60}");
+                };
+
+                // Initialize whisper (downloads model if needed)
+                var downloadProgress = new Progress<(long downloaded, long total, string status)>(p =>
+                {
+                    if (p.total > 0)
+                    {
+                        var pct = (int)(p.downloaded * 100 / p.total);
+                        Console.Error.Write($"\r{p.status} ({pct}%)          ");
+                    }
+                    else
+                    {
+                        Console.Error.Write($"\r{p.status}          ");
+                    }
+                });
+                await chunkedTranscriber.StartAsync(downloadProgress, cancellationToken);
+                Console.Error.WriteLine();
+
+                // Buffer just the initial chunk (15s) before starting playback
+                // Background transcription will catch up during playback
+                await chunkedTranscriber.EnsureTranscribedUpToAsync(effectiveStart + 15.0, cancellationToken);
+                Console.Error.WriteLine("\rInitial buffer ready, starting playback...                    ");
+
+                // Disable progress output before starting playback (would interfere with video display)
+                showProgress = false;
+
+                // Start background transcription to buffer ahead
+                chunkedTranscriber.StartBackgroundTranscription();
             }
         }
-        catch (Exception ex)
+        else
         {
-            Console.Error.WriteLine($"Warning: Failed to load subtitles: {ex.Message}");
+            // For file sources or output mode, use full batch transcription
+            subtitles = await LoadSubtitlesAsync(
+                subtitleSource, subtitleFilePath, inputFullPath, subtitleLang ?? "en",
+                whisperModel ?? "base", whisperThreads, diarize, cancellationToken);
         }
     }
 
@@ -537,22 +670,55 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         Dejitter = dejitter,
         ColorThreshold = colorThreshold,
 
-        // Subtitles
+        // Subtitles - use live transcriber if available, otherwise static subtitles
         Subtitles = subtitles,
+        LiveSubtitleProvider = chunkedTranscriber,
 
         // Debug
         DebugMode = debug
     };
 
-    var result = await VideoHandler.HandleAsync(inputFullPath, input, videoOpts, cancellationToken);
-
-    // Clean up temp file if we created one
-    if (tempFile != null && File.Exists(tempFile))
+    try
     {
-        try { File.Delete(tempFile); } catch { }
-    }
+        var result = await VideoHandler.HandleAsync(inputFullPath, input, videoOpts, cancellationToken);
 
-    return result;
+        // Save transcribed subtitles for future use if we used live transcription
+        if (chunkedTranscriber != null && chunkedTranscriber.Track.HasEntries)
+        {
+            var subPath = GetSubtitlePathForVideo(inputFullPath);
+            try
+            {
+                // Use a fresh token since the main one may be cancelled
+                using var saveCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await chunkedTranscriber.SaveAsync(subPath, saveCts.Token);
+                Console.Error.WriteLine($"Subtitles saved: {subPath}");
+            }
+            catch (OperationCanceledException)
+            {
+                // Don't warn on cancellation - user intentionally stopped
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Warning: Could not save subtitles: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+    finally
+    {
+        // Clean up chunked transcriber
+        if (chunkedTranscriber != null)
+        {
+            await chunkedTranscriber.DisposeAsync();
+        }
+
+        // Clean up temp file if we created one
+        if (tempFile != null && File.Exists(tempFile))
+        {
+            try { File.Delete(tempFile); } catch { }
+        }
+    }
 });
 
 return await rootCommand.Parse(args).InvokeAsync();
@@ -662,6 +828,11 @@ static string? ResolveInputPath(string inputPath, FileInfo input)
     return inputFullPath;
 }
 
+static string FormatTranscriptTime(TimeSpan ts)
+{
+    return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}.{ts.Milliseconds:D3}";
+}
+
 static bool IsDocumentFile(string extension, string fileName)
 {
     return extension == ".json" ||
@@ -744,10 +915,23 @@ static void ShowHelpAndPrompt()
     Console.WriteLine("  -b, --blocks Unicode half-blocks");
     Console.WriteLine("  -M, --matrix Matrix digital rain effect");
     Console.WriteLine();
+    Console.WriteLine("Subtitles: --subs <source>");
+    Console.WriteLine("  auto         Try YouTube, then whisper if available");
+    Console.WriteLine("  off          Disable subtitles");
+    Console.WriteLine("  <path>       Load from SRT/VTT file");
+    Console.WriteLine("  whisper      Generate with local Whisper (live, ahead of playback)");
+    Console.WriteLine();
+    Console.WriteLine("Transcript-only (no video):");
+    Console.WriteLine("  consoleimage input.mp4 --transcript           Stream text to stdout");
+    Console.WriteLine("  consoleimage transcribe input.mp4 -o out.vtt  Save VTT file");
+    Console.WriteLine("  consoleimage transcribe input.mp4 --stream    Stream + save");
+    Console.WriteLine();
     Console.WriteLine("Examples:");
     Console.WriteLine("  consoleimage photo.jpg");
     Console.WriteLine("  consoleimage movie.mp4 -w 80");
-    Console.WriteLine("  consoleimage https://youtu.be/VIDEO_ID");
+    Console.WriteLine("  consoleimage movie.mp4 --subs movie.srt");
+    Console.WriteLine("  consoleimage https://youtu.be/VIDEO_ID --subs auto");
+    Console.WriteLine("  consoleimage https://youtu.be/VIDEO_ID --transcript");
     Console.WriteLine();
     Console.WriteLine("Run 'consoleimage --help' for all options.");
     Console.WriteLine();
@@ -776,4 +960,295 @@ static void ShowHelpAndPrompt()
         }
     }
     catch { }
+}
+
+// === Subtitle handling ===
+
+// Subtitle source types: "off", "file", "yt", "whisper", "auto"
+static (string source, string? path, bool diarize) ParseSubsOption(string? value)
+{
+    if (string.IsNullOrEmpty(value))
+        return ("off", null, false);
+
+    var lower = value.ToLowerInvariant();
+
+    // Check for explicit keywords
+    if (lower is "off" or "no" or "none" or "disable")
+        return ("off", null, false);
+
+    if (lower is "auto")
+        return ("auto", null, false);
+
+    if (lower is "yt" or "youtube")
+        return ("yt", null, false);
+
+    if (lower is "whisper")
+        return ("whisper", null, false);
+
+    if (lower is "whisper+diarize" or "whisper+diarization")
+        return ("whisper", null, true);
+
+    // Otherwise treat as file path
+    return ("file", value, false);
+}
+
+static async Task<SubtitleTrack?> LoadSubtitlesAsync(
+    string source,
+    string? filePath,
+    string inputPath,
+    string lang,
+    string whisperModel,
+    int? whisperThreads,
+    bool diarize,
+    CancellationToken ct)
+{
+    try
+    {
+        switch (source)
+        {
+            case "file":
+                if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+                {
+                    var track = await SubtitleParser.ParseAsync(filePath, ct);
+                    Console.Error.WriteLine($"Loaded {track.Count} subtitles from {Path.GetFileName(filePath)}");
+                    return track;
+                }
+                Console.Error.WriteLine($"Warning: Subtitle file not found: {filePath}");
+                return null;
+
+            case "whisper":
+                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, ct);
+
+            case "auto":
+                // For auto mode, whisper is fallback if YouTube subs not available
+                // (YouTube subs handled separately in the YouTube URL flow)
+                if (WhisperTranscriptionService.IsAvailable())
+                {
+                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, ct);
+                }
+                Console.Error.WriteLine("Note: Whisper not available for auto-transcription. Run: consoleimage transcribe --help");
+                return null;
+
+            default:
+                return null;
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Warning: Failed to load subtitles: {ex.Message}");
+        return null;
+    }
+}
+
+static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
+    string inputPath,
+    string lang,
+    string model,
+    int? threads,
+    bool diarize,
+    CancellationToken ct)
+{
+    Console.Error.WriteLine($"Transcribing with Whisper ({model})...");
+
+    // Create temp output file
+    var tempVtt = Path.Combine(Path.GetTempPath(), $"consoleimage_sub_{Guid.NewGuid():N}.vtt");
+
+    try
+    {
+        var opts = new TranscriptionHandler.TranscriptionOptions
+        {
+            InputPath = inputPath,
+            OutputPath = tempVtt,
+            ModelSize = model,
+            Language = lang,
+            Diarize = diarize,
+            Threads = threads
+        };
+
+        var result = await TranscriptionHandler.HandleAsync(opts, ct);
+        if (result != 0 || !File.Exists(tempVtt))
+        {
+            Console.Error.WriteLine("Whisper transcription failed.");
+            return null;
+        }
+
+        var track = await SubtitleParser.ParseAsync(tempVtt, ct);
+        Console.Error.WriteLine($"Transcribed {track.Count} segments");
+        return track;
+    }
+    finally
+    {
+        if (File.Exists(tempVtt))
+        {
+            try { File.Delete(tempVtt); } catch { }
+        }
+    }
+}
+
+// === Transcribe subcommand ===
+
+static Command CreateTranscribeSubcommand()
+{
+    var inputArg = new Argument<string>("input") { Description = "Input video or audio file" };
+
+    var outputOpt = new Option<string?>("--output") { Description = "Output file (default: input.vtt)" };
+    outputOpt.Aliases.Add("-o");
+
+    var modelOpt = new Option<string>("--model") { Description = "Whisper model: tiny, base, small, medium, large" };
+    modelOpt.DefaultValueFactory = _ => "base";
+    modelOpt.Aliases.Add("-m");
+
+    var langOpt = new Option<string>("--lang") { Description = "Language code (en, es, ja, etc.) or 'auto'" };
+    langOpt.DefaultValueFactory = _ => "en";
+    langOpt.Aliases.Add("-l");
+
+    var diarizeOpt = new Option<bool>("--diarize") { Description = "Enable speaker diarization" };
+    diarizeOpt.Aliases.Add("-d");
+
+    var threadsOpt = new Option<int?>("--threads") { Description = "CPU threads (default: half available)" };
+    threadsOpt.Aliases.Add("-t");
+
+    var urlOpt = new Option<string?>("--whisper-url") { Description = "Custom Whisper API URL (for hosted servers)" };
+
+    var streamOpt = new Option<bool>("--stream") { Description = "Stream transcript text to stdout as generated" };
+    streamOpt.Aliases.Add("-s");
+
+    var quietOpt = new Option<bool>("--quiet") { Description = "Suppress progress messages (output only transcribed text)" };
+    quietOpt.Aliases.Add("-q");
+
+    var cmd = new Command("transcribe", "Generate subtitles from video/audio using Whisper");
+    cmd.Arguments.Add(inputArg);
+    cmd.Options.Add(outputOpt);
+    cmd.Options.Add(modelOpt);
+    cmd.Options.Add(langOpt);
+    cmd.Options.Add(diarizeOpt);
+    cmd.Options.Add(threadsOpt);
+    cmd.Options.Add(urlOpt);
+    cmd.Options.Add(streamOpt);
+    cmd.Options.Add(quietOpt);
+
+    cmd.SetAction(async (parseResult, ct) =>
+    {
+        var input = parseResult.GetValue(inputArg);
+        var output = parseResult.GetValue(outputOpt);
+        var model = parseResult.GetValue(modelOpt);
+        var lang = parseResult.GetValue(langOpt);
+        var diarize = parseResult.GetValue(diarizeOpt);
+        var threads = parseResult.GetValue(threadsOpt);
+        var whisperUrl = parseResult.GetValue(urlOpt);
+        var stream = parseResult.GetValue(streamOpt);
+        var quiet = parseResult.GetValue(quietOpt);
+
+        if (string.IsNullOrEmpty(input))
+        {
+            Console.Error.WriteLine("Error: Input file required");
+            return 1;
+        }
+
+        // Allow URLs (YouTube, etc.) - don't check File.Exists for them
+        var isUrl = input.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    input.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        if (!isUrl && !File.Exists(input))
+        {
+            Console.Error.WriteLine($"Error: File not found: {input}");
+            return 1;
+        }
+
+        // If whisper URL specified, use remote API instead
+        if (!string.IsNullOrEmpty(whisperUrl))
+        {
+            return await TranscribeWithRemoteApiAsync(input, output, lang, whisperUrl, ct);
+        }
+
+        var opts = new TranscriptionHandler.TranscriptionOptions
+        {
+            InputPath = input,
+            OutputPath = output,
+            ModelSize = model,
+            Language = lang,
+            Diarize = diarize,
+            Threads = threads,
+            StreamToStdout = stream,
+            Quiet = quiet
+        };
+
+        return await TranscriptionHandler.HandleAsync(opts, ct);
+    });
+
+    return cmd;
+}
+
+/// <summary>
+/// Get the path where subtitles should be saved for a video file.
+/// Saves alongside the video with .vtt extension.
+/// </summary>
+static string GetSubtitlePathForVideo(string videoPath)
+{
+    // For URLs (YouTube etc), use a temp directory
+    if (videoPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+        videoPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+    {
+        // Extract video ID or use hash for filename
+        var fileName = Path.GetFileNameWithoutExtension(videoPath);
+        if (string.IsNullOrEmpty(fileName) || fileName.Length < 3)
+            fileName = $"video_{videoPath.GetHashCode():X8}";
+        return Path.Combine(Path.GetTempPath(), $"{fileName}.vtt");
+    }
+
+    // For local files, save next to the video
+    var dir = Path.GetDirectoryName(videoPath);
+    var name = Path.GetFileNameWithoutExtension(videoPath);
+
+    // If can't write to video directory, use temp
+    if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+        return Path.Combine(Path.GetTempPath(), $"{name}.vtt");
+
+    return Path.Combine(dir, $"{name}.vtt");
+}
+
+static async Task<int> TranscribeWithRemoteApiAsync(
+    string input,
+    string? output,
+    string lang,
+    string whisperUrl,
+    CancellationToken ct)
+{
+    Console.Error.WriteLine($"Using remote Whisper API: {whisperUrl}");
+
+    // Determine output path
+    output ??= Path.ChangeExtension(input, ".vtt");
+
+    try
+    {
+        using var client = new HttpClient();
+        client.Timeout = TimeSpan.FromMinutes(30); // Long timeout for transcription
+
+        // Prepare multipart form data
+        using var form = new MultipartFormDataContent();
+        await using var fileStream = File.OpenRead(input);
+        var fileContent = new StreamContent(fileStream);
+        form.Add(fileContent, "file", Path.GetFileName(input));
+        form.Add(new StringContent(lang), "language");
+        form.Add(new StringContent("vtt"), "response_format");
+
+        Console.Error.WriteLine("Uploading and transcribing...");
+        var response = await client.PostAsync(whisperUrl, form, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(ct);
+            Console.Error.WriteLine($"API error: {response.StatusCode} - {error}");
+            return 1;
+        }
+
+        var vttContent = await response.Content.ReadAsStringAsync(ct);
+        await File.WriteAllTextAsync(output, vttContent, ct);
+        Console.Error.WriteLine($"Saved: {output}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Remote transcription failed: {ex.Message}");
+        return 1;
+    }
 }
