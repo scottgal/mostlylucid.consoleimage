@@ -1,36 +1,73 @@
 #!/bin/bash
 # AOT Build Script for ConsoleImage (Linux/macOS)
-# Run this script on a Linux or macOS machine to build native AOT
+# Creates native AOT-compiled binary for the current platform
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Building ConsoleImage with AOT for the current platform..."
+echo "=== ConsoleImage AOT Build ==="
+echo ""
 
-# Detect platform
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    RID="linux-x64"
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    # Check for ARM64 vs x64
-    if [[ "$(uname -m)" == "arm64" ]]; then
-        RID="osx-arm64"
-    else
-        RID="osx-x64"
-    fi
-else
-    echo "Unsupported platform: $OSTYPE"
-    exit 1
-fi
+# Detect platform and architecture
+ARCH=$(uname -m)
+OS=$(uname -s)
 
+case "$OS" in
+    Linux)
+        case "$ARCH" in
+            x86_64) RID="linux-x64" ;;
+            aarch64) RID="linux-arm64" ;;
+            *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+        esac
+        # Check AOT prerequisites
+        if ! command -v clang &> /dev/null; then
+            echo "Installing AOT prerequisites (clang, zlib1g-dev)..."
+            if command -v apt-get &> /dev/null; then
+                sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+            elif command -v dnf &> /dev/null; then
+                sudo dnf install -y clang zlib-devel
+            else
+                echo "Warning: Could not install prerequisites. Ensure clang and zlib are installed."
+            fi
+        fi
+        ;;
+    Darwin)
+        case "$ARCH" in
+            x86_64) RID="osx-x64" ;;
+            arm64) RID="osx-arm64" ;;
+            *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+        esac
+        ;;
+    *)
+        echo "Unsupported OS: $OS"
+        exit 1
+        ;;
+esac
+
+OUTPUT_DIR="$SCRIPT_DIR/bin/Release/net10.0/$RID/publish"
+
+echo "Platform: $OS $ARCH"
 echo "Target RID: $RID"
+echo "Output: $OUTPUT_DIR"
+echo ""
 
-# Build
+# Build with all AOT optimizations
 dotnet publish "$SCRIPT_DIR/ConsoleImage.csproj" \
     -c Release \
     -r "$RID" \
-    --self-contained \
-    -p:PublishAot=true
+    --self-contained true \
+    -p:PublishAot=true \
+    -p:OptimizationPreference=Size \
+    -p:IlcOptimizationPreference=Size \
+    -p:StripSymbols=true \
+    -p:IlcGenerateStackTraceData=false
 
-echo "Build complete!"
-echo "Output: $SCRIPT_DIR/bin/Release/net10.0/$RID/publish/"
+# Make executable
+chmod +x "$OUTPUT_DIR/consoleimage"
+
+echo ""
+echo "=== Build complete! ==="
+ls -lh "$OUTPUT_DIR/consoleimage"
+echo ""
+echo "Run with: $OUTPUT_DIR/consoleimage"

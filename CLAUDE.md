@@ -847,26 +847,69 @@ dotnet run --project ConsoleImage -- image.jpg
 
 ### AOT Publishing
 
-Native AOT publishing requires Visual Studio C++ build tools and vswhere.exe in PATH.
-Use the provided PowerShell scripts which set up the environment automatically:
+Cross-platform AOT build scripts are provided for all supported platforms.
 
+**Windows (requires Visual Studio Build Tools):**
 ```powershell
-# Publish consolevideo with AOT
-.\ConsoleImage.Video\build-aot.ps1
-
-# Publish consoleimage with AOT
+# Build for Windows x64 (default)
 .\ConsoleImage\build-aot.ps1
+
+# Build for Windows ARM64
+.\ConsoleImage\build-aot.ps1 -RID win-arm64
 ```
 
-The scripts:
-1. Add vswhere.exe to PATH (`C:\Program Files (x86)\Microsoft Visual Studio\Installer`)
-2. Launch VS Developer PowerShell to set up MSVC toolchain
-3. Run `dotnet publish` with AOT
+**Linux/macOS:**
+```bash
+# Build for current platform (auto-detects architecture)
+./ConsoleImage/build-aot.sh
 
-Output location: `bin\Release\net10.0\win-x64\publish\`
+# Prerequisites installed automatically on Linux (clang, zlib1g-dev)
+```
+
+**Supported Platforms:**
+| Platform | RID | Build Script |
+|----------|-----|--------------|
+| Windows x64 | win-x64 | `build-aot.ps1` |
+| Windows ARM64 | win-arm64 | `build-aot.ps1 -RID win-arm64` |
+| Linux x64 | linux-x64 | `build-aot.sh` |
+| Linux ARM64 | linux-arm64 | `build-aot.sh` |
+| macOS Intel | osx-x64 | `build-aot.sh` |
+| macOS Apple Silicon | osx-arm64 | `build-aot.sh` |
+
+Output location: `bin/Release/net10.0/{rid}/publish/`
 
 **Important**: Use `string?` for CLI arguments (not `FileInfo?`) for AOT compatibility.
 System.CommandLine's `FileInfo` argument type can have issues resolving paths in AOT builds.
+
+### Auto-Download and Cache Directories
+
+ConsoleImage automatically downloads required tools (FFmpeg, yt-dlp, Whisper runtime) on first use.
+Cache locations follow platform conventions:
+
+| Platform | Cache Base Directory |
+|----------|---------------------|
+| Windows | `%LOCALAPPDATA%\consoleimage\` |
+| macOS | `~/Library/Application Support/consoleimage/` |
+| Linux | `~/.local/share/consoleimage/` |
+
+**Cache Subdirectories:**
+- `ffmpeg/` - FFmpeg binaries (~100MB)
+- `ytdlp/` - yt-dlp binary (~10MB)
+- `whisper/` - Whisper models (75MB-3GB) and runtime (~12MB)
+
+**Disabling Auto-Download:**
+```bash
+# Use --no-write to prevent all automatic downloads
+consoleimage movie.mp4 --no-write
+
+# Or set in appsettings.json
+{ "Global": { "AutoDownloadTools": false } }
+```
+
+Manually install tools:
+- **FFmpeg**: `winget install FFmpeg` (Windows), `apt install ffmpeg` (Linux), `brew install ffmpeg` (macOS)
+- **yt-dlp**: `pip install yt-dlp` or download from https://github.com/yt-dlp/yt-dlp
+- **Whisper**: Models download automatically; runtime requires `dotnet add package Whisper.net.Runtime`
 
 ## Dependencies
 

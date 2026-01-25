@@ -569,7 +569,10 @@ public sealed class FFmpegService : IDisposable
                     process.Kill();
                 }
             }
-            catch { }
+            catch (InvalidOperationException)
+            {
+                // Process already exited - safe to ignore
+            }
         }
         finally
         {

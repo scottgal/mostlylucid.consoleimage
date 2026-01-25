@@ -45,6 +45,10 @@ public class VideoAnimationPlayer : IDisposable
     private double? _seekRequest; // Requested seek position in seconds (null = no seek)
     private double _currentPosition; // Current playback position in seconds
 
+    // Pre-allocated strings to avoid allocations in render loop
+    private static readonly string BlankLine120 = new(' ', 120);
+    private static readonly string[] CursorMoveCache = BuildCursorMoveCache(200);
+
     /// <summary>
     /// Event raised when playback state changes (pause/resume).
     /// </summary>
@@ -577,7 +581,7 @@ public class VideoAnimationPlayer : IDisposable
 
                     if (!currLine.SequenceEqual(prevLine))
                     {
-                        sb.Append($"\x1b[{i + 1};1H"); // Move to line
+                        sb.Append(GetCursorMove(i)); // Move to line (cached)
                         sb.Append(currLine);
 
                         // Pad to clear previous content
@@ -585,7 +589,9 @@ public class VideoAnimationPlayer : IDisposable
                         var prevVisible = GetVisibleLength(prevLine);
                         if (currVisible < prevVisible)
                         {
-                            sb.Append(new string(' ', prevVisible - currVisible));
+                            var padding = prevVisible - currVisible;
+                            // Use subspan of pre-allocated blank line to avoid allocation
+                            sb.Append(BlankLine120.AsSpan(0, Math.Min(padding, BlankLine120.Length)));
                         }
                         sb.Append("\x1b[0m"); // Reset colors
                     }
@@ -603,7 +609,7 @@ public class VideoAnimationPlayer : IDisposable
             var subtitleLineCount = CountLines(subtitleContent);
             for (var i = 0; i < maxSubtitleLines; i++)
             {
-                sb.Append($"\x1b[{frameLines + 1 + i};1H"); // Move to subtitle row
+                sb.Append(GetCursorMove(frameLines + i)); // Move to subtitle row (cached)
                 if (i < subtitleLineCount)
                 {
                     // Write subtitle line (already padded to width by SubtitleRenderer)
@@ -611,8 +617,8 @@ public class VideoAnimationPlayer : IDisposable
                 }
                 else
                 {
-                    // Blank line for unused subtitle rows - pad with spaces
-                    sb.Append(new string(' ', 120)); // Clear unused line
+                    // Blank line for unused subtitle rows - use cached blank line
+                    sb.Append(BlankLine120);
                 }
                 sb.Append("\x1b[0m"); // Reset colors after each line
             }
@@ -620,19 +626,19 @@ public class VideoAnimationPlayer : IDisposable
         }
         else if (!string.IsNullOrEmpty(previousSubtitle))
         {
-            // Clear previous subtitle lines by overwriting with spaces
+            // Clear previous subtitle lines by overwriting with cached blank line
             for (var i = 0; i < maxSubtitleLines; i++)
             {
-                sb.Append($"\x1b[{frameLines + 1 + i};1H");
-                sb.Append(new string(' ', 120)); // Overwrite with spaces
+                sb.Append(GetCursorMove(frameLines + i)); // Cached
+                sb.Append(BlankLine120);
             }
         }
 
         // Render status line at fixed position below subtitles (overwrite, don't clear)
         if (!string.IsNullOrEmpty(statusLine))
         {
-            var statusRow = frameLines + 1 + maxSubtitleLines;
-            sb.Append($"\x1b[{statusRow};1H"); // Move to status line row
+            var statusRow = frameLines + maxSubtitleLines;
+            sb.Append(GetCursorMove(statusRow)); // Move to status line row (cached)
             sb.Append(statusLine);
             sb.Append("\x1b[0m"); // Reset colors
         }
@@ -970,6 +976,28 @@ public class VideoAnimationPlayer : IDisposable
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Build cache of cursor move escape sequences to avoid allocations in render loop.
+    /// </summary>
+    private static string[] BuildCursorMoveCache(int maxLines)
+    {
+        var cache = new string[maxLines];
+        for (var i = 0; i < maxLines; i++)
+        {
+            cache[i] = $"\x1b[{i + 1};1H";
+        }
+        return cache;
+    }
+
+    /// <summary>
+    /// Get cached cursor move sequence, or generate if beyond cache.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static string GetCursorMove(int line)
+    {
+        return line < CursorMoveCache.Length ? CursorMoveCache[line] : $"\x1b[{line + 1};1H";
     }
 
     public void Dispose()

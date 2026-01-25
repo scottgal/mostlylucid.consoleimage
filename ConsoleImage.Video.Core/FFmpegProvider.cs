@@ -25,10 +25,26 @@ public static class FFmpegProvider
 
     /// <summary>
     /// Get the local cache directory for FFmpeg binaries.
+    /// Cross-platform: uses LocalApplicationData on Windows/macOS, ~/.local/share on Linux.
     /// </summary>
-    public static string CacheDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "consoleimage", "ffmpeg");
+    public static string CacheDirectory
+    {
+        get
+        {
+            // Try LocalApplicationData first (Windows, macOS)
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrEmpty(localAppData))
+                return Path.Combine(localAppData, "consoleimage", "ffmpeg");
+
+            // Linux/WSL fallback: $HOME/.local/share
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrEmpty(home))
+                return Path.Combine(home, ".local", "share", "consoleimage", "ffmpeg");
+
+            // Last resort: temp directory
+            return Path.Combine(Path.GetTempPath(), "consoleimage", "ffmpeg");
+        }
+    }
 
     /// <summary>
     /// Gets path to ffmpeg executable, downloading if necessary.

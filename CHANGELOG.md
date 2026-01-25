@@ -2,6 +2,78 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.0] - 2025-01-25
+
+### Bug Fixes
+
+#### First-Frame Visual Corruption Fix
+- **Corrupted frame detection** - Detects and skips codec warmup frames (blank/black/white/gray noise)
+- **Expanded detection window** - Checks first 5 frames for corruption (not just first frame)
+- **Keyframe alignment** - Added explicit `-ss 0` seek for proper keyframe alignment
+- **Affects all modes** - Fixes white/gray noise on first frame in Braille and Blocks modes
+
+#### Subtitle Sync Fix
+- **Frame timing correction** - Fixed off-by-one error in subtitle timing calculation
+- **Zero-based timestamps** - Changed from `frameIndex / fps` to `(frameIndex - 1) / fps`
+- **No more drift** - Subtitles now stay perfectly synced throughout playback
+
+#### Subtitle Cache Discovery Fix
+- **Deterministic hashing** - Replaced non-deterministic `string.GetHashCode()` with DJB2 hash
+- **Automatic migration** - Old cached subtitle files are automatically renamed to new hash format
+- **No re-transcription needed** - Existing Whisper transcriptions are found and reused
+
+### Performance Improvements
+
+#### Memory Optimizations
+- **ArrayPool for frame buffers** - Uses `ArrayPool<byte>.Shared` instead of allocating new arrays
+- **Zero-allocation line counting** - New `CountLines()` method avoids string split allocations
+- **Span-based line access** - `GetLineSpan()` returns `ReadOnlySpan<char>` without allocating
+- **Span-based ANSI parsing** - `GetVisibleLength()` overload for span input
+- **Cached cursor move sequences** - Pre-built ANSI escape sequences avoid allocations in render loop
+- **Static blank line buffer** - Reusable 120-char blank line for clearing operations
+- **Inline aggressive optimization** - Critical path methods marked with `AggressiveInlining`
+
+### Cross-Platform Improvements
+
+#### FFmpegProvider Linux Cache Fix
+- **Fixed cache directory on Linux** - `FFmpegProvider.CacheDirectory` now properly falls back to `~/.local/share/consoleimage/ffmpeg` when `LocalApplicationData` returns empty
+- **Consistent with other providers** - Now matches the fallback pattern used by `YtdlpProvider` and `WhisperModelDownloader`
+
+#### Enhanced AOT Build Scripts
+- **Linux/macOS script improvements** - `build-aot.sh` now auto-installs prerequisites (clang, zlib)
+- **ARM64 Linux support** - Proper detection for `aarch64` architecture
+- **Windows script improvements** - Better VS detection with multiple fallback paths
+- **ARM64 Windows support** - `build-aot.ps1` accepts `-RID win-arm64` parameter
+
+### Testing
+
+#### New Test Coverage
+- **FrameHasher tests** - 14 new tests covering perceptual hash computation, Hamming distance, and similarity detection
+- **Total test count** - Now 242 tests (164 Core + 47 Video.Core + 31 Player)
+
+### Code Quality
+
+#### Removed Unused Code (~2000+ lines)
+- Removed `DeltaRenderer.cs` - Unused delta rendering implementation
+- Removed `FrameDiffer.cs` - Unused frame difference calculator
+- Removed `SceneDetectionService.cs` - Unused scene detection (functionality merged elsewhere)
+- Removed `ProtocolRenderers/` folder - Unused native terminal protocol renderers (iTerm2, Kitty, Sixel)
+- Preserved `CellData` struct in standalone file (used by BrailleRenderer for temporal stability)
+
+### Technical Details
+
+The DJB2 hash implementation ensures consistent cache lookups across .NET restarts:
+```csharp
+// Old: string.GetHashCode() - different on each run
+// New: DJB2 hash - always returns same value
+uint hash = 5381;
+foreach (char c in input)
+    hash = ((hash << 5) + hash) + c;
+return hash.ToString("X8");
+```
+
+---
+
 ## [4.0.0] - 2025-01-25
 
 ### Major Features
