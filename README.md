@@ -2,6 +2,8 @@
 
 **Version 4.1** - High-quality ASCII art renderer for .NET 10 with live AI transcription.
 
+> NOTE: Whisper (`--subs whisper` ) is not currently functional. Will be before 4.1 RTM With MANY performance optimizations. 
+
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
 
