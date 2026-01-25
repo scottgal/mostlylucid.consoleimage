@@ -614,9 +614,21 @@ public class MatrixRenderer : IDisposable
                 var column = _state.Columns[x];
 
                 // Get character and color for this cell
-                // For pure rain: use 0.5 brightness (neutral), base color, no edges
+                // For pure rain: use 0.5 brightness (neutral), base color (or random color in fullcolor mode), no edges
                 var cellBrightness = isPureRain ? 0.5f : brightness![idx];
-                var cellColor = isPureRain ? (_matrixOptions.BaseColor ?? new Rgba32(0, 255, 0, 255)) : sourceColors![idx];
+                Rgba32 cellColor;
+                if (isPureRain)
+                {
+                    // In fullcolor mode without image: use random per-column colors
+                    // Otherwise: use the base color (default green)
+                    cellColor = _matrixOptions.UseFullColor
+                        ? column.RandomColor
+                        : (_matrixOptions.BaseColor ?? new Rgba32(0, 255, 0, 255));
+                }
+                else
+                {
+                    cellColor = sourceColors![idx];
+                }
                 var cellEdge = isPureRain ? 0f : edges![idx];
                 var (character, color) = GetCellDisplay(column, y, cellBrightness, cellColor, cellEdge);
 
@@ -969,10 +981,32 @@ internal class MatrixRainState
 
         for (var x = 0; x < width; x++)
         {
+            // Generate column speed multiplier for authentic Matrix effect
+            // Some columns are noticeably faster (1.5x) or slower (0.5x)
+            // Distribution: 15% fast, 15% slow, 70% normal
+            float speedMult;
+            var speedRoll = random.NextDouble();
+            if (speedRoll < 0.15)
+                speedMult = 1.3f + (float)random.NextDouble() * 0.4f; // Fast: 1.3-1.7x
+            else if (speedRoll < 0.30)
+                speedMult = 0.4f + (float)random.NextDouble() * 0.3f; // Slow: 0.4-0.7x
+            else
+                speedMult = 0.85f + (float)random.NextDouble() * 0.3f; // Normal: 0.85-1.15x
+
+            // Generate random color for pure rain fullcolor mode
+            var randomColor = new Rgba32(
+                (byte)random.Next(50, 256),
+                (byte)random.Next(50, 256),
+                (byte)random.Next(50, 256),
+                255
+            );
+
             Columns[x] = new MatrixColumn
             {
                 CharacterSeed = random.Next(1000),
-                Drops = new List<MatrixDrop>()
+                Drops = new List<MatrixDrop>(),
+                SpeedMultiplier = speedMult,
+                RandomColor = randomColor
             };
 
             // Start with some raindrops already in progress (staggered)
@@ -1004,8 +1038,8 @@ internal class MatrixRainState
             {
                 var drop = column.Drops[i];
 
-                // Calculate effective speed - slow down at edges
-                var effectiveSpeed = drop.Speed * speedMult;
+                // Calculate effective speed - include column speed multiplier for authentic Matrix effect
+                var effectiveSpeed = drop.Speed * speedMult * column.SpeedMultiplier;
 
                 if (useEdgeSlowdown)
                 {
@@ -1064,6 +1098,16 @@ internal class MatrixColumn
 {
     public int CharacterSeed { get; set; }
     public List<MatrixDrop> Drops { get; set; } = new();
+
+    /// <summary>
+    /// Column speed multiplier - some columns are faster/slower for authentic Matrix effect.
+    /// </summary>
+    public float SpeedMultiplier { get; set; } = 1.0f;
+
+    /// <summary>
+    /// Random color for this column (used in fullcolor pure rain mode).
+    /// </summary>
+    public Rgba32 RandomColor { get; set; }
 }
 
 /// <summary>
