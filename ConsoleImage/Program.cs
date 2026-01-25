@@ -769,29 +769,45 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     // Handle subtitle loading based on source type
     if (subtitleSource != "off")
     {
-        // For "auto" in playback mode, check for subtitle files first, then fall back to streaming
+        // For "auto" in playback mode, resolve subtitles using priority order:
+        // 1. Embedded text subtitles from video container (most reliable)
+        // 2. External subtitle files (.srt/.vtt alongside video)
+        // 3. Whisper transcription (last resort)
         bool useStreamingWhisper = false;
         if (subtitleSource == "auto" && isPlaybackMode)
         {
-            // Check for local subtitle files first
-            var localSubFile = SubtitleResolver.FindMatchingSubtitleFile(inputFullPath, subtitleLang ?? "en")
-                ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputFullPath);
+            // 1. Try extracting embedded text subtitles from the video container
+            var embeddedSubFile = await SubtitleResolver.ExtractEmbeddedSubtitlesAsync(
+                inputFullPath, subtitleLang ?? "en", ct: cancellationToken);
 
-            if (!string.IsNullOrEmpty(localSubFile))
+            if (!string.IsNullOrEmpty(embeddedSubFile))
             {
-                Console.Error.WriteLine($"Found subtitle file: {Path.GetFileName(localSubFile)}");
-                subtitles = await SubtitleParser.ParseAsync(localSubFile, cancellationToken);
+                Console.Error.WriteLine($"Extracted embedded subtitles: {Path.GetFileName(embeddedSubFile)}");
+                subtitles = await SubtitleParser.ParseAsync(embeddedSubFile, cancellationToken);
                 Console.Error.WriteLine($"Loaded {subtitles.Count} subtitles");
-            }
-            else if (WhisperTranscriptionService.IsAvailable())
-            {
-                // No files found, use streaming Whisper
-                Console.Error.WriteLine("No subtitles found, using streaming transcription...");
-                useStreamingWhisper = true;
             }
             else
             {
-                Console.Error.WriteLine("Note: No subtitles found and Whisper not available.");
+                // 2. Check for external subtitle files
+                var localSubFile = SubtitleResolver.FindMatchingSubtitleFile(inputFullPath, subtitleLang ?? "en")
+                    ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputFullPath);
+
+                if (!string.IsNullOrEmpty(localSubFile))
+                {
+                    Console.Error.WriteLine($"Found subtitle file: {Path.GetFileName(localSubFile)}");
+                    subtitles = await SubtitleParser.ParseAsync(localSubFile, cancellationToken);
+                    Console.Error.WriteLine($"Loaded {subtitles.Count} subtitles");
+                }
+                else if (WhisperTranscriptionService.IsAvailable())
+                {
+                    // 3. No files or embedded subs found, use streaming Whisper
+                    Console.Error.WriteLine("No subtitles found, using streaming transcription...");
+                    useStreamingWhisper = true;
+                }
+                else
+                {
+                    Console.Error.WriteLine("Note: No subtitles found and Whisper not available.");
+                }
             }
         }
 
@@ -1337,11 +1353,23 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
 
             case "auto":
                 // Auto mode priority:
-                // 1. Search for matching subtitle files (video.srt, video.en.srt)
-                // 2. Check for embedded subtitles in video
+                // 1. Embedded text subtitles in video container (most reliable)
+                // 2. External subtitle files (video.srt, video.en.srt)
                 // 3. Fall back to Whisper transcription
 
-                // 1. Search for local subtitle files
+                // 1. Check for embedded subtitles first (most reliable for video files)
+                var embeddedSubPath = await SubtitleResolver.ExtractEmbeddedSubtitlesAsync(
+                    inputPath, lang, ct: ct);
+
+                if (!string.IsNullOrEmpty(embeddedSubPath))
+                {
+                    Console.Error.WriteLine($"Extracted embedded subtitles: {Path.GetFileName(embeddedSubPath)}");
+                    var embeddedTrack = await SubtitleParser.ParseAsync(embeddedSubPath, ct);
+                    Console.Error.WriteLine($"Loaded {embeddedTrack.Count} subtitles");
+                    return embeddedTrack;
+                }
+
+                // 2. Search for external subtitle files
                 var localSubFile = SubtitleResolver.FindMatchingSubtitleFile(inputPath, lang)
                     ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputPath);
 
@@ -1351,42 +1379,6 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                     var localTrack = await SubtitleParser.ParseAsync(localSubFile, ct);
                     Console.Error.WriteLine($"Loaded {localTrack.Count} subtitles");
                     return localTrack;
-                }
-
-                // 2. Check for embedded subtitles
-                if (File.Exists(inputPath))
-                {
-                    try
-                    {
-                        using var ffmpeg = new FFmpegService();
-                        await ffmpeg.InitializeAsync(null, ct);
-                        var subStreams = await ffmpeg.GetSubtitleStreamsAsync(inputPath, ct);
-
-                        // Find preferred language or first text-based subtitle
-                        var preferredSub = subStreams.FirstOrDefault(s =>
-                            s.IsTextBased && (s.Language?.Equals(lang, StringComparison.OrdinalIgnoreCase) ?? false))
-                            ?? subStreams.FirstOrDefault(s => s.IsTextBased);
-
-                        if (preferredSub != null)
-                        {
-                            Console.Error.Write($"Extracting embedded subtitles ({preferredSub.Language ?? "unknown"})... ");
-                            var tempSubPath = Path.Combine(SubtitleResolver.GetCacheDirectory(), $"embedded_{Path.GetFileNameWithoutExtension(inputPath)}_{preferredSub.Index}.srt");
-                            Directory.CreateDirectory(Path.GetDirectoryName(tempSubPath)!);
-
-                            if (await ffmpeg.ExtractSubtitlesAsync(inputPath, tempSubPath, preferredSub.Index, ct))
-                            {
-                                Console.Error.WriteLine("done.");
-                                var embeddedTrack = await SubtitleParser.ParseAsync(tempSubPath, ct);
-                                Console.Error.WriteLine($"Loaded {embeddedTrack.Count} subtitles");
-                                return embeddedTrack;
-                            }
-                            Console.Error.WriteLine("failed.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine($"Warning: Could not check embedded subtitles: {ex.Message}");
-                    }
                 }
 
                 // 3. Fall back to Whisper

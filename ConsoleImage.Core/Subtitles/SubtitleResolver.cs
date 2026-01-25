@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace ConsoleImage.Core.Subtitles;
 
@@ -146,6 +147,206 @@ public static class SubtitleResolver
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Text-based subtitle codecs that FFmpeg can extract to SRT.
+    /// Bitmap-based codecs (hdmv_pgs_subtitle, dvd_subtitle, dvb_subtitle) are excluded.
+    /// </summary>
+    private static readonly HashSet<string> TextSubtitleCodecs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "subrip", "ass", "ssa", "webvtt", "mov_text", "sami", "microdvd", "srt",
+        "subviewer", "subviewer1", "realtext", "stl", "vplayer", "pjs", "mpl2",
+        "jacosub", "text"
+    };
+
+    /// <summary>
+    /// Extract embedded text subtitles from a video file using FFmpeg/FFprobe.
+    /// Probes the file for text-based subtitle streams, selects the best match
+    /// by language preference and default disposition, then extracts to SRT.
+    /// </summary>
+    /// <param name="videoPath">Path to video file (MKV, MP4, etc.)</param>
+    /// <param name="preferredLanguage">Preferred language code (en, es, etc.)</param>
+    /// <param name="outputDir">Directory for extracted SRT file (null = subtitle cache dir)</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Path to extracted SRT file, or null if no text subtitles found</returns>
+    public static async Task<string?> ExtractEmbeddedSubtitlesAsync(
+        string videoPath,
+        string? preferredLanguage = null,
+        string? outputDir = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(videoPath) || !File.Exists(videoPath))
+            return null;
+
+        var lang = preferredLanguage ?? "en";
+        var lang3 = Get3LetterCode(lang);
+
+        // Probe for subtitle streams
+        var streams = await ProbeSubtitleStreamsAsync(videoPath, ct);
+        if (streams.Count == 0)
+            return null;
+
+        // Filter to text-based subtitles only
+        var textStreams = streams.Where(s => TextSubtitleCodecs.Contains(s.CodecName)).ToList();
+        if (textStreams.Count == 0)
+        {
+            // Only bitmap subtitles available
+            var bitmapCodecs = string.Join(", ", streams.Select(s => s.CodecName).Distinct());
+            Console.Error.WriteLine($"Embedded subtitles are bitmap-based ({bitmapCodecs}) - cannot extract as text.");
+            return null;
+        }
+
+        // Select best stream: prefer language match, then default disposition
+        var selected = textStreams
+            .OrderByDescending(s => s.Language == lang || s.Language == lang3 ? 2 : 0)
+            .ThenByDescending(s => s.IsDefault ? 1 : 0)
+            .ThenBy(s => s.StreamIndex)
+            .First();
+
+        // Extract to SRT
+        var cacheDir = outputDir ?? GetSubtitleCacheDirectory();
+        Directory.CreateDirectory(cacheDir);
+
+        var baseName = Path.GetFileNameWithoutExtension(videoPath);
+        var srtPath = Path.Combine(cacheDir, $"{baseName}.embedded.{selected.Language ?? lang}.srt");
+
+        // Use cached extraction if already exists
+        if (File.Exists(srtPath) && new FileInfo(srtPath).Length > 0)
+            return srtPath;
+
+        var success = await ExtractSubtitleStreamAsync(videoPath, selected.StreamIndex, srtPath, ct);
+        if (success && File.Exists(srtPath) && new FileInfo(srtPath).Length > 0)
+            return srtPath;
+
+        // Cleanup failed extraction
+        try { if (File.Exists(srtPath)) File.Delete(srtPath); } catch { }
+        return null;
+    }
+
+    /// <summary>
+    /// Probe a video file for subtitle streams using ffprobe.
+    /// </summary>
+    private static async Task<List<SubtitleStreamInfo>> ProbeSubtitleStreamsAsync(
+        string videoPath, CancellationToken ct)
+    {
+        var result = new List<SubtitleStreamInfo>();
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "ffprobe",
+                Arguments = $"-v quiet -print_format json -show_streams -select_streams s \"{videoPath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null) return result;
+
+            var output = await process.StandardOutput.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+                return result;
+
+            using var doc = JsonDocument.Parse(output);
+            if (!doc.RootElement.TryGetProperty("streams", out var streams))
+                return result;
+
+            foreach (var stream in streams.EnumerateArray())
+            {
+                var codecName = stream.TryGetProperty("codec_name", out var cn) ? cn.GetString() ?? "" : "";
+                var index = stream.TryGetProperty("index", out var idx) ? idx.GetInt32() : -1;
+                var isDefault = stream.TryGetProperty("disposition", out var disp)
+                    && disp.TryGetProperty("default", out var def) && def.GetInt32() == 1;
+
+                string? language = null;
+                string? title = null;
+                if (stream.TryGetProperty("tags", out var tags))
+                {
+                    if (tags.TryGetProperty("language", out var langProp))
+                        language = langProp.GetString();
+                    if (tags.TryGetProperty("title", out var titleProp))
+                        title = titleProp.GetString();
+                }
+
+                if (index >= 0)
+                {
+                    result.Add(new SubtitleStreamInfo
+                    {
+                        StreamIndex = index,
+                        CodecName = codecName,
+                        Language = language,
+                        Title = title,
+                        IsDefault = isDefault,
+                        IsTextBased = TextSubtitleCodecs.Contains(codecName)
+                    });
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // ffprobe not available or failed
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Extract a specific subtitle stream to SRT using ffmpeg.
+    /// </summary>
+    private static async Task<bool> ExtractSubtitleStreamAsync(
+        string videoPath, int streamIndex, string outputPath, CancellationToken ct)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = $"-v quiet -y -i \"{videoPath}\" -map 0:{streamIndex} -c:s srt \"{outputPath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null) return false;
+
+            await process.WaitForExitAsync(ct);
+            return process.ExitCode == 0;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Information about a subtitle stream in a video file.
+    /// </summary>
+    internal sealed class SubtitleStreamInfo
+    {
+        public int StreamIndex { get; init; }
+        public string CodecName { get; init; } = "";
+        public string? Language { get; init; }
+        public string? Title { get; init; }
+        public bool IsDefault { get; init; }
+        public bool IsTextBased { get; init; }
+
+        public override string ToString()
+        {
+            var parts = new List<string> { $"#{StreamIndex} {CodecName}" };
+            if (!string.IsNullOrEmpty(Language)) parts.Add(Language);
+            if (!string.IsNullOrEmpty(Title)) parts.Add($"\"{Title}\"");
+            if (IsDefault) parts.Add("(default)");
+            if (IsTextBased) parts.Add("[text]");
+            return string.Join(" ", parts);
+        }
     }
 
     /// <summary>
