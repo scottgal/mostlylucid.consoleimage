@@ -40,9 +40,8 @@
     <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
         <PackageReference Include="mostlylucid.consoleimage.video" Version="$(CorePackageVersion)" />
         <PackageReference Include="mostlylucid.consoleimage.transcription" Version="$(CorePackageVersion)" />
-        <!-- Whisper CPU runtime - works on all platforms, smaller than AllRuntimes -->
-        <!-- Users wanting GPU acceleration can install Whisper.net.Runtime.Cuda etc. separately -->
-        <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
+        <!-- Whisper runtime is side-loaded on first use to keep binary small -->
+        <!-- See WhisperRuntimeDownloader.cs for download logic -->
     </ItemGroup>
 
     <ItemGroup>

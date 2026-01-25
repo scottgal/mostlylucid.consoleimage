@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ConsoleImage.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -231,6 +232,11 @@ public sealed class FFmpegService : IDisposable
     public async Task<VideoInfo?> GetVideoInfoAsync(string videoPath, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
+
+        // Validate path to prevent command injection (allow URLs for streaming)
+        if (!SecurityHelper.IsValidFilePath(videoPath) && !SecurityHelper.IsValidUrl(videoPath))
+            throw new ArgumentException("Invalid video path", nameof(videoPath));
+
         var args = $"-v quiet -print_format json -show_format -show_streams \"{videoPath}\"";
         var output = await RunProcessAsync(_ffprobePath, args, ct);
 
@@ -432,6 +438,11 @@ public sealed class FFmpegService : IDisposable
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
+
+        // Validate path to prevent command injection (allow URLs for streaming)
+        if (!SecurityHelper.IsValidFilePath(videoPath) && !SecurityHelper.IsValidUrl(videoPath))
+            throw new ArgumentException("Invalid video path", nameof(videoPath));
+
         var hwAccel = GetHwAccelArgs(codec);
         var hwDownload = GetHwDownloadFilter(codec);
 
@@ -556,6 +567,11 @@ public sealed class FFmpegService : IDisposable
         CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
+
+        // Validate path to prevent command injection (allow URLs for streaming)
+        if (!SecurityHelper.IsValidFilePath(videoPath) && !SecurityHelper.IsValidUrl(videoPath))
+            throw new ArgumentException("Invalid video path", nameof(videoPath));
+
         var hwAccel = GetHwAccelArgs();
         var hwDownload = GetHwDownloadFilter();
 
@@ -952,6 +968,12 @@ public sealed class FFmpegService : IDisposable
     {
         await EnsureInitializedAsync(ct);
 
+        // Validate paths to prevent command injection
+        if (!SecurityHelper.IsValidFilePath(inputPath) && !SecurityHelper.IsValidUrl(inputPath))
+            throw new ArgumentException("Invalid input path", nameof(inputPath));
+        if (!SecurityHelper.IsValidFilePath(outputPath))
+            throw new ArgumentException("Invalid output path", nameof(outputPath));
+
         var ext = Path.GetExtension(outputPath).ToLowerInvariant();
 
         // Build FFmpeg arguments based on output format
@@ -1010,6 +1032,119 @@ public sealed class FFmpegService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Get information about embedded subtitle streams in a video file.
+    /// </summary>
+    public async Task<List<SubtitleStreamInfo>> GetSubtitleStreamsAsync(string videoPath, CancellationToken ct = default)
+    {
+        await EnsureInitializedAsync(ct);
+        var subtitles = new List<SubtitleStreamInfo>();
+
+        // Validate path to prevent command injection (allow URLs for streaming)
+        if (!SecurityHelper.IsValidFilePath(videoPath) && !SecurityHelper.IsValidUrl(videoPath))
+            throw new ArgumentException("Invalid video path", nameof(videoPath));
+
+        var args = $"-v quiet -print_format json -show_streams -select_streams s \"{videoPath}\"";
+        var output = await RunProcessAsync(_ffprobePath, args, ct);
+
+        if (string.IsNullOrEmpty(output)) return subtitles;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(output);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("streams", out var streams))
+            {
+                var index = 0;
+                foreach (var stream in streams.EnumerateArray())
+                {
+                    var codecName = stream.TryGetProperty("codec_name", out var cn)
+                        ? cn.GetString() : null;
+
+                    // Get language from tags
+                    string? language = null;
+                    string? title = null;
+                    if (stream.TryGetProperty("tags", out var tags))
+                    {
+                        if (tags.TryGetProperty("language", out var lang))
+                            language = lang.GetString();
+                        if (tags.TryGetProperty("title", out var t))
+                            title = t.GetString();
+                    }
+
+                    var streamIndex = stream.TryGetProperty("index", out var si)
+                        ? si.GetInt32() : index;
+
+                    subtitles.Add(new SubtitleStreamInfo
+                    {
+                        Index = streamIndex,
+                        Codec = codecName ?? "unknown",
+                        Language = language,
+                        Title = title
+                    });
+                    index++;
+                }
+            }
+        }
+        catch { }
+
+        return subtitles;
+    }
+
+    /// <summary>
+    /// Extract embedded subtitles from a video file to SRT format.
+    /// </summary>
+    /// <param name="videoPath">Path to video file</param>
+    /// <param name="outputPath">Path to save SRT file</param>
+    /// <param name="streamIndex">Subtitle stream index (from GetSubtitleStreamsAsync), or null for first subtitle stream</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>True if extraction succeeded</returns>
+    public async Task<bool> ExtractSubtitlesAsync(
+        string videoPath,
+        string outputPath,
+        int? streamIndex = null,
+        CancellationToken ct = default)
+    {
+        await EnsureInitializedAsync(ct);
+
+        // Validate paths
+        if (!SecurityHelper.IsValidFilePath(videoPath) && !SecurityHelper.IsValidUrl(videoPath))
+            throw new ArgumentException("Invalid video path", nameof(videoPath));
+        if (!SecurityHelper.IsValidFilePath(outputPath))
+            throw new ArgumentException("Invalid output path", nameof(outputPath));
+
+        // Build FFmpeg command
+        // -map 0:s:0 selects first subtitle stream, or use specific index
+        var streamMap = streamIndex.HasValue ? $"0:{streamIndex.Value}" : "0:s:0";
+        var args = $"-y -i \"{videoPath}\" -map {streamMap} -c:s srt \"{outputPath}\"";
+
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = _ffmpegPath,
+                    Arguments = args,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true
+                }
+            };
+
+            process.Start();
+            await process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            return process.ExitCode == 0 && File.Exists(outputPath);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         // No managed resources to dispose
@@ -1038,4 +1173,28 @@ public record KeyframeInfo
 {
     public double Timestamp { get; init; }
     public int FrameNumber { get; init; }
+}
+
+/// <summary>
+/// Information about an embedded subtitle stream.
+/// </summary>
+public record SubtitleStreamInfo
+{
+    /// <summary>Stream index in the video file.</summary>
+    public int Index { get; init; }
+
+    /// <summary>Subtitle codec (subrip, ass, dvd_subtitle, etc.).</summary>
+    public string Codec { get; init; } = "";
+
+    /// <summary>Language code (en, es, fr, etc.) if available.</summary>
+    public string? Language { get; init; }
+
+    /// <summary>Stream title if available.</summary>
+    public string? Title { get; init; }
+
+    /// <summary>
+    /// Check if this subtitle format can be extracted to text (SRT).
+    /// Bitmap-based subtitles (dvd_subtitle, hdmv_pgs, dvb_subtitle) cannot.
+    /// </summary>
+    public bool IsTextBased => Codec is "subrip" or "ass" or "ssa" or "webvtt" or "mov_text" or "srt";
 }

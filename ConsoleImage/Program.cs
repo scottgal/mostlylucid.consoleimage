@@ -9,6 +9,7 @@ using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Transcription;
+using ConsoleImage.Video.Core;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
@@ -48,13 +49,42 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var height = parseResult.GetValue(cliOptions.Height);
     var maxWidth = parseResult.GetValue(cliOptions.MaxWidth);
     var maxHeight = parseResult.GetValue(cliOptions.MaxHeight);
-    var start = parseResult.GetValue(cliOptions.Start);
-    var end = parseResult.GetValue(cliOptions.End);
-    var duration = parseResult.GetValue(cliOptions.Duration);
+    // Parse time options (supports: seconds, mm:ss, hh:mm:ss, or -sm/-em/-dm for decimal minutes)
+    var startStr = parseResult.GetValue(cliOptions.Start);
+    var endStr = parseResult.GetValue(cliOptions.End);
+    var durationStr = parseResult.GetValue(cliOptions.Duration);
+    var startMinStr = parseResult.GetValue(cliOptions.StartMinutes);
+    var endMinStr = parseResult.GetValue(cliOptions.EndMinutes);
+    var durationMinStr = parseResult.GetValue(cliOptions.DurationMinutes);
+    var startFrame = parseResult.GetValue(cliOptions.StartFrame);
+    var endFrame = parseResult.GetValue(cliOptions.EndFrame);
+    var durationFrames = parseResult.GetValue(cliOptions.DurationFrames);
+
+    double? start = null, end = null, duration = null;
+    try
+    {
+        // -ss/-sm take precedence (minutes override seconds if both specified)
+        start = TimeParser.ParseMinutesNullable(startMinStr) ?? TimeParser.ParseNullable(startStr);
+        end = TimeParser.ParseMinutesNullable(endMinStr) ?? TimeParser.ParseNullable(endStr);
+        duration = TimeParser.ParseMinutesNullable(durationMinStr) ?? TimeParser.ParseNullable(durationStr);
+    }
+    catch (FormatException ex)
+    {
+        Console.Error.WriteLine($"Error: {ex.Message}");
+        return 1;
+    }
     var speed = parseResult.GetValue(cliOptions.Speed);
     var loop = parseResult.GetValue(cliOptions.Loop);
+    var noAnimate = parseResult.GetValue(cliOptions.NoAnimate);
     var fps = parseResult.GetValue(cliOptions.Fps);
     var frameStep = parseResult.GetValue(cliOptions.FrameStep);
+
+    // --no-animate: show first frame only
+    if (noAnimate)
+    {
+        loop = 1;
+        durationFrames ??= 1;
+    }
     var sampling = parseResult.GetValue(cliOptions.Sampling);
     var sceneThreshold = parseResult.GetValue(cliOptions.SceneThreshold);
     var useAsciiOpt = parseResult.GetValue(cliOptions.Ascii);
@@ -119,6 +149,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var calibrate = parseResult.GetValue(cliOptions.Calibrate);
     var saveCalibrationOpt = parseResult.GetValue(cliOptions.SaveCalibration);
     var showStatus = parseResult.GetValue(cliOptions.Status);
+    var statusWidth = parseResult.GetValue(cliOptions.StatusWidth);
     var gifFontSize = parseResult.GetValue(cliOptions.GifFontSize);
     var gifScale = parseResult.GetValue(cliOptions.GifScale);
     var gifColors = colorCount ?? 64;
@@ -159,6 +190,22 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var forceSubs = parseResult.GetValue(cliOptions.ForceSubs);
     var cookiesFromBrowser = parseResult.GetValue(cliOptions.CookiesFromBrowser);
     var cookiesFile = parseResult.GetValue(cliOptions.CookiesFile);
+    var cacheVideo = parseResult.GetValue(cliOptions.CacheVideo);
+    var noCacheVideo = parseResult.GetValue(cliOptions.NoCacheVideo);
+    var noWrite = parseResult.GetValue(cliOptions.NoWrite);
+
+    // --no-write disables all caching and downloading (read-only mode)
+    if (noWrite)
+    {
+        noCacheVideo = true;
+        noAutoDownload = true;
+        autoConfirmDownload = false;
+        Console.Error.WriteLine("Read-only mode: caching and auto-downloads disabled");
+    }
+
+    // Markdown output options
+    var markdownPath = parseResult.GetValue(cliOptions.Markdown);
+    var markdownFormat = parseResult.GetValue(cliOptions.MarkdownFormat);
 
     // Slideshow mode
     var slideDelay = parseResult.GetValue(cliOptions.SlideDelay);
@@ -186,9 +233,36 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             charAspect, savedCalibration,
             noColor, saveCalibrationOpt);
 
-    // Input required for non-calibration modes
+    // Input required for non-calibration modes (except Matrix mode which can run standalone)
     if (string.IsNullOrEmpty(inputPath))
     {
+        // Matrix mode without input shows pure rain effect - just for fun!
+        if (useMatrix)
+        {
+            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet);
+            var pureRainOptions = new RenderOptions
+            {
+                Width = width,
+                Height = height,
+                MaxWidth = maxWidth,
+                MaxHeight = maxHeight,
+                CharacterAspectRatio = charAspect ?? 0.5f,
+                UseColor = !noColor
+            };
+
+            // Pure Matrix with GIF output
+            if (outputGif != null)
+            {
+                return await ImageHandler.HandlePureMatrixGifAsync(
+                    pureRainOptions, matrixOpts, outputGif,
+                    gifFontSize, gifScale, gifColors, loop, cancellationToken);
+            }
+
+            // Pure Matrix to console display (space to pause)
+            await ImageHandler.PlayPureMatrixAsync(pureRainOptions, matrixOpts, loop, speed, cancellationToken);
+            return 0;
+        }
+
         Console.Error.WriteLine(
             "Error: No input file specified. Use --calibrate for aspect ratio testing without a file.");
         return 1;
@@ -326,9 +400,57 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         Console.Error.WriteLine($"  Title: {streamInfo.Title}");
         youtubeTitle = streamInfo.Title;
 
-        // Use the video URL directly with FFmpeg
-        inputFullPath = streamInfo.VideoUrl;
-        input = new FileInfo("youtube.mp4"); // Dummy for extension detection
+        // Extract video ID for caching
+        var videoId = ExtractYouTubeVideoId(inputPath);
+        var cachedVideoPath = videoId != null ? SubtitleResolver.GetCachedVideoPath(videoId) : null;
+        Task? backgroundDownloadTask = null;
+
+        // Caching is enabled by default (unless --no-cache specified)
+        if (!noCacheVideo && cachedVideoPath != null && SubtitleResolver.IsVideoCached(videoId!))
+        {
+            // Cache exists - use it for instant playback (zero bandwidth)
+            Console.Error.WriteLine($"  Using cached video (instant start)");
+            inputFullPath = cachedVideoPath;
+            input = new FileInfo(cachedVideoPath);
+        }
+        else
+        {
+            // Stream directly for fast start
+            inputFullPath = streamInfo.VideoUrl;
+            input = new FileInfo("youtube.mp4");
+
+            // Start background download for future replays (unless --no-cache)
+            if (!noCacheVideo && cachedVideoPath != null)
+            {
+                Console.Error.WriteLine($"  Streaming (caching in background for next time)");
+
+                // Ensure cache has space
+                SubtitleResolver.EnsureVideoCacheSpace(500);
+
+                // Start background download - don't block playback
+                var downloadUrl = inputPath; // Original YouTube URL
+                var downloadPath = cachedVideoPath;
+                var downloadHeight = ytMaxHeight;
+                var dlCookiesBrowser = cookiesFromBrowser;
+                var dlCookiesFile = cookiesFile;
+
+                backgroundDownloadTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await YtdlpProvider.DownloadVideoAsync(
+                            downloadUrl, downloadPath, downloadHeight,
+                            null, // No progress output during playback
+                            dlCookiesBrowser, dlCookiesFile,
+                            CancellationToken.None); // Don't cancel on playback stop
+                    }
+                    catch
+                    {
+                        // Silently ignore background download failures
+                    }
+                });
+            }
+        }
 
         // Download YouTube subtitles if requested (--subs auto, yt, or whisper)
         var (ytSubSource, _, _) = ParseSubsOption(subsValue);
@@ -518,7 +640,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             noColor, colorCount, contrast, gamma, loop, speed,
             outputGif, gifFontSize, gifScale, gifColors,
             outputAsJson, jsonOutputPath,
-            showStatus, cancellationToken);
+            showStatus,
+            markdownPath, markdownFormat,
+            cancellationToken);
 
     // Load subtitles based on --subs value
     SubtitleTrack? subtitles = null;
@@ -537,7 +661,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             // First, check if we have a cached subtitle file from previous transcription
             // Skip cache if --force-subs is used
             var cachedSubPath = GetSubtitlePathForVideo(inputFullPath);
-            if (!forceSubs && File.Exists(cachedSubPath))
+            // Don't use cached subtitles when -ss is specified (timestamps won't match)
+            var useCache = !forceSubs && !start.HasValue && File.Exists(cachedSubPath);
+            if (useCache)
             {
                 Console.Error.WriteLine($"Using cached subtitles: {cachedSubPath}");
                 Console.Error.WriteLine("(use --force-subs to re-transcribe)");
@@ -556,8 +682,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 // Check model availability and prompt if needed
                 if (!EnsureWhisperModelOrPrompt(whisperModel ?? "base", subtitleLang ?? "en", autoConfirmDownload))
                 {
-                    Console.Error.WriteLine("Continuing without subtitles.");
-                    subtitleSource = "off";
+                    Console.Error.WriteLine("Whisper transcription unavailable. Use --no-subs to play without subtitles.");
+                    return 1;
                 }
                 else
                 {
@@ -677,6 +803,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // Info/status
         ShowInfo = showInfo,
         ShowStatus = showStatus,
+        StatusWidth = statusWidth,
 
         // GIF output
         GifFontSize = gifFontSize,
@@ -1058,13 +1185,66 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                 return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, ct);
 
             case "auto":
-                // For auto mode, whisper is fallback if YouTube subs not available
-                // (YouTube subs handled separately in the YouTube URL flow)
+                // Auto mode priority:
+                // 1. Search for matching subtitle files (video.srt, video.en.srt)
+                // 2. Check for embedded subtitles in video
+                // 3. Fall back to Whisper transcription
+
+                // 1. Search for local subtitle files
+                var localSubFile = SubtitleResolver.FindMatchingSubtitleFile(inputPath, lang)
+                    ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputPath);
+
+                if (!string.IsNullOrEmpty(localSubFile))
+                {
+                    Console.Error.WriteLine($"Found subtitle file: {Path.GetFileName(localSubFile)}");
+                    var localTrack = await SubtitleParser.ParseAsync(localSubFile, ct);
+                    Console.Error.WriteLine($"Loaded {localTrack.Count} subtitles");
+                    return localTrack;
+                }
+
+                // 2. Check for embedded subtitles
+                if (File.Exists(inputPath))
+                {
+                    try
+                    {
+                        using var ffmpeg = new FFmpegService();
+                        await ffmpeg.InitializeAsync(null, ct);
+                        var subStreams = await ffmpeg.GetSubtitleStreamsAsync(inputPath, ct);
+
+                        // Find preferred language or first text-based subtitle
+                        var preferredSub = subStreams.FirstOrDefault(s =>
+                            s.IsTextBased && (s.Language?.Equals(lang, StringComparison.OrdinalIgnoreCase) ?? false))
+                            ?? subStreams.FirstOrDefault(s => s.IsTextBased);
+
+                        if (preferredSub != null)
+                        {
+                            Console.Error.Write($"Extracting embedded subtitles ({preferredSub.Language ?? "unknown"})... ");
+                            var tempSubPath = Path.Combine(SubtitleResolver.GetCacheDirectory(), $"embedded_{Path.GetFileNameWithoutExtension(inputPath)}_{preferredSub.Index}.srt");
+                            Directory.CreateDirectory(Path.GetDirectoryName(tempSubPath)!);
+
+                            if (await ffmpeg.ExtractSubtitlesAsync(inputPath, tempSubPath, preferredSub.Index, ct))
+                            {
+                                Console.Error.WriteLine("done.");
+                                var embeddedTrack = await SubtitleParser.ParseAsync(tempSubPath, ct);
+                                Console.Error.WriteLine($"Loaded {embeddedTrack.Count} subtitles");
+                                return embeddedTrack;
+                            }
+                            Console.Error.WriteLine("failed.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Warning: Could not check embedded subtitles: {ex.Message}");
+                    }
+                }
+
+                // 3. Fall back to Whisper
                 if (WhisperTranscriptionService.IsAvailable())
                 {
+                    Console.Error.WriteLine("No subtitles found, using Whisper transcription...");
                     return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, ct);
                 }
-                Console.Error.WriteLine("Note: Whisper not available for auto-transcription. Run: consoleimage transcribe --help");
+                Console.Error.WriteLine("Note: No subtitles found and Whisper not available. Run: consoleimage transcribe --help");
                 return null;
 
             default:
@@ -1079,32 +1259,80 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
 }
 
 /// <summary>
-/// Check if Whisper model is cached, prompt to download if not.
-/// Returns true if model is available, false if user declined.
+/// Check if Whisper runtime and model are available, prompt to download if not.
+/// Returns true if ready, false if user declined.
 /// </summary>
-static bool EnsureWhisperModelOrPrompt(string model, string lang, bool autoConfirm)
+static async Task<bool> EnsureWhisperReadyAsync(string model, string lang, bool autoConfirm, CancellationToken ct)
 {
-    if (WhisperModelDownloader.IsModelCached(model, lang))
-        return true;
+    var needsDownload = new List<(string name, int sizeMB)>();
 
-    var (fileName, sizeMB) = WhisperModelDownloader.GetModelInfo(model, lang);
-
-    Console.Error.WriteLine($"Whisper model '{fileName}' not found locally.");
-    Console.Error.WriteLine($"Download required: ~{sizeMB}MB");
-
-    if (autoConfirm)
+    // Check runtime
+    if (!WhisperRuntimeDownloader.IsRuntimeAvailable())
     {
-        Console.Error.WriteLine("Auto-downloading (--yes flag)...");
+        var (rid, runtimeSize) = WhisperRuntimeDownloader.GetRuntimeInfo();
+        needsDownload.Add(($"Whisper runtime ({rid})", runtimeSize));
+    }
+
+    // Check model
+    if (!WhisperModelDownloader.IsModelCached(model, lang))
+    {
+        var (fileName, modelSize) = WhisperModelDownloader.GetModelInfo(model, lang);
+        needsDownload.Add((fileName, modelSize));
+    }
+
+    if (needsDownload.Count == 0)
+    {
+        // Configure runtime path in case it was downloaded previously
+        WhisperRuntimeDownloader.ConfigureRuntimePath();
         return true;
     }
 
-    Console.Error.Write("Download now? [y/N] ");
-    var response = Console.ReadLine()?.Trim().ToLowerInvariant();
-    if (response is "y" or "yes")
-        return true;
+    // Show what needs to be downloaded
+    var totalSize = needsDownload.Sum(x => x.sizeMB);
+    Console.Error.WriteLine("Whisper components not found locally:");
+    foreach (var (name, size) in needsDownload)
+        Console.Error.WriteLine($"  - {name} (~{size}MB)");
+    Console.Error.WriteLine($"Total download: ~{totalSize}MB");
 
-    Console.Error.WriteLine("Transcription cancelled. Use -y to auto-download.");
-    return false;
+    if (!autoConfirm)
+    {
+        Console.Error.Write("Download now? [y/N] ");
+        var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+        if (response is not ("y" or "yes"))
+        {
+            Console.Error.WriteLine("Transcription cancelled. Use -y to auto-download.");
+            return false;
+        }
+    }
+    else
+    {
+        Console.Error.WriteLine("Auto-downloading (--yes flag)...");
+    }
+
+    // Download runtime if needed
+    if (!WhisperRuntimeDownloader.IsRuntimeAvailable())
+    {
+        var progress = new Progress<(long downloaded, long total, string status)>(p =>
+            Console.Error.WriteLine(p.status));
+
+        var success = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
+        if (!success)
+        {
+            Console.Error.WriteLine("Failed to download Whisper runtime.");
+            return false;
+        }
+        WhisperRuntimeDownloader.ConfigureRuntimePath();
+    }
+
+    // Model will be downloaded by WhisperTranscriptionService
+    return true;
+}
+
+// Legacy sync wrapper for compatibility
+static bool EnsureWhisperModelOrPrompt(string model, string lang, bool autoConfirm)
+{
+    return EnsureWhisperReadyAsync(model, lang, autoConfirm, CancellationToken.None)
+        .GetAwaiter().GetResult();
 }
 
 static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
@@ -1277,31 +1505,85 @@ static Command CreateTranscribeSubcommand()
 }
 
 /// <summary>
-/// Get the path where subtitles should be saved for a video file.
-/// Saves alongside the video with .vtt extension.
+/// <summary>
+/// Extract YouTube video ID from a URL.
+/// </summary>
+static string? ExtractYouTubeVideoId(string url)
+{
+    // Match patterns:
+    // https://www.youtube.com/watch?v=VIDEO_ID
+    // https://youtu.be/VIDEO_ID
+    // https://youtube.com/shorts/VIDEO_ID
+    var patterns = new[]
+    {
+        @"[?&]v=([a-zA-Z0-9_-]{11})",
+        @"youtu\.be/([a-zA-Z0-9_-]{11})",
+        @"/shorts/([a-zA-Z0-9_-]{11})",
+        @"/embed/([a-zA-Z0-9_-]{11})",
+        @"/v/([a-zA-Z0-9_-]{11})"
+    };
+
+    foreach (var pattern in patterns)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(url, pattern);
+        if (match.Success)
+            return match.Groups[1].Value;
+    }
+
+    return null;
+}
+
+/// Get the path where subtitles should be cached for a video file.
+/// Always uses temp directory by default - we don't write to arbitrary locations without consent.
 /// </summary>
 static string GetSubtitlePathForVideo(string videoPath)
 {
-    // For URLs (YouTube etc), use a temp directory
-    if (videoPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-        videoPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-    {
-        // Extract video ID or use hash for filename
-        var fileName = Path.GetFileNameWithoutExtension(videoPath);
-        if (string.IsNullOrEmpty(fileName) || fileName.Length < 3)
-            fileName = $"video_{videoPath.GetHashCode():X8}";
-        return Path.Combine(Path.GetTempPath(), $"{fileName}.vtt");
-    }
+    // Use consoleimage-specific temp directory for all subtitle caching
+    var cacheDir = Path.Combine(Path.GetTempPath(), "consoleimage", "subtitles");
+    Directory.CreateDirectory(cacheDir);
 
-    // For local files, save next to the video
-    var dir = Path.GetDirectoryName(videoPath);
+    // Cleanup old cache files on first access (files older than 7 days)
+    CleanupOldSubtitleCache(cacheDir);
+
+    // Generate safe filename from video path (hash to avoid collisions/long paths)
+    var pathHash = $"{videoPath.GetHashCode():X8}";
     var name = Path.GetFileNameWithoutExtension(videoPath);
 
-    // If can't write to video directory, use temp
-    if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
-        return Path.Combine(Path.GetTempPath(), $"{name}.vtt");
+    // Keep filename readable but unique
+    var safeName = name.Length > 50 ? name[..50] : name;
+    safeName = string.Concat(safeName.Split(Path.GetInvalidFileNameChars()));
 
-    return Path.Combine(dir, $"{name}.vtt");
+    return Path.Combine(cacheDir, $"{safeName}_{pathHash}.vtt");
+}
+
+static void CleanupOldSubtitleCache(string cacheDir)
+{
+    // Check if already cleaned up this session
+    var markerFile = Path.Combine(cacheDir, ".last_cleanup");
+    if (File.Exists(markerFile))
+    {
+        var lastCleanup = File.GetLastWriteTime(markerFile);
+        if ((DateTime.Now - lastCleanup).TotalHours < 24)
+            return; // Already cleaned up recently
+    }
+
+    try
+    {
+        // Clean files older than 7 days
+        var cutoff = DateTime.Now.AddDays(-7);
+        foreach (var file in Directory.GetFiles(cacheDir, "*.vtt"))
+        {
+            if (File.GetLastWriteTime(file) < cutoff)
+            {
+                try { File.Delete(file); }
+                catch { /* ignore */ }
+            }
+        }
+
+        // Update marker
+        File.WriteAllText(markerFile, DateTime.Now.ToString("o"));
+    }
+    catch { /* ignore cleanup errors */ }
 }
 
 static async Task<int> TranscribeWithRemoteApiAsync(

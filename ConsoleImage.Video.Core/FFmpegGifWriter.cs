@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ConsoleImage.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
@@ -49,6 +50,10 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
         double? maxLengthSeconds = null,
         int? maxFrames = null)
     {
+        // Validate output path to prevent command injection
+        if (!SecurityHelper.IsValidFilePath(outputPath))
+            throw new ArgumentException("Invalid output path", nameof(outputPath));
+
         _outputPath = outputPath;
         _width = width;
         _height = height;

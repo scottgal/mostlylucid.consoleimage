@@ -241,7 +241,8 @@ public class MatrixRenderer : IDisposable
     {
         var chars = new List<char>();
 
-        // Half-width katakana (the iconic Matrix characters)
+        // Half-width katakana (1 column wide in terminals, same as ASCII)
+        // These are the iconic Matrix film characters: ｦ ｧ ｨ ｩ ｪ ｫ ｬ ｭ ｮ ｯ ｰ ｱ ｲ ｳ ｴ ｵ etc.
         for (var c = '\uFF66'; c <= '\uFF9D'; c++)
             chars.Add(c);
 
@@ -356,6 +357,84 @@ public class MatrixRenderer : IDisposable
     {
         using var image = Image.Load<Rgba32>(stream);
         return RenderGifInternal(image);
+    }
+
+    /// <summary>
+    ///     Render pure Matrix rain effect without any source image.
+    ///     Just the iconic falling code effect.
+    /// </summary>
+    /// <param name="width">Character width (default: from RenderOptions or 80)</param>
+    /// <param name="height">Character height (default: from RenderOptions or 40)</param>
+    public MatrixFrame RenderPureRain(int? width = null, int? height = null)
+    {
+        var charWidth = width ?? _options.Width ?? _options.MaxWidth;
+        var charHeight = height ?? _options.Height ?? _options.MaxHeight;
+
+        // Initialize state if needed
+        if (!_state.IsInitialized || _state.Width != charWidth || _state.Height != charHeight)
+            _state.Initialize(charWidth, charHeight, _random, _matrixOptions);
+
+        // No image data - use null brightness/colors (pure rain)
+        _state.Advance(_random, _matrixOptions, null);
+
+        // Generate frame with no image influence
+        var content = RenderFrame(charWidth, charHeight, null, null, null);
+
+        var delayMs = 1000 / Math.Max(1, _matrixOptions.TargetFps);
+        return new MatrixFrame(content, delayMs);
+    }
+
+    /// <summary>
+    ///     Generate continuous Matrix animation frames from a static image.
+    ///     The rain keeps falling over the image indefinitely.
+    /// </summary>
+    /// <param name="image">Source image to overlay rain on</param>
+    /// <param name="frameCount">Number of frames to generate</param>
+    public IEnumerable<MatrixFrame> RenderContinuous(Image<Rgba32> image, int frameCount)
+    {
+        var (charWidth, charHeight) = CalculateMatrixDimensions(image.Width, image.Height);
+
+        // Initialize state
+        if (!_state.IsInitialized || _state.Width != charWidth || _state.Height != charHeight)
+            _state.Initialize(charWidth, charHeight, _random, _matrixOptions);
+
+        // Resize image once for sampling
+        using var resized = image.Clone(ctx => ctx.Resize(charWidth, charHeight));
+        var (brightness, colors, edges) = SampleImageData(resized);
+
+        var delayMs = 1000 / Math.Max(1, _matrixOptions.TargetFps);
+
+        for (var i = 0; i < frameCount; i++)
+        {
+            _state.Advance(_random, _matrixOptions, edges);
+            var content = RenderFrame(charWidth, charHeight, brightness, colors, edges);
+            yield return new MatrixFrame(content, delayMs);
+        }
+    }
+
+    /// <summary>
+    ///     Generate continuous pure Matrix rain frames (no image).
+    /// </summary>
+    /// <param name="frameCount">Number of frames to generate</param>
+    /// <param name="width">Character width</param>
+    /// <param name="height">Character height</param>
+    public IEnumerable<MatrixFrame> RenderPureRainContinuous(int frameCount, int? width = null, int? height = null)
+    {
+        var charWidth = width ?? _options.Width ?? _options.MaxWidth;
+        var charHeight = height ?? _options.Height ?? _options.MaxHeight;
+
+        // Initialize state
+        if (!_state.IsInitialized || _state.Width != charWidth || _state.Height != charHeight)
+            _state.Initialize(charWidth, charHeight, _random, _matrixOptions);
+
+        var delayMs = 1000 / Math.Max(1, _matrixOptions.TargetFps);
+
+        for (var i = 0; i < frameCount; i++)
+        {
+            _state.Advance(_random, _matrixOptions, null);
+            var content = RenderFrame(charWidth, charHeight, null, null, null);
+            yield return new MatrixFrame(content, delayMs);
+        }
     }
 
     private List<MatrixFrame> RenderGifInternal(Image<Rgba32> image)
@@ -516,13 +595,16 @@ public class MatrixRenderer : IDisposable
         }
     }
 
-    private string RenderFrame(int width, int height, float[] brightness, Rgba32[] sourceColors, float[] edges)
+    private string RenderFrame(int width, int height, float[]? brightness, Rgba32[]? sourceColors, float[]? edges)
     {
         // Pre-size StringBuilder
         var estimatedSize = width * height * 25 + height * 10;
         var sb = new StringBuilder(estimatedSize);
 
         Rgba32? lastColor = null;
+
+        // For pure rain mode (no image), use default values
+        var isPureRain = brightness == null;
 
         for (var y = 0; y < height; y++)
         {
@@ -531,8 +613,12 @@ public class MatrixRenderer : IDisposable
                 var idx = y * width + x;
                 var column = _state.Columns[x];
 
-                // Get character and color for this cell, considering edge strength
-                var (character, color) = GetCellDisplay(column, y, brightness[idx], sourceColors[idx], edges[idx]);
+                // Get character and color for this cell
+                // For pure rain: use 0.5 brightness (neutral), base color, no edges
+                var cellBrightness = isPureRain ? 0.5f : brightness![idx];
+                var cellColor = isPureRain ? (_matrixOptions.BaseColor ?? new Rgba32(0, 255, 0, 255)) : sourceColors![idx];
+                var cellEdge = isPureRain ? 0f : edges![idx];
+                var (character, color) = GetCellDisplay(column, y, cellBrightness, cellColor, cellEdge);
 
                 // Output color change if needed
                 if (_options.UseColor)

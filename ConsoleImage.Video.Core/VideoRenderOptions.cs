@@ -122,6 +122,11 @@ public class VideoRenderOptions
     public bool ShowStatus { get; set; }
 
     /// <summary>
+    /// Width for status line (null = auto-detect from video width).
+    /// </summary>
+    public int? StatusWidth { get; set; }
+
+    /// <summary>
     /// Source filename for status display.
     /// </summary>
     public string? SourceFileName { get; set; }

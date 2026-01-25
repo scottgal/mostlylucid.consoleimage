@@ -18,14 +18,23 @@ public class CliOptions
     public Option<int> MaxWidth { get; }
     public Option<int> MaxHeight { get; }
 
-    // Time range (video)
-    public Option<double?> Start { get; }
-    public Option<double?> End { get; }
-    public Option<double?> Duration { get; }
+    // Time range (video) - accepts seconds (4.7), mm:ss (6:47), or hh:mm:ss (1:30:00)
+    public Option<string?> Start { get; }
+    public Option<string?> End { get; }
+    public Option<string?> Duration { get; }
+    // Decimal minutes (6.47 = 6m 28.2s)
+    public Option<string?> StartMinutes { get; }
+    public Option<string?> EndMinutes { get; }
+    public Option<string?> DurationMinutes { get; }
+    // Frame-based seeking (alternative to time-based)
+    public Option<int?> StartFrame { get; }
+    public Option<int?> EndFrame { get; }
+    public Option<int?> DurationFrames { get; }
 
     // Playback
     public Option<float> Speed { get; }
     public Option<int> Loop { get; }
+    public Option<bool> NoAnimate { get; }
     public Option<double?> Fps { get; }
     public Option<string> FrameStep { get; }
     public Option<string> Sampling { get; }
@@ -70,6 +79,8 @@ public class CliOptions
     public Option<string?> YtdlpPath { get; }
     public Option<string?> CookiesFromBrowser { get; }
     public Option<string?> CookiesFile { get; }
+    public Option<bool> CacheVideo { get; }
+    public Option<bool> NoCacheVideo { get; }
 
     // Subtitles - unified flag: auto|off|<path>|yt|whisper|whisper+diarize
     public Option<string?> Subs { get; }
@@ -80,12 +91,19 @@ public class CliOptions
     // Transcript-only mode (no video rendering)
     public Option<bool> Transcript { get; }
     public Option<bool> ForceSubs { get; }
+    public Option<string?> SaveSubs { get; }
+    public Option<bool> NoSubCache { get; }
 
     // Output
     public Option<string?> Output { get; }
     public Option<bool> Info { get; }
     public Option<bool> Json { get; }
     public Option<bool> Status { get; }
+    public Option<int?> StatusWidth { get; }
+
+    // Markdown output (for docs/READMEs)
+    public Option<string?> Markdown { get; }
+    public Option<string?> MarkdownFormat { get; }
 
     // GIF output
     public Option<int> GifFontSize { get; }
@@ -137,6 +155,9 @@ public class CliOptions
     // Debug mode
     public Option<bool> Debug { get; }
 
+    // Read-only mode (no caching or downloading)
+    public Option<bool> NoWrite { get; }
+
     public CliOptions()
     {
         // Detect console window size for defaults
@@ -169,16 +190,36 @@ public class CliOptions
         MaxHeight = new Option<int>("--max-height") { Description = "Maximum output height" };
         MaxHeight.DefaultValueFactory = _ => defaultMaxHeight;
 
-        // Time range
-        Start = new Option<double?>("--start") { Description = "Start time in seconds" };
+        // Time range - supports: seconds (4.7), mm:ss (6:47), hh:mm:ss (1:30:00)
+        Start = new Option<string?>("--start") { Description = "Start time: seconds (4.7), mm:ss (6:47), or hh:mm:ss" };
         Start.Aliases.Add("-ss");
         Start.Aliases.Add("--ss");
 
-        End = new Option<double?>("--end") { Description = "End time in seconds" };
+        End = new Option<string?>("--end") { Description = "End time: seconds, mm:ss, or hh:mm:ss" };
         End.Aliases.Add("-to");
 
-        Duration = new Option<double?>("--duration") { Description = "Duration to play in seconds" };
+        Duration = new Option<string?>("--duration") { Description = "Duration: seconds, mm:ss, or hh:mm:ss" };
         Duration.Aliases.Add("-t");
+
+        // Decimal minutes (6.47 = 6m 28.2s)
+        StartMinutes = new Option<string?>("--start-minutes") { Description = "Start time in decimal minutes (6.47 = 6m 28.2s)" };
+        StartMinutes.Aliases.Add("-sm");
+
+        EndMinutes = new Option<string?>("--end-minutes") { Description = "End time in decimal minutes" };
+        EndMinutes.Aliases.Add("-em");
+
+        DurationMinutes = new Option<string?>("--duration-minutes") { Description = "Duration in decimal minutes" };
+        DurationMinutes.Aliases.Add("-dm");
+
+        // Frame-based seeking (alternative to time-based)
+        StartFrame = new Option<int?>("--start-frame") { Description = "Start at frame number" };
+        StartFrame.Aliases.Add("-sf");
+
+        EndFrame = new Option<int?>("--end-frame") { Description = "End at frame number" };
+        EndFrame.Aliases.Add("-ef");
+
+        DurationFrames = new Option<int?>("--duration-frames") { Description = "Number of frames to play" };
+        DurationFrames.Aliases.Add("-df");
 
         // Playback
         Speed = new Option<float>("--speed") { Description = "Playback speed multiplier" };
@@ -188,6 +229,8 @@ public class CliOptions
         Loop = new Option<int>("--loop") { Description = "Number of loops (0 = infinite)" };
         Loop.DefaultValueFactory = _ => 1;
         Loop.Aliases.Add("-l");
+
+        NoAnimate = new Option<bool>("--no-animate") { Description = "Show first frame only (don't animate GIFs/videos)" };
 
         Fps = new Option<double?>("--fps") { Description = "Target framerate" };
         Fps.Aliases.Add("-r");
@@ -267,6 +310,9 @@ public class CliOptions
         YtdlpPath = new Option<string?>("--ytdlp-path") { Description = "Path to yt-dlp executable (for YouTube URLs)" };
         CookiesFromBrowser = new Option<string?>("--cookies-from-browser") { Description = "Use cookies from browser (chrome, firefox, edge) for YouTube" };
         CookiesFile = new Option<string?>("--cookies") { Description = "Path to Netscape cookies.txt file for YouTube" };
+        CacheVideo = new Option<bool>("--cache") { Description = "Cache YouTube videos locally (default: on)" };
+        CacheVideo.DefaultValueFactory = _ => true;
+        NoCacheVideo = new Option<bool>("--no-cache") { Description = "Don't use or create cached videos, always stream" };
 
         // Subtitles - unified: auto|off|<path>|yt|whisper|whisper+diarize
         Subs = new Option<string?>("--subs") { Description = "Subtitles: auto, off, <path>, yt, whisper, whisper+diarize" };
@@ -291,6 +337,9 @@ public class CliOptions
         ForceSubs = new Option<bool>("--force-subs") { Description = "Force re-transcription, ignoring cached subtitles" };
         ForceSubs.Aliases.Add("--force-transcribe");
 
+        SaveSubs = new Option<string?>("--save-subs") { Description = "Save generated subtitles to specified path (VTT format)" };
+        NoSubCache = new Option<bool>("--no-sub-cache") { Description = "Don't cache subtitles (always re-transcribe)" };
+
         // Output
         Output = new Option<string?>("--output") { Description = "Output file (.gif, .cidz, .json)" };
         Output.Aliases.Add("-o");
@@ -303,6 +352,15 @@ public class CliOptions
 
         Status = new Option<bool>("--status") { Description = "Show status line below output" };
         Status.Aliases.Add("-S");
+
+        StatusWidth = new Option<int?>("--status-width") { Description = "Status line width (default: video width)" };
+        StatusWidth.Aliases.Add("-Sw");
+
+        // Markdown output (for embedding in docs/READMEs)
+        Markdown = new Option<string?>("--markdown") { Description = "Output markdown file (.md) with rendered ASCII art" };
+        Markdown.Aliases.Add("--md");
+        MarkdownFormat = new Option<string?>("--md-format") { Description = "Markdown format: plain (default), html, svg, ansi" };
+        MarkdownFormat.DefaultValueFactory = _ => "plain";
 
         // GIF output
         GifFontSize = new Option<int>("--gif-font-size") { Description = "Font size for GIF output" };
@@ -387,6 +445,10 @@ public class CliOptions
         EasterEgg = new Option<bool>("--ee") { Description = "Play animation demo" };
 
         Debug = new Option<bool>("--debug") { Description = "Enable debug output for smart frame sampling" };
+
+        // Read-only mode
+        NoWrite = new Option<bool>("--no-write") { Description = "Disable all caching and downloading (read-only mode for locked environments)" };
+        NoWrite.Aliases.Add("--readonly");
     }
 
     /// <summary>
@@ -426,9 +488,16 @@ public class CliOptions
         command.Options.Add(Start);
         command.Options.Add(End);
         command.Options.Add(Duration);
+        command.Options.Add(StartMinutes);
+        command.Options.Add(EndMinutes);
+        command.Options.Add(DurationMinutes);
+        command.Options.Add(StartFrame);
+        command.Options.Add(EndFrame);
+        command.Options.Add(DurationFrames);
 
         command.Options.Add(Speed);
         command.Options.Add(Loop);
+        command.Options.Add(NoAnimate);
         command.Options.Add(Fps);
         command.Options.Add(FrameStep);
         command.Options.Add(Sampling);
@@ -467,6 +536,8 @@ public class CliOptions
         command.Options.Add(YtdlpPath);
         command.Options.Add(CookiesFromBrowser);
         command.Options.Add(CookiesFile);
+        command.Options.Add(CacheVideo);
+        command.Options.Add(NoCacheVideo);
 
         // Subtitles
         command.Options.Add(Subs);
@@ -480,6 +551,9 @@ public class CliOptions
         command.Options.Add(Info);
         command.Options.Add(Json);
         command.Options.Add(Status);
+        command.Options.Add(StatusWidth);
+        command.Options.Add(Markdown);
+        command.Options.Add(MarkdownFormat);
 
         command.Options.Add(GifFontSize);
         command.Options.Add(GifScale);
@@ -521,5 +595,6 @@ public class CliOptions
         command.Options.Add(HideSlideInfo);
         command.Options.Add(EasterEgg);
         command.Options.Add(Debug);
+        command.Options.Add(NoWrite);
     }
 }

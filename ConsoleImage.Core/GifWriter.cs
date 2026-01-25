@@ -923,9 +923,12 @@ public class GifWriter : IDisposable
         // Create the GIF
         using var gif = new Image<Rgba32>(imageWidth, imageHeight);
 
-        // Get font (scaled)
+        // Get font (scaled) - detect Japanese for Matrix mode
         var scaledFontSize = (int)(_options.FontSize * _options.Scale);
-        var font = GetMonospaceFont(Math.Max(6, scaledFontSize));
+        var hasJapanese = ContainsJapaneseCharacters(finalFrames[0].Content);
+        var font = hasJapanese
+            ? GetMatrixFont(Math.Max(6, scaledFontSize))
+            : GetMonospaceFont(Math.Max(6, scaledFontSize));
 
         for (var i = 0; i < finalFrames.Count; i++)
         {
@@ -1002,13 +1005,18 @@ public class GifWriter : IDisposable
         {
             if (string.IsNullOrEmpty(text)) continue;
 
-            image.Mutate(ctx => ctx.DrawText(
-                text,
-                font,
-                color,
-                new PointF(x, y)));
-
-            x += text.Length * charWidth;
+            // Draw each character individually for proper monospace positioning
+            // This ensures Unicode characters (like katakana) align correctly
+            foreach (var c in text)
+            {
+                var charStr = c.ToString();
+                image.Mutate(ctx => ctx.DrawText(
+                    charStr,
+                    font,
+                    color,
+                    new PointF(x, y)));
+                x += charWidth;
+            }
         }
     }
 
@@ -1286,7 +1294,12 @@ public class GifWriter : IDisposable
 
         using var gif = new Image<Rgba32>(imageWidth, imageHeight);
         var scaledFontSize = (int)(_options.FontSize * _options.Scale);
-        var font = GetMonospaceFont(Math.Max(6, scaledFontSize));
+
+        // Detect if content contains Japanese/katakana characters and use appropriate font
+        var hasJapanese = ContainsJapaneseCharacters(finalFrames[0].Content);
+        var font = hasJapanese
+            ? GetMatrixFont(Math.Max(6, scaledFontSize))
+            : GetMonospaceFont(Math.Max(6, scaledFontSize));
 
         var totalSteps = finalFrames.Count + 2; // frames + quantize + save
 
@@ -1482,6 +1495,34 @@ public class GifWriter : IDisposable
 
         throw new InvalidOperationException(
             "No fonts available for Matrix GIF rendering. Install a Japanese-supporting font like MS Gothic, Yu Gothic, or Noto Sans CJK.");
+    }
+
+    /// <summary>
+    ///     Detect if text contains Japanese characters (katakana, hiragana, or kanji).
+    ///     Used to automatically select appropriate font for GIF rendering.
+    /// </summary>
+    private static bool ContainsJapaneseCharacters(string text)
+    {
+        foreach (var c in text)
+        {
+            // Half-width katakana (used in Matrix mode): U+FF66 to U+FF9F
+            if (c >= '\uFF66' && c <= '\uFF9F')
+                return true;
+
+            // Full-width katakana: U+30A0 to U+30FF
+            if (c >= '\u30A0' && c <= '\u30FF')
+                return true;
+
+            // Hiragana: U+3040 to U+309F
+            if (c >= '\u3040' && c <= '\u309F')
+                return true;
+
+            // CJK Unified Ideographs (kanji): U+4E00 to U+9FAF
+            if (c >= '\u4E00' && c <= '\u9FAF')
+                return true;
+        }
+
+        return false;
     }
 
     private static string StripAnsi(string text)

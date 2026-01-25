@@ -273,13 +273,21 @@ public static class VideoHandler
             }
 
             // Burn subtitle onto frame if subtitles are available
-            if (opts.Subtitles != null)
             {
                 // Use absolute time (matches offset subtitle times)
                 var currentTime = rawStartTime + uniformFrameCount * frameIntervalSec;
 
                 // Use fuzzy lookup - finds subtitle active within ±tolerance of current time
-                var entry = opts.Subtitles.GetActiveAtWithTolerance(currentTime, toleranceSeconds);
+                SubtitleEntry? entry = null;
+                if (opts.Subtitles != null)
+                {
+                    entry = opts.Subtitles.GetActiveAtWithTolerance(currentTime, toleranceSeconds);
+                }
+                else if (opts.LiveSubtitleProvider != null)
+                {
+                    entry = opts.LiveSubtitleProvider.Track.GetActiveAtWithTolerance(
+                        currentTime, toleranceSeconds);
+                }
 
                 if (entry != null)
                 {
@@ -564,10 +572,19 @@ public static class VideoHandler
             if (frameImage != null)
             {
                 // Burn subtitle onto frame if subtitles are available
-                if (opts.Subtitles != null)
                 {
                     // Use fuzzy lookup with tolerance for timing imprecision
-                    var entry = opts.Subtitles.GetActiveAtWithTolerance(timestamp, toleranceSeconds);
+                    SubtitleEntry? entry = null;
+                    if (opts.Subtitles != null)
+                    {
+                        entry = opts.Subtitles.GetActiveAtWithTolerance(timestamp, toleranceSeconds);
+                    }
+                    else if (opts.LiveSubtitleProvider != null)
+                    {
+                        entry = opts.LiveSubtitleProvider.Track.GetActiveAtWithTolerance(
+                            timestamp, toleranceSeconds);
+                    }
+
                     if (entry != null)
                     {
                         BurnSubtitleOntoImage(frameImage, entry.Text);
@@ -685,11 +702,20 @@ public static class VideoHandler
             var currentSeconds = effectiveStart + renderedCount * opts.FrameStepValue / gifTargetFps;
             var currentTime = TimeSpan.FromSeconds(currentSeconds);
 
-            // Get subtitle text for current frame
+            // Get subtitle text for current frame (from static track or live provider)
             string? subtitleText = null;
-            if (subtitleRenderer != null && opts.Subtitles != null)
+            if (subtitleRenderer != null)
             {
-                var entry = opts.Subtitles.GetActiveAt(currentTime);
+                SubtitleEntry? entry = null;
+                if (opts.Subtitles != null)
+                {
+                    entry = opts.Subtitles.GetActiveAt(currentTime);
+                }
+                else if (opts.LiveSubtitleProvider != null)
+                {
+                    entry = opts.LiveSubtitleProvider.Track.GetActiveAtWithTolerance(
+                        currentTime.TotalSeconds, toleranceSeconds: 0.5);
+                }
                 subtitleText = subtitleRenderer.GetPlainText(entry);
             }
 
@@ -1193,14 +1219,30 @@ public static class VideoHandler
         int currentFrame, int totalFrames,
         TimeSpan currentTime, double totalDuration, double fps)
     {
-        // Append subtitle if available
-        if (subtitleRenderer != null && opts.Subtitles != null)
+        // Append subtitle if available (from static track or live provider)
+        if (subtitleRenderer != null)
         {
-            var entry = opts.Subtitles.GetActiveAt(currentTime);
-            var subtitleText = subtitleRenderer.RenderEntry(entry);
-            if (!string.IsNullOrEmpty(subtitleText))
+            SubtitleEntry? entry = null;
+
+            // Try static subtitles first
+            if (opts.Subtitles != null)
             {
-                content += "\n" + subtitleText;
+                entry = opts.Subtitles.GetActiveAt(currentTime);
+            }
+            // Fall back to live subtitle provider (chunked transcription)
+            else if (opts.LiveSubtitleProvider != null)
+            {
+                entry = opts.LiveSubtitleProvider.Track.GetActiveAtWithTolerance(
+                    currentTime.TotalSeconds, toleranceSeconds: 0.5);
+            }
+
+            if (entry != null)
+            {
+                var subtitleText = subtitleRenderer.RenderEntry(entry);
+                if (!string.IsNullOrEmpty(subtitleText))
+                {
+                    content += "\n" + subtitleText;
+                }
             }
         }
 
@@ -1249,26 +1291,49 @@ public static class VideoHandler
         var lines = subtitle.Split('\n', StringSplitOptions.RemoveEmptyEntries).Take(2).ToArray();
         if (lines.Length == 0) return;
 
-        // Accessible subtitle sizing: ~5-8% of video height
-        // WCAG guidelines recommend captions be clearly readable
-        // Using height/14 (~7%) with min 16px for readability, max 64px for aesthetics
-        var fontSize = Math.Clamp(image.Height / 14, 16, 64);
-        Font font;
-
+        FontFamily family;
         try
         {
             var families = SystemFonts.Collection.Families;
-            var family = families.FirstOrDefault(f =>
+            family = families.FirstOrDefault(f =>
                 f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase) ||
                 f.Name.Contains("Sans", StringComparison.OrdinalIgnoreCase) ||
                 f.Name.Contains("Helvetica", StringComparison.OrdinalIgnoreCase));
             family = family == default ? families.First() : family;
-            font = family.CreateFont(fontSize, FontStyle.Bold);
         }
         catch
         {
             return; // Skip subtitle if font loading fails
         }
+
+        // Accessible subtitle sizing: ~5-8% of video height
+        // WCAG guidelines recommend captions be clearly readable
+        // Start with height/14 (~7%) with min 12px for small images, max 64px for large
+        var baseFontSize = Math.Clamp(image.Height / 14, 12, 64);
+
+        // Horizontal margin (5% each side = 90% usable width)
+        var horizontalMargin = image.Width * 0.05f;
+        var maxTextWidth = image.Width - (horizontalMargin * 2);
+
+        // Find the longest line and scale font to fit
+        var fontSize = baseFontSize;
+        var longestLine = lines.OrderByDescending(l => l.Length).First().Trim();
+
+        // Scale down font if text is too wide
+        for (var attempts = 0; attempts < 10 && fontSize >= 10; attempts++)
+        {
+            var testFont = family.CreateFont(fontSize, FontStyle.Bold);
+            var textSize = TextMeasurer.MeasureSize(longestLine, new TextOptions(testFont));
+
+            if (textSize.Width <= maxTextWidth)
+                break;
+
+            // Reduce font size proportionally
+            fontSize = (int)(fontSize * (maxTextWidth / textSize.Width) * 0.95f);
+            fontSize = Math.Max(fontSize, 10); // Minimum 10px
+        }
+
+        var font = family.CreateFont(fontSize, FontStyle.Bold);
 
         var textColor = Color.White;
         var outlineColor = Color.Black;
@@ -1398,6 +1463,7 @@ public class VideoHandlerOptions
     // Info/status
     public bool ShowInfo { get; init; }
     public bool ShowStatus { get; init; }
+    public int? StatusWidth { get; init; }
 
     // GIF output
     public int GifFontSize { get; init; } = 10;

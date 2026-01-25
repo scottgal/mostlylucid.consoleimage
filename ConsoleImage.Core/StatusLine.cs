@@ -20,7 +20,7 @@ public class StatusLine
     }
 
     /// <summary>
-    ///     Render the status line as a string
+    ///     Render the status line as a string - compact format with essential info
     /// </summary>
     public string Render(StatusInfo info)
     {
@@ -30,94 +30,68 @@ public class StatusLine
         if (_useColor)
             sb.Append("\x1b[2m"); // Dim
 
-        // Build components
+        // Build compact info parts
         var parts = new List<string>();
 
-        // Filename (truncated if needed)
+        // Filename (short)
         if (!string.IsNullOrEmpty(info.FileName))
         {
             var name = Path.GetFileName(info.FileName);
-            if (name.Length > 30)
-                name = name[..27] + "...";
+            if (name.Length > 20)
+                name = name[..17] + "...";
             parts.Add(name);
         }
 
-        // Resolution
-        if (info.SourceWidth.HasValue && info.SourceHeight.HasValue)
-        {
-            var res = $"{info.SourceWidth}x{info.SourceHeight}";
-            if (info.OutputWidth.HasValue && info.OutputHeight.HasValue)
-                res += $"→{info.OutputWidth}x{info.OutputHeight}";
-            parts.Add(res);
-        }
-
-        // Render mode
+        // Mode
         if (!string.IsNullOrEmpty(info.RenderMode))
             parts.Add(info.RenderMode);
 
-        // Codec
-        if (!string.IsNullOrEmpty(info.Codec))
-            parts.Add(info.Codec);
-
-        // FPS
-        if (info.Fps.HasValue)
-            parts.Add($"{info.Fps:F1}fps");
-
-        // Frame progress
-        if (info.CurrentFrame.HasValue && info.TotalFrames.HasValue && info.TotalFrames > 1)
-            parts.Add($"Frame {info.CurrentFrame}/{info.TotalFrames}");
-
-        // Time progress
+        // Time: current/total
         if (info.CurrentTime.HasValue && info.TotalDuration.HasValue)
         {
-            var current = FormatTime(info.CurrentTime.Value);
-            var total = FormatTime(info.TotalDuration.Value);
-            parts.Add($"{current}/{total}");
-        }
-
-        // Loop info
-        if (info.LoopNumber.HasValue)
-        {
-            if (info.TotalLoops.HasValue && info.TotalLoops > 0)
-                parts.Add($"Loop {info.LoopNumber}/{info.TotalLoops}");
-            else if (info.TotalLoops == 0)
-                parts.Add($"Loop {info.LoopNumber}/∞");
+            var currentSec = (int)info.CurrentTime.Value.TotalSeconds;
+            var totalSec = (int)info.TotalDuration.Value.TotalSeconds;
+            parts.Add($"{currentSec}s/{totalSec}s");
         }
 
         // Paused indicator
         if (info.IsPaused)
-            parts.Add("[PAUSED]");
+            parts.Insert(0, "[PAUSED]");
 
-        // Join with separator
-        var line = string.Join(" │ ", parts);
-
-        // Progress bar if we have time info
-        var progressBar = "";
-        if (info.CurrentTime.HasValue && info.TotalDuration.HasValue && info.TotalDuration.Value.TotalSeconds > 0)
-        {
-            var progress = info.CurrentTime.Value.TotalSeconds / info.TotalDuration.Value.TotalSeconds;
-            progressBar = RenderProgressBar(progress, Math.Min(20, _maxWidth / 4));
-        }
+        // Calculate progress
+        double progress = 0;
+        if (info.ClipProgress.HasValue)
+            progress = info.ClipProgress.Value;
         else if (info.CurrentFrame.HasValue && info.TotalFrames.HasValue && info.TotalFrames > 1)
+            progress = (double)info.CurrentFrame.Value / info.TotalFrames.Value;
+        else if (info.CurrentTime.HasValue && info.TotalDuration.HasValue && info.TotalDuration.Value.TotalSeconds > 0)
+            progress = info.CurrentTime.Value.TotalSeconds / info.TotalDuration.Value.TotalSeconds;
+
+        // Join parts
+        var infoText = string.Join(" │ ", parts);
+
+        // Constrain total status bar to half the max width
+        var maxStatusWidth = _maxWidth / 2;
+
+        // Progress bar - small (8-12 chars)
+        var barWidth = Math.Min(12, Math.Max(8, maxStatusWidth / 3));
+        var progressBar = RenderProgressBar(progress, barWidth);
+
+        // Fit info text to remaining width
+        var availableForInfo = maxStatusWidth - progressBar.Length - 1;
+        if (infoText.Length > availableForInfo && availableForInfo > 5)
         {
-            var progress = (double)info.CurrentFrame.Value / info.TotalFrames.Value;
-            progressBar = RenderProgressBar(progress, Math.Min(20, _maxWidth / 4));
+            // Drop parts from end until it fits
+            while (parts.Count > 1 && string.Join(" │ ", parts).Length > availableForInfo)
+                parts.RemoveAt(parts.Count - 1);
+            infoText = string.Join(" │ ", parts);
+            if (infoText.Length > availableForInfo)
+                infoText = infoText[..(availableForInfo - 3)] + "...";
         }
 
-        // Combine line and progress bar
-        if (!string.IsNullOrEmpty(progressBar))
-        {
-            var availableWidth = _maxWidth - progressBar.Length - 2;
-            if (line.Length > availableWidth)
-                line = line[..(availableWidth - 3)] + "...";
-            line = line.PadRight(availableWidth) + " " + progressBar;
-        }
-        else if (line.Length > _maxWidth)
-        {
-            line = line[..(_maxWidth - 3)] + "...";
-        }
-
-        sb.Append(line);
+        sb.Append(infoText);
+        sb.Append(' ');
+        sb.Append(progressBar);
 
         // Reset color
         if (_useColor)
@@ -168,9 +142,13 @@ public class StatusLine
 
     private static string FormatTime(TimeSpan time)
     {
+        // Always show total seconds for precision
+        var totalSeconds = (int)time.TotalSeconds;
         if (time.TotalHours >= 1)
-            return time.ToString(@"h\:mm\:ss");
-        return time.ToString(@"m\:ss");
+            return $"{time:h\\:mm\\:ss} ({totalSeconds}s)";
+        if (time.TotalMinutes >= 1)
+            return $"{time:m\\:ss} ({totalSeconds}s)";
+        return $"{totalSeconds}s";
     }
 
     /// <summary>
@@ -186,8 +164,12 @@ public class StatusLine
         public string? RenderMode { get; set; }
         public int? CurrentFrame { get; set; }
         public int? TotalFrames { get; set; }
+        /// <summary>Absolute video time (includes -ss offset)</summary>
         public TimeSpan? CurrentTime { get; set; }
+        /// <summary>Total video duration (full file, not just clip)</summary>
         public TimeSpan? TotalDuration { get; set; }
+        /// <summary>Progress within current playback clip (0.0-1.0), used for progress bar</summary>
+        public double? ClipProgress { get; set; }
         public double? Fps { get; set; }
         public string? Codec { get; set; }
         public bool IsPlaying { get; set; } = true;

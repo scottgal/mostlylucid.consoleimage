@@ -39,6 +39,22 @@ public class VideoAnimationPlayer : IDisposable
     private SubtitleRenderer? _subtitleRenderer;
     private string? _lastSubtitleContent;
 
+    // Keyboard controls
+    private bool _isPaused;
+    private bool _requestQuit;
+    private double? _seekRequest; // Requested seek position in seconds (null = no seek)
+    private double _currentPosition; // Current playback position in seconds
+
+    /// <summary>
+    /// Event raised when playback state changes (pause/resume).
+    /// </summary>
+    public event Action<bool>? OnPausedChanged;
+
+    /// <summary>
+    /// Seek step in seconds for arrow key navigation.
+    /// </summary>
+    public double SeekStepSeconds { get; set; } = 10.0;
+
     public VideoAnimationPlayer(string videoPath, VideoRenderOptions? options = null)
     {
         _videoPath = videoPath;
@@ -48,8 +64,12 @@ public class VideoAnimationPlayer : IDisposable
 
         if (_options.ShowStatus)
         {
-            int statusWidth = 120;
-            try { statusWidth = Console.WindowWidth - 1; } catch { }
+            // Use explicit width if provided, otherwise auto-detect
+            int statusWidth = _options.StatusWidth ?? 120;
+            if (!_options.StatusWidth.HasValue)
+            {
+                try { statusWidth = Console.WindowWidth - 1; } catch { }
+            }
             _statusLine = new StatusLine(statusWidth, _options.RenderOptions.UseColor);
         }
     }
@@ -101,10 +121,22 @@ public class VideoAnimationPlayer : IDisposable
         int loopsDone = 0;
         _currentLoop = 1;
 
+        // Effective start time (can be modified by seeking)
+        var effectiveStartTime = _options.StartTime ?? 0;
+
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested && !_requestQuit)
             {
+                // Check for seek request
+                if (_seekRequest.HasValue)
+                {
+                    effectiveStartTime = Math.Clamp(_seekRequest.Value, 0, _videoInfo.Duration - 1);
+                    _seekRequest = null;
+                    Console.Write("\x1b[2J\x1b[H"); // Clear screen for new position
+                    Console.Out.Flush();
+                }
+
                 // Check for resize
                 if (CheckForResize())
                 {
@@ -115,7 +147,10 @@ public class VideoAnimationPlayer : IDisposable
                 }
 
                 _currentFrame = 0;
-                await PlayStreamAsync(frameDelayMs, effectiveFps, cancellationToken);
+                await PlayStreamAsync(frameDelayMs, effectiveFps, effectiveStartTime, cancellationToken);
+
+                if (_requestQuit) break;
+                if (_seekRequest.HasValue) continue; // Restart for seek
 
                 loopsDone++;
                 _currentLoop++;
@@ -136,7 +171,7 @@ public class VideoAnimationPlayer : IDisposable
     /// <summary>
     /// Stream and render frames with lookahead buffer.
     /// </summary>
-    private async Task PlayStreamAsync(int frameDelayMs, double effectiveFps, CancellationToken ct)
+    private async Task PlayStreamAsync(int frameDelayMs, double effectiveFps, double startTime, CancellationToken ct)
     {
         // Create renderer based on mode
         using var renderer = CreateRenderer();
@@ -155,7 +190,7 @@ public class VideoAnimationPlayer : IDisposable
                     _videoPath,
                     _renderWidth,
                     _renderHeight,
-                    _options.StartTime,
+                    startTime,
                     _options.EndTime,
                     _options.FrameStep,
                     _options.TargetFps,
@@ -205,23 +240,52 @@ public class VideoAnimationPlayer : IDisposable
         var frameIndex = 0;
 
         // Play frames as they become available
-        while (!ct.IsCancellationRequested)
+        while (!ct.IsCancellationRequested && !_requestQuit)
         {
-            // Wait for a frame to be available
-            while (frameBuffer.IsEmpty && !renderingComplete && !ct.IsCancellationRequested)
+            // Check for keyboard input (including during buffer waits)
+            if (IsKeyAvailable())
             {
+                var key = Console.ReadKey(true);
+                HandleKeyPress(key);
+            }
+
+            // Check for seek/quit request
+            if (_seekRequest.HasValue || _requestQuit)
+                break;
+
+            // Wait for a frame to be available
+            while (frameBuffer.IsEmpty && !renderingComplete && !ct.IsCancellationRequested && !_seekRequest.HasValue)
+            {
+                if (IsKeyAvailable())
+                {
+                    var key = Console.ReadKey(true);
+                    HandleKeyPress(key);
+                }
                 await Task.Delay(1, ct);
             }
+
+            // Re-check after waiting
+            if (_seekRequest.HasValue || _requestQuit)
+                break;
 
             if (frameBuffer.TryDequeue(out var frameContent))
             {
                 frameIndex++;
                 _currentFrame = frameIndex;
 
+                // Calculate absolute video time (includes seek position)
+                var absoluteTime = startTime + (frameIndex / effectiveFps);
+                _currentPosition = absoluteTime; // Track for seeking
+
                 // Build status line if enabled
                 string? statusContent = null;
                 if (_statusLine != null && _videoInfo != null)
                 {
+
+                    // Clip duration for progress bar calculation
+                    var clipDuration = _options.GetEffectiveDuration(_videoInfo.Duration);
+                    var clipProgress = frameIndex / effectiveFps;
+
                     var statusInfo = new StatusLine.StatusInfo
                     {
                         FileName = _options.SourceFileName ?? _videoPath,
@@ -232,8 +296,12 @@ public class VideoAnimationPlayer : IDisposable
                         RenderMode = _options.RenderMode.ToString(),
                         CurrentFrame = frameIndex,
                         TotalFrames = _totalFramesEstimate > 0 ? _totalFramesEstimate : null,
-                        CurrentTime = TimeSpan.FromSeconds(frameIndex / effectiveFps),
-                        TotalDuration = TimeSpan.FromSeconds(_options.GetEffectiveDuration(_videoInfo.Duration)),
+                        // Absolute video time (shows actual position in video)
+                        CurrentTime = TimeSpan.FromSeconds(absoluteTime),
+                        // Total video duration (not just clip)
+                        TotalDuration = TimeSpan.FromSeconds(_videoInfo.Duration),
+                        // Clip progress for the progress bar (0-1 within playback window)
+                        ClipProgress = clipDuration > 0 ? clipProgress / clipDuration : 0,
                         Fps = effectiveFps,
                         Codec = _videoInfo.VideoCodec,
                         LoopNumber = _currentLoop,
@@ -706,15 +774,29 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Responsive delay with cancellation checks.
+    /// Responsive delay with cancellation checks and keyboard handling.
     /// </summary>
-    private static async Task ResponsiveDelayAsync(int totalMs, CancellationToken ct)
+    private async Task ResponsiveDelayAsync(int totalMs, CancellationToken ct)
     {
         const int chunkMs = 50;
         var remaining = totalMs;
 
-        while (remaining > 0 && !ct.IsCancellationRequested)
+        while ((remaining > 0 || _isPaused) && !ct.IsCancellationRequested && !_requestQuit)
         {
+            // Check for keyboard input
+            if (IsKeyAvailable())
+            {
+                var key = Console.ReadKey(true);
+                HandleKeyPress(key);
+            }
+
+            // When paused, just wait without counting down
+            if (_isPaused)
+            {
+                await Task.Delay(chunkMs, ct);
+                continue;
+            }
+
             var delay = Math.Min(remaining, chunkMs);
             try
             {
@@ -725,6 +807,106 @@ public class VideoAnimationPlayer : IDisposable
                 break;
             }
             remaining -= delay;
+        }
+    }
+
+    /// <summary>
+    /// Handle keyboard input during playback.
+    /// </summary>
+    private void HandleKeyPress(ConsoleKeyInfo key)
+    {
+        switch (key.Key)
+        {
+            case ConsoleKey.Spacebar:
+                _isPaused = !_isPaused;
+                OnPausedChanged?.Invoke(_isPaused);
+                // Show pause indicator
+                if (_isPaused)
+                {
+                    Console.Write("\x1b[s"); // Save cursor
+                    Console.Write("\x1b[1;1H"); // Move to top-left
+                    Console.Write("\x1b[43;30m PAUSED \x1b[0m"); // Yellow background
+                    Console.Write("\x1b[u"); // Restore cursor
+                }
+                else
+                {
+                    Console.Write("\x1b[s"); // Save cursor
+                    Console.Write("\x1b[1;1H"); // Move to top-left
+                    Console.Write("        "); // Clear pause indicator
+                    Console.Write("\x1b[u"); // Restore cursor
+                }
+                Console.Out.Flush();
+                break;
+
+            case ConsoleKey.RightArrow:
+                // Seek forward
+                _seekRequest = _currentPosition + SeekStepSeconds;
+                ShowIndicator($">> +{SeekStepSeconds}s");
+                break;
+
+            case ConsoleKey.LeftArrow:
+                // Seek backward
+                _seekRequest = Math.Max(0, _currentPosition - SeekStepSeconds);
+                ShowIndicator($"<< -{SeekStepSeconds}s");
+                break;
+
+            case ConsoleKey.Q:
+            case ConsoleKey.Escape:
+                _requestQuit = true;
+                break;
+
+            // Mode hints (full mode switching would require restart)
+            case ConsoleKey.A:
+                ShowIndicator("ASCII mode: use -a flag");
+                break;
+            case ConsoleKey.B:
+                if (key.Modifiers.HasFlag(ConsoleModifiers.Shift))
+                    ShowIndicator("Braille mode: default or use -B flag");
+                else
+                    ShowIndicator("Blocks mode: use -b flag");
+                break;
+            case ConsoleKey.M:
+                if (key.Modifiers.HasFlag(ConsoleModifiers.Shift))
+                    ShowIndicator("Matrix mode: use -M flag");
+                else
+                    ShowIndicator("Monochrome: use --mono flag");
+                break;
+
+            // Seek step adjustment
+            case ConsoleKey.OemPlus:
+            case ConsoleKey.Add:
+                SeekStepSeconds = Math.Min(60, SeekStepSeconds * 2);
+                ShowIndicator($"Seek step: {SeekStepSeconds}s");
+                break;
+            case ConsoleKey.OemMinus:
+            case ConsoleKey.Subtract:
+                SeekStepSeconds = Math.Max(5, SeekStepSeconds / 2);
+                ShowIndicator($"Seek step: {SeekStepSeconds}s");
+                break;
+        }
+    }
+
+    private void ShowIndicator(string text)
+    {
+        Console.Write("\x1b[s"); // Save cursor
+        Console.Write("\x1b[1;1H"); // Move to top-left
+        Console.Write($"\x1b[46;30m {text} \x1b[0m"); // Cyan background
+        Console.Write("\x1b[u"); // Restore cursor
+        Console.Out.Flush();
+    }
+
+    /// <summary>
+    /// Safely check if a key is available (handles non-terminal scenarios).
+    /// </summary>
+    private static bool IsKeyAvailable()
+    {
+        try
+        {
+            return Console.KeyAvailable;
+        }
+        catch
+        {
+            return false;
         }
     }
 

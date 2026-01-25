@@ -30,6 +30,7 @@ ConsoleImage/
 │   ├── YtdlpProvider.cs         # YouTube support via yt-dlp (auto-download)
 │   ├── FrameHasher.cs           # Perceptual hashing for frame deduplication
 │   ├── SmartFrameSampler.cs     # Intelligent frame skipping using perceptual hashing
+│   ├── MarkdownRenderer.cs      # Markdown/SVG/HTML export for ASCII art
 │   └── Subtitles/
 │       ├── SubtitleEntry.cs     # Single subtitle entry with timing
 │       ├── SubtitleTrack.cs     # Collection of subtitle entries
@@ -83,6 +84,8 @@ Renders images with the iconic "Matrix digital rain" falling code effect.
 - Full-color mode uses source image colors with Matrix-style lighting/fading
 - Configurable density, speed, and trail length
 - Source image brightness influences rain appearance and intensity
+- **Continuous animation** - Matrix mode always animates, even on still images
+- **Pure rain mode** - Run with just `-M` and no input for standalone rain effect
 
 ### AsciiAnimationPlayer
 Plays GIF animations using DECSET 2026 synchronized output for flicker-free rendering.
@@ -153,6 +156,22 @@ Fast perceptual hashing for frame deduplication.
 - **Hamming distance** - Count differing bits between hashes
 - **Threshold 5** - Default similarity threshold (5 of 64 bits can differ)
 
+### MarkdownRenderer
+Converts ANSI-colored ASCII art to markdown-friendly formats for documentation.
+
+- **Plain** - Text in code blocks, strips ANSI codes (universal compatibility)
+- **HTML** - `<span>` elements with inline CSS colors (limited renderer support)
+- **SVG** - Scalable Vector Graphics with colored `<tspan>` elements (GitHub, GitLab)
+- **ANSI** - Preserves escape codes in `ansi` code blocks (terminal-rendered only)
+
+```csharp
+// Usage in code
+var ansiContent = renderer.RenderImage(image);
+var markdown = MarkdownRenderer.ToMarkdown(ansiContent, MarkdownFormat.Svg, "My Image");
+await MarkdownRenderer.SaveMarkdownAsync(ansiContent, "output.md", MarkdownFormat.Svg);
+await MarkdownRenderer.SaveSvgAsync(ansiContent, "output.svg");
+```
+
 ### CalibrationHelper
 Manages terminal font aspect ratio calibration. Each render mode (ASCII, Blocks, Braille)
 maps pixels to characters differently and may need separate calibration.
@@ -206,6 +225,73 @@ from all pixels in a cell instead of just the visible dots.
 The dot pattern is determined by brightness threshold; colors should come from the
 same pixels that contribute to the visible pattern.
 
+## Quick Reference (Fast Paths)
+
+### Video Playback
+```bash
+# Play video in terminal (braille mode, auto-scaling)
+consoleimage video.mp4
+
+# YouTube video
+consoleimage "https://youtu.be/VIDEO_ID"
+
+# Start at specific time, play for 30 seconds
+consoleimage video.mp4 -ss 60 -t 30
+
+# With status bar showing progress
+consoleimage video.mp4 --status
+```
+
+### Subtitle Generation
+```bash
+# Auto-detect subtitles (local → embedded → YouTube → Whisper)
+consoleimage video.mp4 --subs auto
+
+# Force Whisper transcription
+consoleimage video.mp4 --subs whisper
+
+# Transcript only (no video rendering)
+consoleimage video.mp4 --transcript
+
+# Save subtitles to file
+consoleimage transcribe video.mp4 -o output.vtt
+```
+
+### CI/CD Usage
+```bash
+# Extract thumbnail (read-only mode)
+consoleimage video.mp4 --raw -ss 5 -o thumb.png --no-write
+
+# Generate ASCII preview GIF
+consoleimage video.mp4 -w 80 --ascii -o preview.gif -t 3 --no-write
+
+# Smart keyframes (scene detection)
+consoleimage video.mp4 --raw --smart -o keyframe.png --gif-frames 5 --no-write
+```
+
+### Output to GIF with Subtitles
+```bash
+# GIF with burned-in subtitles (auto-sized, WCAG compliant)
+consoleimage video.mp4 --subs whisper --raw -o clip.gif -t 10
+
+# ASCII art GIF with subtitles
+consoleimage video.mp4 --subs movie.srt -o output.gif -w 80
+```
+
+### Markdown Output (for Docs)
+```bash
+# Plain text in code block (works everywhere)
+consoleimage image.jpg -w 60 --md output.md
+
+# SVG with colors (embeddable, full color support)
+consoleimage image.jpg -w 60 --md output.md --md-format svg
+
+# HTML spans with inline CSS (for compatible renderers)
+consoleimage image.jpg -w 60 --md output.md --md-format html
+```
+
+---
+
 ## CLI Usage
 
 ```bash
@@ -240,6 +326,14 @@ consoleimage photo.png --matrix --matrix-fullcolor
 
 # Matrix with adjusted density and speed
 consoleimage photo.png --matrix --matrix-density 0.8 --matrix-speed 1.5
+
+# Matrix mode always animates continuously on still images
+# The rain keeps falling indefinitely until Ctrl+C
+consoleimage photo.jpg --matrix
+
+# Pure Matrix rain effect (no input image - just for fun!)
+consoleimage --matrix
+consoleimage -M --matrix-color amber
 
 # Show status line with progress, timing, file info
 consoleimage animation.gif --status
@@ -293,9 +387,45 @@ You can also use explicit prefixes: `gif:path`, `json:path`, `raw:path`, or `cid
 GIF output settings:
 - `--gif-font-size` - Font size for text rendering (default: 10)
 - `--gif-scale` - Scale factor (default: 1.0)
-- `--gif-colors` - Max palette colors 16-256 (default: 64)
+- `-c, --colors` - Max palette colors 4-256 (default: 64 for GIF output)
 
 Note: GIFs loop infinitely by default. Use `-l 1` for single play.
+
+### Markdown Output (for Documentation)
+
+Export ASCII art to markdown-friendly formats for embedding in READMEs, docs, or wikis.
+
+```bash
+# Plain text in code block (universal compatibility)
+consoleimage photo.jpg -w 60 --md output.md
+
+# SVG format (full color, works in GitHub/GitLab)
+consoleimage photo.jpg -w 60 --md output.md --md-format svg
+
+# HTML with inline CSS (for renderers that support HTML)
+consoleimage photo.jpg -w 60 --md output.md --md-format html
+
+# ANSI codes preserved (for terminals that render ANSI in markdown)
+consoleimage photo.jpg -w 60 --md output.md --md-format ansi
+```
+
+**Format Comparison:**
+
+| Format | Colors | Compatibility | Use Case |
+|--------|--------|---------------|----------|
+| `plain` | None | Universal | All markdown renderers |
+| `svg` | Full | GitHub, GitLab, most | Embeddable colored art |
+| `html` | Full | Limited | Custom docs sites |
+| `ansi` | Full | Terminals only | Terminal-rendered markdown |
+
+**Example: Embed in README**
+```markdown
+## Preview
+
+![ASCII Art](preview.svg)
+```
+
+Or inline the SVG directly for GitHub README badges/images.
 
 ### Calibration
 
@@ -355,19 +485,30 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `--save` - Save calibration to calibration.json
 - `--no-color` - Disable color output (greyscale for blocks/braille)
 - `--no-animate` - Show first frame only
+- `--md, --markdown` - Output markdown file with rendered ASCII art
+- `--md-format` - Markdown format: plain (default), html, svg, ansi
 
 ### Subtitle Options (Unified)
 
 The `--subs` flag accepts different sources:
 - `--subs <path>` - Load from SRT/VTT file
-- `--subs auto` - Try YouTube subtitles, fall back to Whisper
+- `--subs auto` - Automatic resolution (see priority below)
 - `--subs whisper` - Real-time Whisper transcription during playback
+- `--subs yt` - YouTube subtitles only (fail if not available)
 - `--subs off` - Disable subtitles
+
+**Subtitle Priority (--subs auto):**
+When using `--subs auto`, subtitles are resolved in this order:
+1. **Local subtitle files** - Searches for matching .srt/.vtt files (video.srt, video.en.srt)
+2. **Embedded subtitles** - Extracts text-based subtitles from video container (MKV, MP4)
+3. **YouTube subtitles** - Downloads from YouTube (if YouTube URL)
+4. **Whisper transcription** - Generates with local AI model (last resort)
 
 Additional options:
 - `--sub-lang <lang>` - Preferred language (default: "en")
 - `--whisper-model <size>` - Model: tiny, base (default), small, medium, large
 - `--whisper-threads <n>` - CPU threads for transcription
+- `--force-subs` - Force re-transcription even if cached subtitles exist
 
 ### Transcript-Only Mode (v4.0)
 
@@ -540,7 +681,7 @@ Install manually with:
 **YouTube Options:**
 - `--ytdlp-path` - Path to yt-dlp executable
 - `-y, --yes` - Auto-confirm yt-dlp download (no prompt)
-- `--cookies-from-browser <browser>` - Use cookies from browser (chrome, firefox, edge, etc.)
+- `--cookies-from-browser <browser>` - Use cookies from browser (validated whitelist: brave, chrome, chromium, edge, firefox, opera, safari, vivaldi)
 - `--cookies <file>` - Path to Netscape cookies.txt file
 
 **YouTube Authentication:**
@@ -563,8 +704,139 @@ See [yt-dlp FAQ](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies
 **How it works:**
 1. Detects YouTube URL patterns (youtube.com, youtu.be, shorts)
 2. Uses yt-dlp to extract the direct video stream URL
-3. Passes the stream URL to FFmpeg for playback
-4. For ASCII rendering, requests lower resolution (480p) for efficiency
+3. Streams immediately for fast start
+4. Downloads in background for future replays (caching)
+5. For ASCII rendering, requests lower resolution (480p) for efficiency
+
+**Video Caching (v4.0):**
+YouTube videos are cached locally by default for better user experience:
+- First play: Streams immediately (no wait), downloads in background
+- Subsequent plays: Uses cached file (instant start, zero bandwidth)
+- Cache limit: 2GB (oldest files removed automatically)
+- Location: `%LOCALAPPDATA%\consoleimage\videos`
+
+```bash
+# Default behavior: stream + cache for next time
+consoleimage "https://youtu.be/xyz"
+
+# Disable caching (always stream directly)
+consoleimage "https://youtu.be/xyz" --no-cache
+
+# Read-only mode (no caching or downloading at all)
+consoleimage "https://youtu.be/xyz" --no-write
+```
+
+### Configuration (appsettings.json)
+
+Create/edit `appsettings.json` in the application directory to set defaults:
+
+```json
+{
+  "Global": {
+    "NoWrite": false,           // Disable all caching/downloading
+    "AutoDownloadTools": true   // Auto-download FFmpeg/yt-dlp
+  },
+  "Cache": {
+    "EnableVideoCache": true,
+    "MaxVideoCacheSizeMB": 2048,
+    "CacheDirectory": null      // null = default location
+  },
+  "Render": {
+    "DefaultMode": "braille",
+    "CharacterAspectRatio": 0.5
+  },
+  "Subtitles": {
+    "DefaultMode": "auto",
+    "DefaultLanguage": "en",
+    "WhisperModel": "base"
+  }
+}
+```
+
+**Read-Only Mode (`--no-write`):**
+For locked-down environments (CI/CD, kiosks), use `--no-write` to:
+- Disable all file caching (videos, subtitles)
+- Disable auto-downloading of FFmpeg/yt-dlp
+- Only use pre-installed tools and stream directly
+
+```bash
+# CI/CD mode - no writes to filesystem
+consoleimage movie.mp4 --no-write
+
+# Alias
+consoleimage movie.mp4 --readonly
+```
+
+### CI/CD Usage
+
+ConsoleImage can be used in CI/CD pipelines for automated image/video processing:
+
+**Extract Thumbnails:**
+```bash
+# Single frame thumbnail at specific timestamp
+consoleimage video.mp4 --raw -ss 5 -o thumbnail.png --no-write
+
+# Multiple keyframes using scene detection
+consoleimage video.mp4 --raw --smart-keyframes --gif-frames 5 -o keyframe.png --no-write
+# Outputs: keyframe_001.png, keyframe_002.png, ...
+
+# Extract first frame at specific size
+consoleimage video.mp4 --raw -ss 0 --raw-width 320 -o preview.jpg --no-write
+```
+
+**Generate ASCII Preview Images:**
+```bash
+# Render ASCII art to GIF (for web previews)
+consoleimage video.mp4 -w 80 --ascii -o preview.gif -t 3 --no-write
+
+# Render single ASCII frame (braille mode)
+consoleimage video.mp4 -w 60 --braille -ss 10 --no-animate -o frame.gif --no-write
+```
+
+**Video Processing:**
+```bash
+# Extract clip and re-encode
+consoleimage video.mp4 --raw -ss 30 -t 10 -o clip.mp4 --no-write
+
+# Convert to WebP animation
+consoleimage video.mp4 --raw -t 5 -o animation.webp --no-write
+```
+
+**GitHub Actions Example:**
+```yaml
+jobs:
+  generate-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install FFmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Generate thumbnail
+        run: |
+          dotnet run --project ConsoleImage -- \
+            video.mp4 --raw -ss 5 -o thumbnail.png --no-write
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: thumbnails
+          path: thumbnail.png
+```
+
+**Future: Playwright Visual Testing:**
+ConsoleImage ASCII art can be rendered in a browser via Playwright for visual regression testing:
+```bash
+# Concept: Render to HTML, screenshot with Playwright
+consoleimage video.mp4 -w 80 --ascii -o preview.html
+npx playwright screenshot preview.html screenshot.png
+```
 
 ## Build
 
@@ -602,6 +874,15 @@ System.CommandLine's `FileInfo` argument type can have issues resolving paths in
 - System.CommandLine (CLI parsing)
 - System.Text.Json (JSON document format with source generation)
 - Targets .NET 10.0
+
+## Security
+
+The codebase includes input validation to prevent command injection attacks:
+
+- **Browser name validation** - `--cookies-from-browser` only accepts whitelisted browser names (brave, chrome, chromium, edge, firefox, opera, safari, vivaldi)
+- **Path validation** - File paths passed to FFmpeg/yt-dlp are validated for shell metacharacters
+- **URL validation** - Only http/https URLs are accepted for streaming
+- **SecurityHelper class** - Shared utilities in `ConsoleImage.Core/SecurityHelper.cs`
 
 ## JSON Document Format
 

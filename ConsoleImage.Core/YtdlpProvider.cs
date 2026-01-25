@@ -13,6 +13,15 @@ public static class YtdlpProvider
     private static string? _resolvedPath;
     private static readonly object _lock = new();
 
+    /// <summary>
+    /// Whitelist of valid browser names for --cookies-from-browser.
+    /// Prevents command injection attacks via this parameter.
+    /// </summary>
+    private static readonly HashSet<string> ValidBrowserNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi"
+    };
+
     // yt-dlp download URLs for different platforms
     private static readonly Dictionary<string, string> DownloadUrls = new()
     {
@@ -65,6 +74,76 @@ public static class YtdlpProvider
 
         url = url.Trim().Trim('"', '\'');
         return YouTubeRegex.IsMatch(url);
+    }
+
+    /// <summary>
+    /// Validate browser name for --cookies-from-browser to prevent command injection.
+    /// </summary>
+    /// <param name="browserName">Browser name from user input.</param>
+    /// <returns>True if valid, false otherwise.</returns>
+    public static bool IsValidBrowserName(string? browserName)
+    {
+        if (string.IsNullOrWhiteSpace(browserName))
+            return false;
+
+        return ValidBrowserNames.Contains(browserName.Trim());
+    }
+
+    /// <summary>
+    /// Build safe cookie arguments for yt-dlp commands.
+    /// Validates inputs to prevent command injection attacks.
+    /// </summary>
+    /// <param name="cookiesFromBrowser">Browser name (must be in whitelist).</param>
+    /// <param name="cookiesFile">Path to cookies file (must exist and be a valid path).</param>
+    /// <returns>Safe cookie arguments string, or empty if invalid/not provided.</returns>
+    private static string BuildSafeCookieArgs(string? cookiesFromBrowser, string? cookiesFile)
+    {
+        // Browser cookies - validate against whitelist
+        if (!string.IsNullOrEmpty(cookiesFromBrowser))
+        {
+            var browser = cookiesFromBrowser.Trim();
+            if (IsValidBrowserName(browser))
+            {
+                return $"--cookies-from-browser {browser} ";
+            }
+
+            // Invalid browser name - log warning and skip
+            Console.Error.WriteLine($"Warning: Invalid browser name '{browser}'. Valid options: {string.Join(", ", ValidBrowserNames)}");
+            return "";
+        }
+
+        // Cookies file - validate path exists and is not suspicious
+        if (!string.IsNullOrEmpty(cookiesFile))
+        {
+            var path = cookiesFile.Trim();
+
+            // Reject paths with shell metacharacters (command injection prevention)
+            if (ContainsShellMetacharacters(path))
+            {
+                Console.Error.WriteLine($"Warning: Cookies file path contains invalid characters.");
+                return "";
+            }
+
+            // Verify file exists
+            if (File.Exists(path))
+            {
+                return $"--cookies \"{path}\" ";
+            }
+
+            Console.Error.WriteLine($"Warning: Cookies file not found: {path}");
+        }
+
+        return "";
+    }
+
+    /// <summary>
+    /// Check if a string contains shell metacharacters that could be used for command injection.
+    /// </summary>
+    private static bool ContainsShellMetacharacters(string input)
+    {
+        // These characters can be used for command injection in shells
+        var dangerous = new[] { '|', '&', ';', '$', '`', '(', ')', '{', '}', '<', '>', '\n', '\r' };
+        return input.IndexOfAny(dangerous) >= 0;
     }
 
     /// <summary>
@@ -229,12 +308,8 @@ public static class YtdlpProvider
             ? $"best[height<={maxHeight}][protocol!*=m3u8]/bestvideo[height<={maxHeight}][protocol!*=m3u8]+bestaudio[protocol!*=m3u8]/best[height<={maxHeight}]/best"
             : "best[protocol!*=m3u8]/bestvideo[protocol!*=m3u8]+bestaudio[protocol!*=m3u8]/best";
 
-        // Build cookie arguments
-        var cookieArgs = "";
-        if (!string.IsNullOrEmpty(cookiesFromBrowser))
-            cookieArgs = $"--cookies-from-browser {cookiesFromBrowser} ";
-        else if (!string.IsNullOrEmpty(cookiesFile))
-            cookieArgs = $"--cookies \"{cookiesFile}\" ";
+        // Build cookie arguments (validated to prevent command injection)
+        var cookieArgs = BuildSafeCookieArgs(cookiesFromBrowser, cookiesFile);
 
         // Get URL and title
         var args = $"{cookieArgs}-f \"{format}\" -g --no-warnings --no-playlist \"{youtubeUrl}\"";
@@ -323,12 +398,8 @@ public static class YtdlpProvider
         var videoId = ExtractVideoId(youtubeUrl) ?? "video";
         var outputTemplate = Path.Combine(outputDirectory, $"{videoId}.%(ext)s");
 
-        // Build cookie arguments
-        var cookieArgs = "";
-        if (!string.IsNullOrEmpty(cookiesFromBrowser))
-            cookieArgs = $"--cookies-from-browser {cookiesFromBrowser} ";
-        else if (!string.IsNullOrEmpty(cookiesFile))
-            cookieArgs = $"--cookies \"{cookiesFile}\" ";
+        // Build cookie arguments (validated to prevent command injection)
+        var cookieArgs = BuildSafeCookieArgs(cookiesFromBrowser, cookiesFile);
 
         // Try to download subtitles (prefer manual subs, fall back to auto-generated)
         var args = $"{cookieArgs}--skip-download --write-sub --write-auto-sub --sub-lang \"{lang}\" --sub-format srt --convert-subs srt -o \"{outputTemplate}\" --no-warnings --no-playlist \"{youtubeUrl}\"";
@@ -418,11 +489,8 @@ public static class YtdlpProvider
     {
         try
         {
-            var cookieArgs = "";
-            if (!string.IsNullOrEmpty(cookiesFromBrowser))
-                cookieArgs = $"--cookies-from-browser {cookiesFromBrowser} ";
-            else if (!string.IsNullOrEmpty(cookiesFile))
-                cookieArgs = $"--cookies \"{cookiesFile}\" ";
+            // Build cookie arguments (validated to prevent command injection)
+            var cookieArgs = BuildSafeCookieArgs(cookiesFromBrowser, cookiesFile);
 
             var startInfo = new ProcessStartInfo
             {
@@ -599,6 +667,93 @@ public static class YtdlpProvider
         if (OperatingSystem.IsMacOS()) return $"osx-{arch}";
 
         return "win-x64";
+    }
+
+    /// <summary>
+    /// Download a YouTube video to a local file for caching.
+    /// </summary>
+    /// <param name="youtubeUrl">YouTube video URL.</param>
+    /// <param name="outputPath">Path to save the video file.</param>
+    /// <param name="maxHeight">Maximum video height for quality selection.</param>
+    /// <param name="progress">Progress callback.</param>
+    /// <param name="cookiesFromBrowser">Browser to extract cookies from.</param>
+    /// <param name="cookiesFile">Path to cookies file.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True if download succeeded.</returns>
+    public static async Task<bool> DownloadVideoAsync(
+        string youtubeUrl,
+        string outputPath,
+        int? maxHeight = null,
+        IProgress<(string Status, double Progress)>? progress = null,
+        string? cookiesFromBrowser = null,
+        string? cookiesFile = null,
+        CancellationToken ct = default)
+    {
+        var ytdlp = FindInPath() ?? FindInCache();
+        if (ytdlp == null)
+            return false;
+
+        // Build format selector
+        var format = maxHeight.HasValue
+            ? $"bestvideo[height<={maxHeight}][ext=mp4]+bestaudio[ext=m4a]/best[height<={maxHeight}][ext=mp4]/best[ext=mp4]/best"
+            : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best";
+
+        // Build cookie arguments
+        var cookieArgs = BuildSafeCookieArgs(cookiesFromBrowser, cookiesFile);
+
+        // Ensure output directory exists
+        var dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+
+        // Build yt-dlp command
+        var args = $"{cookieArgs}-f \"{format}\" --merge-output-format mp4 --no-warnings --no-playlist -o \"{outputPath}\" \"{youtubeUrl}\"";
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = ytdlp,
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+
+            // Monitor stderr for progress
+            var progressRegex = new Regex(@"\[download\]\s+(\d+(?:\.\d+)?)%", RegexOptions.Compiled);
+
+            var stderrTask = Task.Run(async () =>
+            {
+                while (!process.StandardError.EndOfStream)
+                {
+                    var line = await process.StandardError.ReadLineAsync(ct);
+                    if (line != null && progress != null)
+                    {
+                        var match = progressRegex.Match(line);
+                        if (match.Success && double.TryParse(match.Groups[1].Value, out var pct))
+                        {
+                            progress.Report(($"Downloading: {pct:F0}%", pct / 100.0));
+                        }
+                    }
+                }
+            }, ct);
+
+            await process.StandardOutput.ReadToEndAsync(ct);
+            await stderrTask;
+            await process.WaitForExitAsync(ct);
+
+            return process.ExitCode == 0 && File.Exists(outputPath);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.Error.WriteLine($"Failed to download video: {ex.Message}");
+            return false;
+        }
     }
 }
 

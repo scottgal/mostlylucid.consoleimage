@@ -32,20 +32,79 @@
 # Render an image to your terminal (braille mode by default!)
 consoleimage photo.jpg
 
-# Play a video as ASCII art (FFmpeg auto-downloads on first use)
+# Play a video (braille mode, FFmpeg auto-downloads on first use)
 consoleimage movie.mp4
 
 # Play an animated GIF
 consoleimage animation.gif
 
-# Browse photos in slideshow mode (NEW in v3.1!)
+# Browse photos in slideshow mode
 consoleimage ./photos
 
-# Play YouTube videos directly (NEW in v3.1!)
+# Play YouTube videos directly
 consoleimage "https://youtu.be/dQw4w9WgXcQ"
+
+# Live AI subtitles while watching (NEW in v4.0!)
+consoleimage movie.mp4 --subs whisper
 ```
 
 That's it! Colors and animation are enabled by default. **Braille mode is now the default** for maximum detail.
+
+## Zero Setup - Everything Downloads Automatically
+
+ConsoleImage requires **zero manual setup** for common tasks. Dependencies are downloaded automatically on first use:
+
+| Component | When Downloaded | Size | Cache Location |
+|-----------|----------------|------|----------------|
+| **FFmpeg** | First video file playback | ~25MB | `~/.local/share/consoleimage/ffmpeg/` |
+| **yt-dlp** | First YouTube URL | ~10MB | `~/.local/share/consoleimage/ytdlp/` |
+| **Whisper Runtime** | First `--subs whisper` use | ~15MB | `~/.local/share/consoleimage/whisper/runtimes/` |
+| **Whisper Models** | First transcription | 75MB-3GB | `~/.local/share/consoleimage/whisper/` |
+
+### How Auto-Download Works
+
+1. **FFmpeg & yt-dlp**: Downloads platform-specific binary, extracts to cache, adds to PATH
+2. **Whisper Runtime**: Downloads NuGet package, extracts native libraries for your platform
+3. **Whisper Models**: Downloads from Hugging Face, caches locally for reuse
+
+### Skipping Downloads
+
+Use `-y` / `--yes` to auto-confirm all downloads without prompts:
+
+```bash
+consoleimage movie.mp4 --subs whisper -y  # Auto-downloads everything needed
+```
+
+### Manual Installation (If Needed)
+
+If auto-download fails (corporate firewall, etc.), install manually:
+
+```bash
+# FFmpeg
+winget install ffmpeg              # Windows
+brew install ffmpeg                # macOS
+apt install ffmpeg                 # Linux
+
+# yt-dlp
+pip install yt-dlp
+winget install yt-dlp              # Windows
+
+# Whisper Runtime (via NuGet)
+# Download: https://www.nuget.org/packages/Whisper.net.Runtime
+# Extract and copy native libs to the cache location above
+```
+
+### Cache Cleanup
+
+All downloads are cached in `~/.local/share/consoleimage/` (or `%LOCALAPPDATA%\consoleimage\` on Windows).
+
+To clear cached downloads:
+```bash
+rm -rf ~/.local/share/consoleimage/  # Linux/macOS
+rd /s "%LOCALAPPDATA%\consoleimage"  # Windows
+```
+
+Subtitle cache (auto-generated .vtt files) is stored in temp and auto-cleaned after 7 days.
 
 ## CLI Guide
 
@@ -152,6 +211,12 @@ consoleimage movie.mp4 -o movie.cidz
 consoleimage movie.mp4           # Braille by default
 consoleimage movie.mp4 -a -w 120 # ASCII mode, wider
 ```
+
+**Video Playback Controls:**
+| Key | Action |
+|-----|--------|
+| `Space` | Pause/Resume playback |
+| `Q` / `Esc` | Quit playback |
 
 ### Matrix Mode
 
@@ -389,7 +454,7 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
 **Windows (PowerShell):**
 ```powershell
 # Download and extract to user bin folder
-$version = "3.1.0"  # Check releases for latest
+$version = "4.0.0"  # Check releases for latest
 Invoke-WebRequest -Uri "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v$version/consoleimage-win-x64.zip" -OutFile "$env:TEMP\consoleimage.zip"
 Expand-Archive -Path "$env:TEMP\consoleimage.zip" -DestinationPath "$env:LOCALAPPDATA\consoleimage" -Force
 # Add to PATH (run once)
@@ -400,21 +465,21 @@ $env:PATH += ";$env:LOCALAPPDATA\consoleimage"
 **Linux x64:**
 ```bash
 # Download and install to /usr/local/bin
-VERSION="3.1.0"  # Check releases for latest
+VERSION="4.0.0"  # Check releases for latest
 curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-linux-x64.tar.gz" | sudo tar -xz -C /usr/local/bin
 sudo chmod +x /usr/local/bin/consoleimage
 ```
 
 **Linux ARM64 (Raspberry Pi, etc.):**
 ```bash
-VERSION="3.1.0"
+VERSION="4.0.0"
 curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-linux-arm64.tar.gz" | sudo tar -xz -C /usr/local/bin
 sudo chmod +x /usr/local/bin/consoleimage
 ```
 
 **macOS (Apple Silicon):**
 ```bash
-VERSION="3.1.0"
+VERSION="4.0.0"
 curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-osx-arm64.tar.gz" | tar -xz -C /usr/local/bin
 chmod +x /usr/local/bin/consoleimage
 # If blocked by Gatekeeper, run: xattr -d com.apple.quarantine /usr/local/bin/consoleimage
@@ -453,7 +518,7 @@ consoleimage animation.gif --speed 1.5    # Speed up playback
 consoleimage animation.gif --loop 3       # Play 3 times
 
 # === VIDEOS (FFmpeg auto-downloads on first use) ===
-consoleimage movie.mp4                    # Play video as ASCII
+consoleimage movie.mp4                    # Play video (braille default)
 consoleimage movie.mkv --blocks -w 120    # Color blocks mode
 consoleimage movie.mp4 --ss 60 -t 30      # Start at 60s, play 30s
 
@@ -518,13 +583,13 @@ this image as ASCII art" and it will use the tools automatically.
 |------|-------------|
 | `render_image` | Render image/GIF to ASCII art (ascii, blocks, braille, matrix) |
 | `render_to_gif` | Create animated GIF output |
-| `render_video` | Render video to animated ASCII GIF (v3.1) |
+| `render_video` | Render video to animated GIF (braille/ASCII/blocks) |
 | `extract_frames` | Extract raw video frames to GIF (no ASCII, just frames) |
 | `get_image_info` | Get detailed image metadata (format, dimensions, EXIF) |
 | `get_gif_info` | Get GIF metadata (dimensions, frame count) |
 | `get_video_info` | Get video file info via FFmpeg |
-| `check_youtube_url` | Check if URL is a YouTube video (v3.1) |
-| `get_youtube_stream` | Extract stream URL from YouTube (v3.1) |
+| `check_youtube_url` | Check if URL is a YouTube video |
+| `get_youtube_stream` | Extract stream URL from YouTube |
 | `list_render_modes` | List available render modes with descriptions |
 | `list_matrix_presets` | List Matrix color presets |
 | `compare_render_modes` | Render same image in all modes for comparison |
@@ -690,7 +755,7 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `-j, --json`          | Output as JSON (for LLM tool calls)                       | OFF            |
 | `--dark-cutoff`       | Dark terminal: skip colors below brightness (0.0-1.0)     | 0.1            |
 | `--light-cutoff`      | Light terminal: skip colors above brightness (0.0-1.0)    | 0.9            |
-| `-m, --mode`          | Render mode: ascii, blocks, braille, iterm2, kitty, sixel | ascii          |
+| `-m, --mode`          | Render mode: ascii, blocks, braille, iterm2, kitty, sixel | braille        |
 | `--mode list`         | List all available render modes                           | -              |
 | `--gif-scale`         | GIF output scale factor (0.25-2.0)                        | 1.0            |
 | `--gif-colors`        | GIF palette size (16-256)                                 | 64             |

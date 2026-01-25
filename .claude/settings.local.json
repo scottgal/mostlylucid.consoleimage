@@ -107,7 +107,20 @@
       "Bash(cd:*)",
       "Bash($env:PATH = \"C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\Installer;$env:PATH\")",
       "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Debug\\\\net10.0\\\\consoleimage.exe\" --version)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(scp:*)",
+      "Bash(ssh scott@192.168.0.30:*)",
+      "Bash(ssh-copy-id:*)",
+      "Bash(chmod:*)",
+      "Bash(bash:*)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(unzip:*)",
+      "Bash(rsync:*)",
+      "Bash(.\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe:*)",
+      "Bash(E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe:*)",
+      "Bash(cmd.exe /c \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe --help\")",
+      "Bash(timeout 1 head:*)",
+      "Bash(wc:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
