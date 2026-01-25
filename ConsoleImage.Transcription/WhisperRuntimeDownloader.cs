@@ -1,5 +1,10 @@
-// WhisperRuntimeDownloader - Downloads Whisper native runtime on first use
-// Keeps the main binary small by not bundling ~50-100MB of native libs
+// WhisperRuntimeDownloader - Checks for Whisper native runtime availability
+//
+// DESIGN:
+// - AOT builds: Runtime is bundled via NuGet packages in the CLI project
+// - Non-AOT/Development: Runtime comes from Whisper.net.AllRuntimes reference
+// - Fallback download: Simple attempt, graceful failure if unavailable
+// - NO REFLECTION: Fully AOT compatible
 
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -7,8 +12,9 @@ using System.Runtime.InteropServices;
 namespace ConsoleImage.Transcription;
 
 /// <summary>
-/// Downloads and caches Whisper.net native runtime libraries.
-/// Supports side-loading to avoid bundling large native binaries in the main executable.
+/// Checks Whisper.net native runtime availability and provides fallback download.
+/// For AOT builds, the runtime should be bundled. This class handles cases where
+/// it's not bundled and attempts to download as a fallback.
 /// </summary>
 public static class WhisperRuntimeDownloader
 {
@@ -17,13 +23,17 @@ public static class WhisperRuntimeDownloader
         Timeout = TimeSpan.FromMinutes(10)
     };
 
+    private static string? _lastError;
+    private static bool _checked;
+    private static bool _available;
+
     static WhisperRuntimeDownloader()
     {
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "ConsoleImage/1.0");
     }
 
     /// <summary>
-    /// Runtime cache directory (same as model cache).
+    /// Runtime cache directory for downloaded files.
     /// </summary>
     public static string CacheDirectory => WhisperModelDownloader.CacheDirectory;
 
@@ -31,6 +41,11 @@ public static class WhisperRuntimeDownloader
     /// Get the runtimes directory where native libs should be placed.
     /// </summary>
     public static string RuntimesDirectory => Path.Combine(CacheDirectory, "runtimes");
+
+    /// <summary>
+    /// Get the last error message from runtime initialization.
+    /// </summary>
+    public static string? LastError => _lastError;
 
     /// <summary>
     /// Get platform-specific runtime identifier.
@@ -52,201 +67,13 @@ public static class WhisperRuntimeDownloader
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             return $"osx-{arch}";
 
-        return $"linux-{arch}"; // Default fallback
+        return $"linux-{arch}";
     }
 
     /// <summary>
-    /// Check if runtime is already available (bundled or downloaded).
+    /// Get the native library name for the current platform.
     /// </summary>
-    public static bool IsRuntimeAvailable()
-    {
-        // Check if runtime exists in cache
-        var rid = GetRuntimeIdentifier();
-        var runtimePath = GetNativeLibraryPath(rid);
-        if (File.Exists(runtimePath))
-            return true;
-
-        // Check if bundled with the app (development or full build)
-        var appDir = AppContext.BaseDirectory;
-        var bundledPath = Path.Combine(appDir, "runtimes", rid, "native", GetNativeLibraryName());
-        return File.Exists(bundledPath);
-    }
-
-    /// <summary>
-    /// Get info about the runtime download.
-    /// </summary>
-    public static (string rid, int sizeMB) GetRuntimeInfo()
-    {
-        var rid = GetRuntimeIdentifier();
-        var sizeMB = rid switch
-        {
-            "win-x64" => 12,
-            "linux-x64" => 10,
-            "osx-arm64" => 8,
-            "osx-x64" => 10,
-            _ => 12
-        };
-        return (rid, sizeMB);
-    }
-
-    /// <summary>
-    /// Ensure the Whisper runtime is available, downloading if necessary.
-    /// </summary>
-    public static async Task<bool> EnsureRuntimeAsync(
-        IProgress<(long downloaded, long total, string status)>? progress = null,
-        CancellationToken ct = default)
-    {
-        if (IsRuntimeAvailable())
-        {
-            progress?.Report((0, 0, "Whisper runtime already available"));
-            return true;
-        }
-
-        var rid = GetRuntimeIdentifier();
-        var url = GetDownloadUrl(rid);
-        var targetDir = Path.Combine(RuntimesDirectory, rid, "native");
-
-        progress?.Report((0, 0, $"Downloading Whisper runtime for {rid}..."));
-
-        Directory.CreateDirectory(targetDir);
-
-        try
-        {
-            // Download the zip file
-            var tempZip = Path.GetTempFileName();
-            try
-            {
-                using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    progress?.Report((0, 0, $"Failed to download runtime: HTTP {(int)response.StatusCode}"));
-                    return false;
-                }
-
-                var totalBytes = response.Content.Headers.ContentLength ?? 0;
-                await using var contentStream = await response.Content.ReadAsStreamAsync(ct);
-                await using var fileStream = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
-
-                var buffer = new byte[81920];
-                long totalRead = 0;
-                int bytesRead;
-
-                while ((bytesRead = await contentStream.ReadAsync(buffer, ct)) > 0)
-                {
-                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
-                    totalRead += bytesRead;
-                    var pct = totalBytes > 0 ? (int)(totalRead * 100 / totalBytes) : 0;
-                    progress?.Report((totalRead, totalBytes, $"Downloading runtime... {pct}%"));
-                }
-
-                progress?.Report((totalRead, totalBytes, "Extracting runtime..."));
-            }
-            catch (Exception ex)
-            {
-                progress?.Report((0, 0, $"Download failed: {ex.Message}"));
-                if (File.Exists(tempZip)) File.Delete(tempZip);
-                return false;
-            }
-
-            // Extract native libraries from NuGet package
-            // Whisper.net.Runtime stores libs at multiple possible locations:
-            // - runtimes/{rid}/native/ (standard NuGet layout)
-            // - build/{rid}/ (older layout)
-            try
-            {
-                using var archive = ZipFile.OpenRead(tempZip);
-                var extractedCount = 0;
-
-                // Try multiple paths where native libs might be stored
-                var possiblePaths = new[]
-                {
-                    $"runtimes/{rid}/native/",
-                    $"build/{rid}/",
-                    $"runtimes/{rid.Replace("-", "_")}/native/", // Some packages use underscores
-                };
-
-                foreach (var entry in archive.Entries)
-                {
-                    // Check if this entry matches any of our expected paths
-                    var matchesPath = possiblePaths.Any(p =>
-                        entry.FullName.StartsWith(p, StringComparison.OrdinalIgnoreCase));
-
-                    if (matchesPath && IsNativeLibrary(entry.Name) && !string.IsNullOrEmpty(entry.Name))
-                    {
-                        var destPath = Path.Combine(targetDir, entry.Name);
-                        entry.ExtractToFile(destPath, overwrite: true);
-                        progress?.Report((0, 0, $"Extracted: {entry.Name}"));
-                        extractedCount++;
-                    }
-                }
-
-                if (extractedCount == 0)
-                {
-                    // List what's in the package for debugging
-                    progress?.Report((0, 0, $"No libs found for {rid}, checking package contents..."));
-                    var nativeEntries = archive.Entries
-                        .Where(e => IsNativeLibrary(e.Name))
-                        .Select(e => e.FullName)
-                        .Take(10);
-                    foreach (var entry in nativeEntries)
-                        progress?.Report((0, 0, $"  Found: {entry}"));
-
-                    // Also show available RIDs
-                    var rids = archive.Entries
-                        .Where(e => e.FullName.StartsWith("runtimes/", StringComparison.OrdinalIgnoreCase))
-                        .Select(e => e.FullName.Split('/').Skip(1).FirstOrDefault())
-                        .Where(r => !string.IsNullOrEmpty(r))
-                        .Distinct()
-                        .Take(10);
-                    progress?.Report((0, 0, $"Available RIDs: {string.Join(", ", rids)}"));
-                }
-            }
-            finally
-            {
-                if (File.Exists(tempZip)) File.Delete(tempZip);
-            }
-
-            // Verify extraction worked
-            var libPath = GetNativeLibraryPath(rid);
-            if (!File.Exists(libPath))
-            {
-                progress?.Report((0, 0, "Runtime extraction failed - library not found"));
-                return false;
-            }
-
-            progress?.Report((0, 0, "Whisper runtime installed successfully"));
-            return true;
-        }
-        catch (Exception ex)
-        {
-            progress?.Report((0, 0, $"Runtime installation failed: {ex.Message}"));
-            progress?.Report((0, 0, GetManualInstallInstructions(rid)));
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Configure Whisper.net to use our cached runtime location.
-    /// Call this before creating WhisperFactory.
-    /// </summary>
-    public static void ConfigureRuntimePath()
-    {
-        var rid = GetRuntimeIdentifier();
-        var runtimeDir = Path.Combine(RuntimesDirectory, rid, "native");
-
-        if (Directory.Exists(runtimeDir))
-        {
-            // Add to native library search path
-            var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-            if (!currentPath.Contains(runtimeDir))
-            {
-                Environment.SetEnvironmentVariable("PATH", $"{runtimeDir}{Path.PathSeparator}{currentPath}");
-            }
-        }
-    }
-
-    private static string GetNativeLibraryName()
+    public static string GetNativeLibraryName()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             return "whisper.dll";
@@ -255,67 +82,373 @@ public static class WhisperRuntimeDownloader
         return "libwhisper.so";
     }
 
-    private static string GetNativeLibraryPath(string rid)
+    /// <summary>
+    /// Get all possible locations where the native library might be found.
+    /// </summary>
+    public static IEnumerable<string> GetSearchPaths()
     {
-        return Path.Combine(RuntimesDirectory, rid, "native", GetNativeLibraryName());
-    }
+        var rid = GetRuntimeIdentifier();
+        var libName = GetNativeLibraryName();
+        var appDir = AppContext.BaseDirectory;
 
-    private static bool IsNativeLibrary(string fileName)
-    {
-        var lower = fileName.ToLowerInvariant();
-        return lower.EndsWith(".dll") || lower.EndsWith(".so") || lower.EndsWith(".dylib");
-    }
+        // Priority 1: App directory root (where bundled libs typically go)
+        yield return Path.Combine(appDir, libName);
 
-    private static string GetDownloadUrl(string rid)
-    {
-        // Whisper.net runtimes are distributed via NuGet packages
-        // We download the .nupkg (which is a zip) and extract native libs
-        // Using NuGet v3 flat container API (most reliable)
-        const string version = "1.9.0";
+        // Priority 2: NuGet runtime layout in app directory
+        yield return Path.Combine(appDir, "runtimes", rid, "native", libName);
 
-        // Whisper.net.Runtime contains CPU binaries for all platforms
-        const string packageName = "whisper.net.runtime";
+        // Priority 3: Download cache
+        yield return Path.Combine(RuntimesDirectory, rid, "native", libName);
 
-        // NuGet v3 flat container API - lowercase package name required
-        return $"https://api.nuget.org/v3-flatcontainer/{packageName}/{version}/{packageName}.{version}.nupkg";
+        // Priority 4: Parent directory (development scenarios)
+        var parent = Directory.GetParent(appDir)?.FullName;
+        if (parent != null)
+        {
+            yield return Path.Combine(parent, libName);
+            yield return Path.Combine(parent, "runtimes", rid, "native", libName);
+        }
     }
 
     /// <summary>
-    /// Get manual installation instructions for the runtime.
+    /// Check if runtime is already available (file exists in any search path).
+    /// </summary>
+    public static bool IsRuntimeAvailable()
+    {
+        return GetSearchPaths().Any(File.Exists);
+    }
+
+    /// <summary>
+    /// Get the path to an available runtime, or null if not found.
+    /// </summary>
+    public static string? GetAvailableRuntimePath()
+    {
+        return GetSearchPaths().FirstOrDefault(File.Exists);
+    }
+
+    /// <summary>
+    /// Test if the native library can actually be loaded.
+    /// </summary>
+    public static bool CanLoadRuntime(out string? errorMessage)
+    {
+        errorMessage = null;
+        var path = GetAvailableRuntimePath();
+
+        if (path == null)
+        {
+            errorMessage = "Native library file not found in any search path";
+            return false;
+        }
+
+        try
+        {
+            if (NativeLibrary.TryLoad(path, out var handle))
+            {
+                NativeLibrary.Free(handle);
+                return true;
+            }
+            errorMessage = $"NativeLibrary.TryLoad failed for {path}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Load exception for {path}: {ex.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Get info about the runtime download (for progress messages).
+    /// </summary>
+    public static (string rid, int sizeMB) GetRuntimeInfo()
+    {
+        var rid = GetRuntimeIdentifier();
+        var sizeMB = rid switch
+        {
+            "win-x64" => 45,
+            "win-arm64" => 40,
+            "win-x86" => 35,
+            "linux-x64" => 40,
+            "linux-arm64" => 35,
+            "osx-arm64" => 30,
+            "osx-x64" => 35,
+            _ => 45
+        };
+        return (rid, sizeMB);
+    }
+
+    /// <summary>
+    /// Ensure the Whisper runtime is available, downloading if necessary.
+    /// Returns false if unavailable but DOES NOT THROW.
+    /// </summary>
+    public static async Task<bool> EnsureRuntimeAsync(
+        IProgress<(long downloaded, long total, string status)>? progress = null,
+        CancellationToken ct = default)
+    {
+        _lastError = null;
+
+        // Fast path: already checked and available
+        if (_checked && _available)
+        {
+            progress?.Report((0, 0, "Whisper runtime available"));
+            return true;
+        }
+
+        // Check if bundled runtime is available and loadable
+        if (IsRuntimeAvailable())
+        {
+            if (CanLoadRuntime(out var loadError))
+            {
+                progress?.Report((0, 0, "Whisper runtime available"));
+                _checked = true;
+                _available = true;
+                return true;
+            }
+            // File exists but can't load - might be corrupt or wrong architecture
+            progress?.Report((0, 0, $"Runtime file found but cannot load: {loadError}"));
+        }
+
+        // Try to download runtime
+        progress?.Report((0, 0, "Whisper runtime not bundled, attempting download..."));
+
+        var rid = GetRuntimeIdentifier();
+        var targetDir = Path.Combine(RuntimesDirectory, rid, "native");
+
+        // Try each download source
+        var sources = GetDownloadSources(rid);
+        foreach (var (name, url) in sources)
+        {
+            progress?.Report((0, 0, $"Trying {name}..."));
+
+            try
+            {
+                if (await TryDownloadAsync(url, targetDir, progress, ct))
+                {
+                    // Copy to app directory for reliability
+                    CopyToAppDirectory(targetDir);
+
+                    if (CanLoadRuntime(out _))
+                    {
+                        progress?.Report((0, 0, "Whisper runtime downloaded successfully"));
+                        _checked = true;
+                        _available = true;
+                        return true;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                progress?.Report((0, 0, $"{name} failed: {ex.Message}"));
+            }
+        }
+
+        // All attempts failed
+        _lastError = "Whisper runtime not available. Transcription will be disabled.";
+        progress?.Report((0, 0, _lastError));
+        progress?.Report((0, 0, GetManualInstallInstructions(rid)));
+        _checked = true;
+        _available = false;
+        return false;
+    }
+
+    /// <summary>
+    /// Get download sources in priority order.
+    /// </summary>
+    private static List<(string name, string url)> GetDownloadSources(string rid)
+    {
+        const string version = "1.9.0";
+        var sources = new List<(string, string)>();
+
+        // Whisper.net.Runtime contains CPU binaries for all platforms
+        // This is the standard package that works on Windows, Linux, and macOS
+        sources.Add((
+            "NuGet (Whisper.net.Runtime)",
+            $"https://api.nuget.org/v3-flatcontainer/whisper.net.runtime/{version}/whisper.net.runtime.{version}.nupkg"
+        ));
+
+        return sources;
+    }
+
+    /// <summary>
+    /// Try to download and extract the runtime from a URL.
+    /// </summary>
+    private static async Task<bool> TryDownloadAsync(
+        string url,
+        string targetDir,
+        IProgress<(long, long, string)>? progress,
+        CancellationToken ct)
+    {
+        Directory.CreateDirectory(targetDir);
+        var tempFile = Path.GetTempFileName();
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                progress?.Report((0, 0, $"HTTP {(int)response.StatusCode}"));
+                return false;
+            }
+
+            // Download to temp file
+            var totalBytes = response.Content.Headers.ContentLength ?? 0;
+            await using var content = await response.Content.ReadAsStreamAsync(ct);
+            await using var file = new FileStream(tempFile, FileMode.Create);
+
+            var buffer = new byte[81920];
+            long totalRead = 0;
+            int read;
+
+            while ((read = await content.ReadAsync(buffer, ct)) > 0)
+            {
+                await file.WriteAsync(buffer.AsMemory(0, read), ct);
+                totalRead += read;
+                var pct = totalBytes > 0 ? (int)(totalRead * 100 / totalBytes) : 0;
+                progress?.Report((totalRead, totalBytes, $"Downloading... {totalRead / 1024 / 1024}MB ({pct}%)"));
+            }
+
+            file.Close();
+            progress?.Report((totalRead, totalBytes, "Extracting..."));
+
+            // Extract from nupkg
+            return ExtractFromNupkg(tempFile, targetDir, progress);
+        }
+        finally
+        {
+            try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Extract native library from NuGet package.
+    /// </summary>
+    private static bool ExtractFromNupkg(string zipPath, string targetDir, IProgress<(long, long, string)>? progress)
+    {
+        var rid = GetRuntimeIdentifier();
+        var libName = GetNativeLibraryName();
+
+        using var archive = ZipFile.OpenRead(zipPath);
+
+        // Search for the native library in common locations
+        var searchPaths = new[]
+        {
+            $"runtimes/{rid}/native/{libName}",
+            $"runtimes/{rid}/{libName}",
+            $"build/{rid}/native/{libName}",
+            $"build/{rid}/{libName}",
+        };
+
+        foreach (var entry in archive.Entries)
+        {
+            // Check if this entry matches any expected path
+            var matches = searchPaths.Any(p =>
+                entry.FullName.Equals(p, StringComparison.OrdinalIgnoreCase));
+
+            if (!matches)
+            {
+                // Also check by filename alone
+                if (!entry.Name.Equals(libName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Make sure it's in a runtime-specific folder for our platform
+                var pathLower = entry.FullName.ToLowerInvariant();
+                var ridLower = rid.ToLowerInvariant();
+                if (!pathLower.Contains(ridLower) && !pathLower.Contains(ridLower.Replace("-", "_")))
+                    continue;
+            }
+
+            // Found it - extract
+            var destPath = Path.Combine(targetDir, libName);
+            entry.ExtractToFile(destPath, overwrite: true);
+            progress?.Report((0, 0, $"Extracted: {libName}"));
+            return true;
+        }
+
+        // Debug: list what's in the package
+        progress?.Report((0, 0, "Library not found in package. Contents:"));
+        foreach (var e in archive.Entries.Where(e => e.Name.EndsWith(".dll") || e.Name.EndsWith(".so") || e.Name.EndsWith(".dylib")).Take(10))
+        {
+            progress?.Report((0, 0, $"  {e.FullName}"));
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Copy downloaded library to app directory for better compatibility.
+    /// </summary>
+    private static void CopyToAppDirectory(string sourceDir)
+    {
+        var libName = GetNativeLibraryName();
+        var sourcePath = Path.Combine(sourceDir, libName);
+
+        if (!File.Exists(sourcePath))
+            return;
+
+        var appDir = AppContext.BaseDirectory;
+
+        // Try to copy to app directory root
+        try
+        {
+            var destPath = Path.Combine(appDir, libName);
+            if (!File.Exists(destPath))
+                File.Copy(sourcePath, destPath);
+        }
+        catch { /* Best effort */ }
+
+        // Also try NuGet layout
+        try
+        {
+            var rid = GetRuntimeIdentifier();
+            var runtimeDir = Path.Combine(appDir, "runtimes", rid, "native");
+            Directory.CreateDirectory(runtimeDir);
+            var destPath = Path.Combine(runtimeDir, libName);
+            if (!File.Exists(destPath))
+                File.Copy(sourcePath, destPath);
+        }
+        catch { /* Best effort */ }
+    }
+
+    /// <summary>
+    /// Configure runtime path (adds to PATH environment variable).
+    /// </summary>
+    public static void ConfigureRuntimePath()
+    {
+        var rid = GetRuntimeIdentifier();
+        var cacheDir = Path.Combine(RuntimesDirectory, rid, "native");
+
+        if (!Directory.Exists(cacheDir))
+            return;
+
+        try
+        {
+            var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+            if (!currentPath.Contains(cacheDir))
+            {
+                Environment.SetEnvironmentVariable("PATH", $"{cacheDir}{Path.PathSeparator}{currentPath}");
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Get manual installation instructions.
     /// </summary>
     public static string GetManualInstallInstructions(string rid)
     {
-        return $@"
-Whisper Runtime Manual Installation
-====================================
-If automatic download fails, you can install manually:
+        var libName = GetNativeLibraryName();
+        var appDir = AppContext.BaseDirectory;
 
-Option 1: Install via NuGet (recommended)
-  dotnet add package Whisper.net.Runtime --version 1.9.0
+        return $"""
+            To enable Whisper transcription, copy {libName} to:
+              {appDir}
 
-Option 2: Download and extract manually
-  1. Download: https://www.nuget.org/packages/Whisper.net.Runtime/1.9.0
-  2. Rename .nupkg to .zip and extract
-  3. Copy files from runtimes/{rid}/native/ to:
-     {Path.Combine(RuntimesDirectory, rid, "native")}
-
-Option 3: Platform-specific packages (smaller)
-  - Windows: Whisper.net.Runtime.Cpu.Windows
-  - Linux: Whisper.net.Runtime.Cpu.Linux
-  - macOS: Whisper.net.Runtime.CoreML (Apple Silicon)
-
-For GPU acceleration:
-  - CUDA: Whisper.net.Runtime.Cuda
-  - OpenVINO: Whisper.net.Runtime.OpenVino
-";
-    }
-
-    /// <summary>
-    /// Get the path within the NuGet package where native libs are stored.
-    /// </summary>
-    private static string GetNativePathInPackage(string rid)
-    {
-        // Whisper.net.Runtime v1.9.0 stores libs at: build/{rid}/
-        return $"build/{rid}/";
+            Download from: https://www.nuget.org/packages/Whisper.net.Runtime/1.9.0
+            (Rename .nupkg to .zip, extract, find runtimes/{rid}/native/{libName})
+            """;
     }
 }
