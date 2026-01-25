@@ -358,7 +358,7 @@ public class OptimizedDocument
                 // Full keyframe
                 currentChars = frame.Characters;
                 currentIndices = DecompressColorIndices(frame.ColorIndices);
-                content = RebuildAnsiContent(currentChars, currentIndices, Palette);
+                content = RebuildAnsiContent(currentChars ?? string.Empty, currentIndices, Palette);
             }
             else if (currentChars != null && currentIndices != null)
             {

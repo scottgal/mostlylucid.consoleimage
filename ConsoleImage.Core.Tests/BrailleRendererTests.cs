@@ -289,4 +289,79 @@ public class BrailleRendererTests : IDisposable
         renderer.Dispose();
         renderer.Dispose(); // Should not throw
     }
+
+    [Fact]
+    public void RenderImage_BlackImage_ColorIsBlack()
+    {
+        // Critical test: ensure black pixels output BLACK color, not white
+        using var renderer = new BrailleRenderer(new RenderOptions
+        {
+            MaxWidth = 10,
+            MaxHeight = 5,
+            UseColor = true,
+            Gamma = 0.65f // Default gamma
+        });
+
+        var image = CreateTestImage(20, 20, Color.Black);
+        var output = renderer.RenderImage(image);
+
+        // Black image should NOT contain white color codes (255;255;255)
+        Assert.DoesNotContain(";255;255;255m", output);
+
+        // Black image should either have black color codes OR no color codes (spaces for invisible)
+        // If it has color codes, they should be dark (< 50 per channel)
+        if (output.Contains("\x1b[38;2;"))
+        {
+            // Extract color values from ANSI codes
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                output, @"\x1b\[38;2;(\d+);(\d+);(\d+)m");
+
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                var r = int.Parse(match.Groups[1].Value);
+                var g = int.Parse(match.Groups[2].Value);
+                var b = int.Parse(match.Groups[3].Value);
+
+                // Colors should be dark (< 50) for a black input image
+                Assert.True(r < 50 && g < 50 && b < 50,
+                    $"Black image produced non-dark color: R={r}, G={g}, B={b}");
+            }
+        }
+    }
+
+    [Fact]
+    public void RenderImage_RedImage_ColorContainsRed()
+    {
+        // Test that colored images output correct colors
+        using var renderer = new BrailleRenderer(new RenderOptions
+        {
+            MaxWidth = 10,
+            MaxHeight = 5,
+            UseColor = true,
+            Gamma = 0.65f
+        });
+
+        var image = CreateTestImage(20, 20, new Rgba32(255, 0, 0, 255)); // Pure red
+        var output = renderer.RenderImage(image);
+
+        // Should contain red-ish ANSI codes
+        Assert.Contains("\x1b[38;2;", output);
+
+        // Extract color values - red channel should be > 100, green/blue should be lower
+        var matches = System.Text.RegularExpressions.Regex.Matches(
+            output, @"\x1b\[38;2;(\d+);(\d+);(\d+)m");
+
+        Assert.True(matches.Count > 0, "Red image should output color codes");
+
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            var r = int.Parse(match.Groups[1].Value);
+            var g = int.Parse(match.Groups[2].Value);
+            var b = int.Parse(match.Groups[3].Value);
+
+            // Red channel should be the dominant one
+            Assert.True(r > g && r > b,
+                $"Red image should have red as dominant channel: R={r}, G={g}, B={b}");
+        }
+    }
 }

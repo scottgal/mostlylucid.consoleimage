@@ -473,9 +473,13 @@ public sealed class FFmpegService : IDisposable
         var filterChain = string.Join(",", filters);
 
         // Build input args for seeking
+        // Always use -ss before -i for fast keyframe-based seeking
+        // Even for time 0, this helps ensure we start at a proper keyframe
         var inputArgs = "";
-        if (startTime.HasValue)
+        if (startTime.HasValue && startTime.Value > 0)
             inputArgs = $"-ss {startTime.Value:F3} ";
+        else
+            inputArgs = "-ss 0 "; // Explicit seek to 0 ensures keyframe alignment
 
         inputArgs += $"{hwAccel}-i \"{videoPath}\" ";
 
@@ -540,8 +544,17 @@ public sealed class FFmpegService : IDisposable
 
             // Create image from raw RGBA data
             var image = Image.LoadPixelData<Rgba32>(buffer, outputWidth, outputHeight);
-            framesProduced++;
 
+            // Skip potentially corrupted frames at start from some codecs
+            // Some codecs output garbage frames before keyframes are fully decoded
+            // Check up to first 5 frames for corruption (after that, assume codec is stable)
+            if (framesProduced < 5 && IsLikelyCorruptedFrame(buffer, outputWidth, outputHeight))
+            {
+                image.Dispose();
+                continue; // Skip this frame, try next
+            }
+
+            framesProduced++;
             yield return image;
         }
 
@@ -553,6 +566,62 @@ public sealed class FFmpegService : IDisposable
             }
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Check if a frame buffer appears corrupted (blank, uniform, or noise pattern).
+    /// Some codecs output garbage for the first frame before keyframes are decoded.
+    /// </summary>
+    private static bool IsLikelyCorruptedFrame(byte[] buffer, int width, int height)
+    {
+        // Sample a grid of pixels to check for corruption patterns
+        const int sampleCount = 100;
+        var totalPixels = width * height;
+        var step = Math.Max(1, totalPixels / sampleCount);
+
+        // Track color statistics
+        var sameAsFirst = 0;
+        byte firstR = buffer[0], firstG = buffer[1], firstB = buffer[2];
+
+        // Count pure black/white pixels (common in corrupted frames)
+        var blackCount = 0;
+        var whiteCount = 0;
+        var midGrayCount = 0; // Uninitialized RGBA often shows as mid-gray
+
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var pixelIdx = (i * step) * 4;
+            if (pixelIdx + 3 >= buffer.Length) break;
+
+            byte r = buffer[pixelIdx], g = buffer[pixelIdx + 1], b = buffer[pixelIdx + 2];
+
+            // Check if same as first pixel (uniform frame)
+            if (r == firstR && g == firstG && b == firstB)
+                sameAsFirst++;
+
+            // Check for common corruption patterns
+            if (r == 0 && g == 0 && b == 0)
+                blackCount++;
+            else if (r == 255 && g == 255 && b == 255)
+                whiteCount++;
+            else if (r >= 120 && r <= 136 && g >= 120 && g <= 136 && b >= 120 && b <= 136)
+                midGrayCount++; // Uninitialized memory often shows as gray
+        }
+
+        // Frame is likely corrupted if:
+        // 1. 95%+ pixels are same color (blank frame)
+        // 2. 90%+ pixels are pure black (not decoded yet)
+        // 3. 90%+ pixels are pure white (not decoded yet - common with some codecs)
+        // 4. 70%+ pixels are mid-gray (uninitialized)
+        var uniformThreshold = sampleCount * 0.95;
+        var blackThreshold = sampleCount * 0.90;
+        var whiteThreshold = sampleCount * 0.90;
+        var grayThreshold = sampleCount * 0.70;
+
+        return sameAsFirst >= uniformThreshold ||
+               blackCount >= blackThreshold ||
+               whiteCount >= whiteThreshold ||
+               midGrayCount >= grayThreshold;
     }
 
     /// <summary>

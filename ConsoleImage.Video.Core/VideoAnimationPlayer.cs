@@ -99,11 +99,15 @@ public class VideoAnimationPlayer : IDisposable
         var effectiveDuration = _options.GetEffectiveDuration(_videoInfo.Duration);
         _totalFramesEstimate = (int)(effectiveDuration * effectiveFps);
 
-        // Enter alternate screen
+        // Enter alternate screen and initialize clean state
+        Console.Write("\x1b[0m");   // Reset all attributes first
         if (_options.UseAltScreen)
-            Console.Write("\x1b[?1049h");
+        {
+            Console.Write("\x1b[?1049h"); // Enter alt screen
+        }
         Console.Write("\x1b[?25l"); // Hide cursor
-        Console.Write("\x1b[2J");   // Clear screen
+        Console.Write("\x1b[2J");   // Clear screen (ED2 - entire screen)
+        Console.Write("\x1b[H");    // Home cursor
         Console.Out.Flush();
 
         // Initialize subtitle renderer if subtitles are available
@@ -312,8 +316,9 @@ public class VideoAnimationPlayer : IDisposable
 
                 // Render subtitle if available (live transcription or static subtitles)
                 string? subtitleContent = null;
+                // Calculate current video time (frameIndex is 1-based after increment, so use frameIndex-1 for 0-based time)
                 var currentTime = _options.StartTime ?? 0;
-                currentTime += frameIndex / effectiveFps;
+                currentTime += (frameIndex - 1) / effectiveFps;
 
                 // Use live subtitle provider if available (takes precedence)
                 if (_subtitleRenderer != null && _options.LiveSubtitleProvider != null)

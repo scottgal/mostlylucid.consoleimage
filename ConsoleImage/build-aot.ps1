@@ -1,5 +1,5 @@
 # AOT Build Script for ConsoleImage
-# Handles mapped drive issues by converting to UNC paths if needed
+# Handles VS toolchain setup for native compilation
 
 $ErrorActionPreference = "Stop"
 
@@ -19,28 +19,9 @@ if (Test-Path $devShellPath) {
     Write-Warning "VS Developer Shell not found at $devShellPath"
 }
 
-# Get the project path - handle mapped drives
+# Get the project path
 $scriptDir = $PSScriptRoot
-$projectDir = Split-Path $scriptDir -Parent
-
-# Check if running from a mapped drive and convert to UNC path
-# Mapped drives don't work reliably with AOT/ILC because child processes
-# (especially elevated ones) don't inherit drive mappings
-function Get-UncPath($path) {
-    $drive = Split-Path $path -Qualifier
-    if ($drive -match '^[A-Z]:$') {
-        # Check if this is a mapped network drive
-        $netUse = net use $drive 2>$null | Select-String "Remote name"
-        if ($netUse) {
-            $uncRoot = ($netUse -split '\s+')[-1]
-            $relativePath = $path.Substring($drive.Length)
-            return $uncRoot + $relativePath
-        }
-    }
-    return $path
-}
-
-$projectPath = Get-UncPath (Join-Path $projectDir "ConsoleImage.Video\ConsoleImage.Video.csproj")
+$projectPath = Join-Path $scriptDir "ConsoleImage.csproj"
 
 Write-Host "Building: $projectPath" -ForegroundColor Cyan
-dotnet publish $projectPath -c Release -r win-x64
+dotnet publish $projectPath -c Release -r win-x64 --self-contained

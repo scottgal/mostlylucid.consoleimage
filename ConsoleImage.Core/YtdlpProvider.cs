@@ -729,10 +729,10 @@ public static class YtdlpProvider
 
             var stderrTask = Task.Run(async () =>
             {
-                while (!process.StandardError.EndOfStream)
+                string? line;
+                while ((line = await process.StandardError.ReadLineAsync(ct)) != null)
                 {
-                    var line = await process.StandardError.ReadLineAsync(ct);
-                    if (line != null && progress != null)
+                    if (progress != null)
                     {
                         var match = progressRegex.Match(line);
                         if (match.Success && double.TryParse(match.Groups[1].Value, out var pct))

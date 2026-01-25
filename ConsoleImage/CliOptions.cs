@@ -452,6 +452,12 @@ public class CliOptions
         // Read-only mode
         NoWrite = new Option<bool>("--no-write") { Description = "Disable all caching and downloading (read-only mode for locked environments)" };
         NoWrite.Aliases.Add("--readonly");
+
+        // Template support
+        Template = new Option<string?>("--template") { Description = "Load options from a JSON template file" };
+        Template.Aliases.Add("-T");
+
+        SaveTemplate = new Option<string?>("--save-template") { Description = "Save current options to a JSON template file" };
     }
 
     /// <summary>
@@ -599,5 +605,9 @@ public class CliOptions
         command.Options.Add(EasterEgg);
         command.Options.Add(Debug);
         command.Options.Add(NoWrite);
+
+        // Template support
+        command.Options.Add(Template);
+        command.Options.Add(SaveTemplate);
     }
 }

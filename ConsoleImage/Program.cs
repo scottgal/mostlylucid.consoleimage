@@ -42,13 +42,29 @@ rootCommand.Subcommands.Add(transcribeCommand);
 
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
+    // Parse template options first
+    var templatePath = parseResult.GetValue(cliOptions.Template);
+    var saveTemplatePath = parseResult.GetValue(cliOptions.SaveTemplate);
+
+    // Load template settings if specified
+    TemplateSettings? template = null;
+    if (!string.IsNullOrEmpty(templatePath))
+    {
+        template = TemplateHelper.Load(templatePath);
+        if (template == null)
+        {
+            Console.Error.WriteLine($"Error: Could not load template from '{templatePath}'");
+            return 1;
+        }
+    }
+
     // Parse all option values
     var inputPath = parseResult.GetValue(cliOptions.Input);
     var input = !string.IsNullOrEmpty(inputPath) ? new FileInfo(inputPath) : null;
-    var width = parseResult.GetValue(cliOptions.Width);
-    var height = parseResult.GetValue(cliOptions.Height);
-    var maxWidth = parseResult.GetValue(cliOptions.MaxWidth);
-    var maxHeight = parseResult.GetValue(cliOptions.MaxHeight);
+    var width = parseResult.GetValue(cliOptions.Width) ?? template?.Width;
+    var height = parseResult.GetValue(cliOptions.Height) ?? template?.Height;
+    var maxWidth = template?.MaxWidth ?? parseResult.GetValue(cliOptions.MaxWidth);
+    var maxHeight = template?.MaxHeight ?? parseResult.GetValue(cliOptions.MaxHeight);
     // Parse time options (supports: seconds, mm:ss, hh:mm:ss, or -sm/-em/-dm for decimal minutes)
     var startStr = parseResult.GetValue(cliOptions.Start);
     var endStr = parseResult.GetValue(cliOptions.End);
@@ -73,11 +89,11 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         Console.Error.WriteLine($"Error: {ex.Message}");
         return 1;
     }
-    var speed = parseResult.GetValue(cliOptions.Speed);
-    var loop = parseResult.GetValue(cliOptions.Loop);
+    var speed = template?.Speed ?? parseResult.GetValue(cliOptions.Speed);
+    var loop = template?.Loop ?? parseResult.GetValue(cliOptions.Loop);
     var noAnimate = parseResult.GetValue(cliOptions.NoAnimate);
-    var fps = parseResult.GetValue(cliOptions.Fps);
-    var frameStep = parseResult.GetValue(cliOptions.FrameStep);
+    var fps = parseResult.GetValue(cliOptions.Fps) ?? template?.Fps;
+    var frameStep = parseResult.GetValue(cliOptions.FrameStep) ?? template?.FrameStep ?? "1";
 
     // --no-animate: show first frame only
     if (noAnimate)
@@ -85,15 +101,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         loop = 1;
         durationFrames ??= 1;
     }
-    var sampling = parseResult.GetValue(cliOptions.Sampling);
-    var sceneThreshold = parseResult.GetValue(cliOptions.SceneThreshold);
-    var useAsciiOpt = parseResult.GetValue(cliOptions.Ascii);
-    var useBlocksOpt = parseResult.GetValue(cliOptions.Blocks);
-    var useBrailleOpt = parseResult.GetValue(cliOptions.Braille);
-    var useMatrixOpt = parseResult.GetValue(cliOptions.Matrix);
-    var useMonochromeOpt = parseResult.GetValue(cliOptions.Monochrome);
+    var sampling = parseResult.GetValue(cliOptions.Sampling) ?? template?.Sampling;
+    var sceneThreshold = template?.SceneThreshold ?? parseResult.GetValue(cliOptions.SceneThreshold);
+    var useAsciiOpt = parseResult.GetValue(cliOptions.Ascii) || (template?.Ascii ?? false);
+    var useBlocksOpt = parseResult.GetValue(cliOptions.Blocks) || (template?.Blocks ?? false);
+    var useBrailleOpt = parseResult.GetValue(cliOptions.Braille) || (template?.Braille ?? false);
+    var useMatrixOpt = parseResult.GetValue(cliOptions.Matrix) || (template?.Matrix ?? false);
+    var useMonochromeOpt = parseResult.GetValue(cliOptions.Monochrome) || (template?.Monochrome ?? false);
     var modeOpt = parseResult.GetValue(cliOptions.Mode);
-    var noColor = parseResult.GetValue(cliOptions.NoColor);
+    var noColor = parseResult.GetValue(cliOptions.NoColor) || (template?.NoColor ?? false);
 
     // Resolve render mode: -m/--mode takes priority, then individual flags, then default (braille)
     bool useAscii, useBlocks, useBraille, useMatrix;
@@ -130,29 +146,29 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             useBraille = !useAscii && !useBlocks && !useMatrix;
         }
     }
-    var matrixColor = parseResult.GetValue(cliOptions.MatrixColor);
-    var matrixFullColor = parseResult.GetValue(cliOptions.MatrixFullColor);
-    var matrixDensity = parseResult.GetValue(cliOptions.MatrixDensity);
-    var matrixSpeed = parseResult.GetValue(cliOptions.MatrixSpeed);
-    var matrixAlphabet = parseResult.GetValue(cliOptions.MatrixAlphabet);
-    var colorCount = parseResult.GetValue(cliOptions.Colors);
-    var contrast = parseResult.GetValue(cliOptions.Contrast);
-    var gamma = parseResult.GetValue(cliOptions.Gamma);
-    var charAspect = parseResult.GetValue(cliOptions.CharAspect);
-    var charset = parseResult.GetValue(cliOptions.Charset);
-    var preset = parseResult.GetValue(cliOptions.Preset);
-    var buffer = parseResult.GetValue(cliOptions.Buffer);
-    var noHwAccel = parseResult.GetValue(cliOptions.NoHwAccel);
-    var noAltScreen = parseResult.GetValue(cliOptions.NoAltScreen);
+    var matrixColor = parseResult.GetValue(cliOptions.MatrixColor) ?? template?.MatrixColor;
+    var matrixFullColor = parseResult.GetValue(cliOptions.MatrixFullColor) || (template?.MatrixFullColor ?? false);
+    var matrixDensity = parseResult.GetValue(cliOptions.MatrixDensity) ?? template?.MatrixDensity;
+    var matrixSpeed = parseResult.GetValue(cliOptions.MatrixSpeed) ?? template?.MatrixSpeed;
+    var matrixAlphabet = parseResult.GetValue(cliOptions.MatrixAlphabet) ?? template?.MatrixAlphabet;
+    var colorCount = parseResult.GetValue(cliOptions.Colors) ?? template?.Colors;
+    var contrast = template?.Contrast ?? parseResult.GetValue(cliOptions.Contrast);
+    var gamma = parseResult.GetValue(cliOptions.Gamma) ?? template?.Gamma;
+    var charAspect = parseResult.GetValue(cliOptions.CharAspect) ?? template?.CharAspect;
+    var charset = parseResult.GetValue(cliOptions.Charset) ?? template?.Charset;
+    var preset = parseResult.GetValue(cliOptions.Preset) ?? template?.Preset;
+    var buffer = template?.Buffer ?? parseResult.GetValue(cliOptions.Buffer);
+    var noHwAccel = parseResult.GetValue(cliOptions.NoHwAccel) || (template?.NoHwAccel ?? false);
+    var noAltScreen = parseResult.GetValue(cliOptions.NoAltScreen) || (template?.NoAltScreen ?? false);
     var ffmpegPath = parseResult.GetValue(cliOptions.FfmpegPath);
     var showInfo = parseResult.GetValue(cliOptions.Info);
     var calibrate = parseResult.GetValue(cliOptions.Calibrate);
     var saveCalibrationOpt = parseResult.GetValue(cliOptions.SaveCalibration);
-    var showStatus = parseResult.GetValue(cliOptions.Status);
-    var statusWidth = parseResult.GetValue(cliOptions.StatusWidth);
-    var gifFontSize = parseResult.GetValue(cliOptions.GifFontSize);
-    var gifScale = parseResult.GetValue(cliOptions.GifScale);
-    var gifColors = colorCount ?? 64;
+    var showStatus = parseResult.GetValue(cliOptions.Status) || (template?.ShowStatus ?? false);
+    var statusWidth = parseResult.GetValue(cliOptions.StatusWidth) ?? template?.StatusWidth;
+    var gifFontSize = template?.GifFontSize ?? parseResult.GetValue(cliOptions.GifFontSize);
+    var gifScale = template?.GifScale ?? parseResult.GetValue(cliOptions.GifScale);
+    var gifColors = colorCount ?? template?.GifColors ?? 64;
     var gifFps = parseResult.GetValue(cliOptions.GifFps);
     var gifLength = parseResult.GetValue(cliOptions.GifLength);
     var gifFrames = parseResult.GetValue(cliOptions.GifFrames);
@@ -166,25 +182,25 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var noAutoDownload = parseResult.GetValue(cliOptions.NoFfmpegDownload);
     var autoConfirmDownload = parseResult.GetValue(cliOptions.FfmpegYes);
     var output = parseResult.GetValue(cliOptions.Output);
-    var noInvert = parseResult.GetValue(cliOptions.NoInvert);
-    var enableEdge = parseResult.GetValue(cliOptions.Edge);
-    var bgThreshold = parseResult.GetValue(cliOptions.BgThreshold);
-    var darkBgThreshold = parseResult.GetValue(cliOptions.DarkBgThreshold);
-    var autoBg = parseResult.GetValue(cliOptions.AutoBg);
-    var noParallel = parseResult.GetValue(cliOptions.NoParallel);
+    var noInvert = parseResult.GetValue(cliOptions.NoInvert) || (template?.NoInvert ?? false);
+    var enableEdge = parseResult.GetValue(cliOptions.Edge) || (template?.EnableEdge ?? false);
+    var bgThreshold = parseResult.GetValue(cliOptions.BgThreshold) ?? template?.BgThreshold;
+    var darkBgThreshold = parseResult.GetValue(cliOptions.DarkBgThreshold) ?? template?.DarkBgThreshold;
+    var autoBg = parseResult.GetValue(cliOptions.AutoBg) || (template?.AutoBg ?? false);
+    var noParallel = parseResult.GetValue(cliOptions.NoParallel) || (template?.NoParallel ?? false);
     var noDither = parseResult.GetValue(cliOptions.NoDither);
     var noEdgeChars = parseResult.GetValue(cliOptions.NoEdgeChars);
     var jsonOutput = parseResult.GetValue(cliOptions.Json);
-    var darkCutoff = parseResult.GetValue(cliOptions.DarkCutoff);
-    var lightCutoff = parseResult.GetValue(cliOptions.LightCutoff);
-    var dejitter = parseResult.GetValue(cliOptions.Dejitter);
-    var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold);
+    var darkCutoff = parseResult.GetValue(cliOptions.DarkCutoff) ?? template?.DarkCutoff;
+    var lightCutoff = parseResult.GetValue(cliOptions.LightCutoff) ?? template?.LightCutoff;
+    var dejitter = parseResult.GetValue(cliOptions.Dejitter) || (template?.Dejitter ?? false);
+    var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold) ?? template?.ColorThreshold;
     var debug = parseResult.GetValue(cliOptions.Debug);
 
     // Subtitle options - unified: auto|off|<path>|yt|whisper|whisper+diarize
-    var subsValue = parseResult.GetValue(cliOptions.Subs);
-    var subtitleLang = parseResult.GetValue(cliOptions.SubtitleLang);
-    var whisperModel = parseResult.GetValue(cliOptions.WhisperModel);
+    var subsValue = parseResult.GetValue(cliOptions.Subs) ?? template?.Subs;
+    var subtitleLang = template?.SubtitleLang ?? parseResult.GetValue(cliOptions.SubtitleLang);
+    var whisperModel = parseResult.GetValue(cliOptions.WhisperModel) ?? template?.WhisperModel;
     var whisperThreads = parseResult.GetValue(cliOptions.WhisperThreads);
     var transcriptOnly = parseResult.GetValue(cliOptions.Transcript);
     var forceSubs = parseResult.GetValue(cliOptions.ForceSubs);
@@ -208,17 +224,17 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var markdownFormat = parseResult.GetValue(cliOptions.MarkdownFormat);
 
     // Slideshow mode
-    var slideDelay = parseResult.GetValue(cliOptions.SlideDelay);
-    var shuffle = parseResult.GetValue(cliOptions.Shuffle);
-    var recursive = parseResult.GetValue(cliOptions.Recursive);
-    var sortBy = parseResult.GetValue(cliOptions.SortBy);
-    var sortDescOpt = parseResult.GetValue(cliOptions.SortDesc);
+    var slideDelay = template?.SlideDelay ?? parseResult.GetValue(cliOptions.SlideDelay);
+    var shuffle = parseResult.GetValue(cliOptions.Shuffle) || (template?.Shuffle ?? false);
+    var recursive = parseResult.GetValue(cliOptions.Recursive) || (template?.Recursive ?? false);
+    var sortBy = parseResult.GetValue(cliOptions.SortBy) ?? template?.SortBy;
+    var sortDescOpt = parseResult.GetValue(cliOptions.SortDesc) || (template?.SortDesc ?? false);
     var sortAscOpt = parseResult.GetValue(cliOptions.SortAsc);
     // --asc overrides --desc (default is descending/newest first)
     var sortDesc = sortAscOpt ? false : sortDescOpt;
-    var videoPreview = parseResult.GetValue(cliOptions.VideoPreview);
-    var gifLoop = parseResult.GetValue(cliOptions.GifLoop);
-    var hideSlideInfo = parseResult.GetValue(cliOptions.HideSlideInfo);
+    var videoPreview = template?.VideoPreview ?? parseResult.GetValue(cliOptions.VideoPreview);
+    var gifLoop = parseResult.GetValue(cliOptions.GifLoop) || (template?.GifLoop ?? false);
+    var hideSlideInfo = parseResult.GetValue(cliOptions.HideSlideInfo) || (template?.HideSlideInfo ?? false);
 
     // Parse unified output option - auto-detect format from extension
     var (outputAsJson, outputAsCompressed, jsonOutputPath, gifOutputPath) =
@@ -228,6 +244,87 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     // Determine render mode for calibration value lookup
     var renderMode = RenderHelpers.GetRenderMode(useBraille, useBlocks, useMatrix);
+
+    // Save template if requested
+    if (!string.IsNullOrEmpty(saveTemplatePath))
+    {
+        var templateToSave = new TemplateSettings
+        {
+            // Dimensions
+            Width = width,
+            Height = height,
+            MaxWidth = maxWidth != 120 ? maxWidth : null, // Only save if not default
+            MaxHeight = maxHeight != 40 ? maxHeight : null,
+            // Render mode
+            Ascii = useAscii ? true : null,
+            Blocks = useBlocks ? true : null,
+            Braille = useBraille && !useMonochromeOpt ? true : null,
+            Monochrome = useMonochromeOpt ? true : null,
+            Matrix = useMatrix ? true : null,
+            // Matrix options
+            MatrixColor = matrixColor,
+            MatrixFullColor = matrixFullColor ? true : null,
+            MatrixDensity = matrixDensity,
+            MatrixSpeed = matrixSpeed,
+            MatrixAlphabet = matrixAlphabet,
+            // Color/rendering
+            NoColor = noColor ? true : null,
+            Colors = colorCount,
+            Contrast = contrast != 2.0f ? contrast : null,
+            Gamma = gamma,
+            CharAspect = charAspect,
+            Charset = charset,
+            Preset = preset,
+            // Playback
+            Speed = speed != 1.0f ? speed : null,
+            Loop = loop != 1 ? loop : null,
+            Fps = fps,
+            FrameStep = frameStep != "1" ? frameStep : null,
+            Sampling = sampling,
+            SceneThreshold = sceneThreshold != 0 ? sceneThreshold : null,
+            // Performance
+            Buffer = buffer != 50 ? buffer : null,
+            NoHwAccel = noHwAccel ? true : null,
+            NoAltScreen = noAltScreen ? true : null,
+            NoParallel = noParallel ? true : null,
+            // Output
+            ShowStatus = showStatus ? true : null,
+            StatusWidth = statusWidth,
+            // GIF output
+            GifFontSize = gifFontSize != 10 ? gifFontSize : null,
+            GifScale = gifScale != 1.0f ? gifScale : null,
+            GifFps = gifFps,
+            GifColors = gifColors != 64 ? gifColors : null,
+            // Image adjustments
+            NoInvert = noInvert ? true : null,
+            EnableEdge = enableEdge ? true : null,
+            BgThreshold = bgThreshold,
+            DarkBgThreshold = darkBgThreshold,
+            AutoBg = autoBg ? true : null,
+            DarkCutoff = darkCutoff,
+            LightCutoff = lightCutoff,
+            // Temporal stability
+            Dejitter = dejitter ? true : null,
+            ColorThreshold = colorThreshold,
+            // Subtitles
+            Subs = subsValue,
+            SubtitleLang = subtitleLang != "en" ? subtitleLang : null,
+            WhisperModel = whisperModel,
+            // Slideshow
+            SlideDelay = slideDelay != 3.0f ? slideDelay : null,
+            Shuffle = shuffle ? true : null,
+            Recursive = recursive ? true : null,
+            SortBy = sortBy,
+            SortDesc = sortDesc ? true : null,
+            VideoPreview = videoPreview,
+            GifLoop = gifLoop ? true : null,
+            HideSlideInfo = hideSlideInfo ? true : null
+        };
+
+        TemplateHelper.Save(templateToSave, saveTemplatePath);
+        Console.WriteLine($"Template saved to: {saveTemplatePath}");
+        return 0;
+    }
 
     // Calibration mode - supports aspect ratio and gamma calibration per render mode
     // Tab switches between aspect ratio (circle test) and gamma (color test card)
@@ -310,7 +407,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             Contrast = contrast,
             Gamma = effectiveGamma,
             CharAspect = charAspect,
-            ShowStatus = showStatus
+            ShowStatus = showStatus,
+            // Playback options
+            Loop = loop,
+            Speed = speed,
+            // Subtitle options
+            SubsValue = subsValue,
+            SubtitleLang = subtitleLang ?? "en",
+            // Calibration
+            SavedCalibration = savedCalibration
         };
         return await SlideshowHandler.HandleAsync(inputPath, slideshowOptions, cancellationToken);
     }
@@ -664,12 +769,49 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     // Handle subtitle loading based on source type
     if (subtitleSource != "off")
     {
-        // For whisper source in playback mode, use streaming chunked transcription
-        if (subtitleSource == "whisper" && isPlaybackMode)
+        // For "auto" in playback mode, check for subtitle files first, then fall back to streaming
+        bool useStreamingWhisper = false;
+        if (subtitleSource == "auto" && isPlaybackMode)
+        {
+            // Check for local subtitle files first
+            var localSubFile = SubtitleResolver.FindMatchingSubtitleFile(inputFullPath, subtitleLang ?? "en")
+                ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputFullPath);
+
+            if (!string.IsNullOrEmpty(localSubFile))
+            {
+                Console.Error.WriteLine($"Found subtitle file: {Path.GetFileName(localSubFile)}");
+                subtitles = await SubtitleParser.ParseAsync(localSubFile, cancellationToken);
+                Console.Error.WriteLine($"Loaded {subtitles.Count} subtitles");
+            }
+            else if (WhisperTranscriptionService.IsAvailable())
+            {
+                // No files found, use streaming Whisper
+                Console.Error.WriteLine("No subtitles found, using streaming transcription...");
+                useStreamingWhisper = true;
+            }
+            else
+            {
+                Console.Error.WriteLine("Note: No subtitles found and Whisper not available.");
+            }
+        }
+
+        // For explicit whisper source OR auto fallback in playback mode, use streaming chunked transcription
+        if ((subtitleSource == "whisper" && isPlaybackMode) || useStreamingWhisper)
         {
             // First, check if we have a cached subtitle file from previous transcription
             // Skip cache if --force-subs is used
             var cachedSubPath = GetSubtitlePathForVideo(inputFullPath);
+
+            // Auto-migrate old cached files that used non-deterministic hash
+            if (!File.Exists(cachedSubPath))
+            {
+                var migratedPath = MigrateOldSubtitleCache(inputFullPath, cachedSubPath);
+                if (migratedPath != null)
+                {
+                    Console.Error.WriteLine($"Migrated cached subtitles to new format");
+                }
+            }
+
             // Don't use cached subtitles when -ss is specified (timestamps won't match)
             var useCache = !forceSubs && !start.HasValue && File.Exists(cachedSubPath);
             if (useCache)
@@ -742,9 +884,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 }
             }
         }
-        else
+        else if (subtitles == null)
         {
-            // For file sources or output mode, use full batch transcription
+            // For file sources or output mode (not already loaded), use full batch transcription
             subtitles = await LoadSubtitlesAsync(
                 subtitleSource, subtitleFilePath, inputFullPath, subtitleLang ?? "en",
                 whisperModel ?? "base", whisperThreads, diarize, start, duration, autoConfirmDownload, cancellationToken);
@@ -1554,8 +1696,9 @@ static string GetSubtitlePathForVideo(string videoPath)
     // Cleanup old cache files on first access (files older than 7 days)
     CleanupOldSubtitleCache(cacheDir);
 
-    // Generate safe filename from video path (hash to avoid collisions/long paths)
-    var pathHash = $"{videoPath.GetHashCode():X8}";
+    // Generate safe filename from video path using deterministic hash
+    // Note: string.GetHashCode() is NOT deterministic across runs, so we use a simple stable hash
+    var pathHash = ComputeStableHash(videoPath);
     var name = Path.GetFileNameWithoutExtension(videoPath);
 
     // Keep filename readable but unique
@@ -1563,6 +1706,73 @@ static string GetSubtitlePathForVideo(string videoPath)
     safeName = string.Concat(safeName.Split(Path.GetInvalidFileNameChars()));
 
     return Path.Combine(cacheDir, $"{safeName}_{pathHash}.vtt");
+}
+
+/// <summary>
+/// Compute a stable hash that doesn't change between runs (unlike string.GetHashCode())
+/// </summary>
+static string ComputeStableHash(string input)
+{
+    // Simple DJB2 hash algorithm - deterministic and fast
+    unchecked
+    {
+        uint hash = 5381;
+        foreach (char c in input)
+        {
+            hash = ((hash << 5) + hash) + c;
+        }
+        return hash.ToString("X8");
+    }
+}
+
+/// <summary>
+/// Migrate old cached subtitle files that used non-deterministic string.GetHashCode()
+/// to the new deterministic hash naming scheme.
+/// </summary>
+static string? MigrateOldSubtitleCache(string videoPath, string newCachePath)
+{
+    try
+    {
+        var cacheDir = Path.GetDirectoryName(newCachePath);
+        if (string.IsNullOrEmpty(cacheDir) || !Directory.Exists(cacheDir))
+            return null;
+
+        var videoName = Path.GetFileNameWithoutExtension(videoPath);
+        var safeName = videoName.Length > 50 ? videoName[..50] : videoName;
+        safeName = string.Concat(safeName.Split(Path.GetInvalidFileNameChars()));
+
+        // Look for any .vtt file with matching base name but different hash
+        var pattern = $"{safeName}_*.vtt";
+        var existingFiles = Directory.GetFiles(cacheDir, pattern);
+
+        foreach (var oldFile in existingFiles)
+        {
+            // Skip if it's already the new path
+            if (string.Equals(oldFile, newCachePath, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Found an old cache file - migrate it
+            try
+            {
+                File.Move(oldFile, newCachePath);
+                return newCachePath;
+            }
+            catch
+            {
+                // If move fails (file in use, etc.), try copy
+                try
+                {
+                    File.Copy(oldFile, newCachePath, overwrite: false);
+                    File.Delete(oldFile);
+                    return newCachePath;
+                }
+                catch { /* Migration failed, will re-transcribe */ }
+            }
+        }
+    }
+    catch { /* Ignore migration errors */ }
+
+    return null;
 }
 
 static void CleanupOldSubtitleCache(string cacheDir)

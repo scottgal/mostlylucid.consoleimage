@@ -290,7 +290,6 @@ public class RealtimeTranscriber : IAsyncDisposable
 
     private readonly double _bufferSeconds;
     private readonly List<TranscriptSegment> _segments = new();
-    private int _currentSegmentIndex;
 
     public RealtimeTranscriber(
         string modelSize = "tiny",

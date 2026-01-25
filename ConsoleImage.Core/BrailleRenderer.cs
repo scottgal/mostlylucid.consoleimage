@@ -711,14 +711,14 @@ public class BrailleRenderer : IDisposable
         {
             // Increase saturation: push colors away from gray
             var mid = (maxC + minC) / 2f;
-            const float satBoost = 1.25f; // 25% more saturated
+            const float satBoost = 1.2f; // 20% more saturated (reduced from 1.25)
             rf = mid + (rf - mid) * satBoost;
             gf = mid + (gf - mid) * satBoost;
             bf = mid + (bf - mid) * satBoost;
         }
 
-        // Brightness boost: ~15%
-        const float brightBoost = 1.15f;
+        // Brightness boost: ~10% (reduced from 15% to prevent solarization)
+        const float brightBoost = 1.1f;
         rf *= brightBoost;
         gf *= brightBoost;
         bf *= brightBoost;

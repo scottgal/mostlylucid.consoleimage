@@ -88,9 +88,13 @@ public class SubtitleRenderer
             return sb.ToString();
         }
 
+        // SECURITY: Sanitize external text to prevent ANSI escape sequence injection
+        // Subtitle files from external sources could contain malicious terminal codes
+        var safeText = SecurityHelper.StripAnsiCodes(entry.Text);
+
         // Get speaker-specific style if diarization is enabled
         var style = GetStyleForSpeaker(entry.SpeakerId);
-        var lines = FormatText(entry.Text);
+        var lines = FormatText(safeText);
 
         for (var i = 0; i < _maxLines; i++)
         {
@@ -101,7 +105,9 @@ public class SubtitleRenderer
                 // Add speaker prefix on first line if available
                 if (i == 0 && !string.IsNullOrEmpty(entry.SpeakerId))
                 {
-                    var speakerName = GetSpeakerDisplayName(entry.SpeakerId);
+                    // SECURITY: Sanitize speaker ID before display
+                    var safeSpeakerId = SecurityHelper.StripAnsiCodes(entry.SpeakerId);
+                    var speakerName = GetSpeakerDisplayName(safeSpeakerId);
                     line = $"{speakerName}: {line}";
                 }
 

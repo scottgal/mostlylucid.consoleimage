@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using ConsoleImage.Core;
+using ConsoleImage.Core.Subtitles;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
 using SixLabors.ImageSharp;
@@ -43,6 +44,17 @@ public record SlideshowOptions
     public float Gamma { get; init; } = 0.65f;
     public float? CharAspect { get; init; }
     public bool ShowStatus { get; init; }
+
+    // Playback options - passed through to video/animation
+    public int Loop { get; init; } = 1;        // 0 = infinite loop
+    public float Speed { get; init; } = 1.0f;
+
+    // Subtitle options
+    public string? SubsValue { get; init; }    // auto|off|<path>|whisper|yt
+    public string SubtitleLang { get; init; } = "en";
+
+    // Calibration
+    public CalibrationSettings? SavedCalibration { get; init; }
 }
 
 /// <summary>
@@ -443,7 +455,7 @@ public static class SlideshowHandler
                                 Console.Error.WriteLine(paused ? "[PAUSED] " : "[PLAYING]");
                                 break;
 
-                            case ConsoleKey.RightArrow:
+                            // Up/Down arrows for navigation (Up=prev, Down=next)
                             case ConsoleKey.DownArrow:
                             case ConsoleKey.N:
                                 await displayCts.CancelAsync();
@@ -451,11 +463,23 @@ public static class SlideshowHandler
                                 userSkipped = true;
                                 break;
 
-                            case ConsoleKey.LeftArrow:
                             case ConsoleKey.UpArrow:
                             case ConsoleKey.P:
                                 await displayCts.CancelAsync();
                                 currentIndex = (currentIndex - 1 + fileCount) % fileCount;
+                                userSkipped = true;
+                                break;
+
+                            // Left/Right navigate between files (same as P/N)
+                            case ConsoleKey.LeftArrow:
+                                await displayCts.CancelAsync();
+                                currentIndex = (currentIndex - 1 + fileCount) % fileCount;
+                                userSkipped = true;
+                                break;
+
+                            case ConsoleKey.RightArrow:
+                                await displayCts.CancelAsync();
+                                currentIndex = (currentIndex + 1) % fileCount;
                                 userSkipped = true;
                                 break;
 
@@ -788,8 +812,9 @@ public static class SlideshowHandler
                 .ToList();
         }
 
-        var loopCount = options.GifLoop ? 0 : 1;
-        await PlayFramesInPlaceAsync(frames, loopCount, 1.0f, contentStartLine, ct);
+        // Use GifLoop option or general Loop option (0 = infinite)
+        var loopCount = options.GifLoop ? 0 : options.Loop;
+        await PlayFramesInPlaceAsync(frames, loopCount, options.Speed, contentStartLine, ct);
     }
 
     // Render GIF frames from already-loaded image to avoid double-loading
@@ -851,12 +876,21 @@ public static class SlideshowHandler
 
         try
         {
+            // Load subtitles if specified
+            SubtitleTrack? subtitles = null;
+            if (!string.IsNullOrEmpty(options.SubsValue) && options.SubsValue != "off")
+            {
+                subtitles = await LoadSubtitlesForVideoAsync(file, options.SubsValue, options.SubtitleLang, ct);
+            }
+
             var videoOptions = new Video.Core.VideoRenderOptions
             {
                 RenderOptions = CreateRenderOptions(options),
-                EndTime = options.VideoPreview,
-                LoopCount = 1,
+                EndTime = options.VideoPreview > 0 ? options.VideoPreview : null,
+                LoopCount = options.Loop,
+                SpeedMultiplier = options.Speed,
                 UseAltScreen = false,
+                Subtitles = subtitles,
                 RenderMode = options.UseBraille ? Video.Core.VideoRenderMode.Braille
                     : options.UseBlocks ? Video.Core.VideoRenderMode.ColorBlocks
                     : Video.Core.VideoRenderMode.Ascii
@@ -868,6 +902,43 @@ public static class SlideshowHandler
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Video playback error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Load subtitles for a video file.
+    /// </summary>
+    private static async Task<SubtitleTrack?> LoadSubtitlesForVideoAsync(
+        string videoPath,
+        string subsValue,
+        string lang,
+        CancellationToken ct)
+    {
+        try
+        {
+            // Check if SubsValue is a file path
+            if (File.Exists(subsValue))
+            {
+                return await SubtitleParser.ParseAsync(subsValue, ct);
+            }
+
+            // Auto mode - search for matching subtitle file
+            if (subsValue.Equals("auto", StringComparison.OrdinalIgnoreCase))
+            {
+                var subFile = SubtitleResolver.FindMatchingSubtitleFile(videoPath, lang)
+                    ?? SubtitleResolver.FindSubtitleInMediaLibrary(videoPath);
+
+                if (!string.IsNullOrEmpty(subFile))
+                {
+                    return await SubtitleParser.ParseAsync(subFile, ct);
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null; // Silent fail for slideshow
         }
     }
 

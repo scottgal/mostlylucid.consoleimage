@@ -128,4 +128,34 @@ public static class SecurityHelper
 
         return string.IsNullOrWhiteSpace(sanitized) ? "unnamed" : sanitized;
     }
+
+    /// <summary>
+    /// Remove ANSI escape sequences from text to prevent terminal injection attacks.
+    /// External text (subtitles, speaker names) should always be sanitized before display.
+    /// </summary>
+    /// <param name="text">Text that may contain ANSI escape sequences.</param>
+    /// <returns>Text with all ANSI sequences removed.</returns>
+    public static string StripAnsiCodes(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        // Remove ANSI CSI sequences: ESC [ ... letter
+        // Also removes OSC sequences: ESC ] ... BEL/ST
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            text,
+            @"\x1b[\[\]()#;?]?(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[A-Za-z@^`\x7f]?",
+            string.Empty);
+
+        // Also strip bare ESC and other control characters (except common whitespace)
+        var sb = new System.Text.StringBuilder(result.Length);
+        foreach (var c in result)
+        {
+            // Allow printable characters, space, tab, newline
+            if (c >= ' ' || c == '\t' || c == '\n' || c == '\r')
+                sb.Append(c);
+        }
+
+        return sb.ToString();
+    }
 }

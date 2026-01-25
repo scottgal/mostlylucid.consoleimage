@@ -1,0 +1,14 @@
+{
+  "Width": 60,
+  "Braille": true,
+  "Contrast": 2.5,
+  "Speed": 1.5,
+  "Sampling": "uniform",
+  "SceneThreshold": 0.4,
+  "Buffer": 3,
+  "GifFps": 15,
+  "WhisperModel": "base",
+  "SortBy": "date",
+  "SortDesc": true,
+  "VideoPreview": 30
+}

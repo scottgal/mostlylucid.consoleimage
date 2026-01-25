@@ -42,8 +42,16 @@ public static class CalibrationHandler
         var modeName = RenderHelpers.GetRenderModeName(renderMode);
 
         // Get default dimensions from terminal or use reasonable defaults
-        var defaultWidth = width ?? Math.Min(Console.WindowWidth - 2, 80);
-        var defaultHeight = height ?? Math.Min(Console.WindowHeight - 10, 30);
+        int consoleWidth = 80, consoleHeight = 30;
+        try
+        {
+            if (Console.WindowWidth > 0) consoleWidth = Console.WindowWidth;
+            if (Console.WindowHeight > 0) consoleHeight = Console.WindowHeight;
+        }
+        catch { /* Non-interactive console */ }
+
+        var defaultWidth = width ?? Math.Min(consoleWidth - 2, 80);
+        var defaultHeight = height ?? Math.Min(consoleHeight - 10, 30);
 
         // If --save was passed with explicit values, just save and exit
         if (saveCalibration && (charAspect.HasValue || gamma.HasValue))
@@ -191,19 +199,14 @@ public static class CalibrationHandler
                     break;
 
                 case ConsoleKey.Enter:
+                    // Always save current values (even if unchanged, to ensure file exists)
                     var baseSettings = savedCalibration ?? new CalibrationSettings();
-                    var settings = baseSettings;
+                    var settings = baseSettings
+                        .WithAspectRatio(renderMode, calibrationAspect)
+                        .WithGamma(renderMode, calibrationGamma);
 
-                    if (aspectChanged)
-                        settings = settings.WithAspectRatio(renderMode, calibrationAspect);
-                    if (gammaChanged)
-                        settings = settings.WithGamma(renderMode, calibrationGamma);
-
-                    if (aspectChanged || gammaChanged)
-                    {
-                        CalibrationHelper.Save(settings);
-                        saved = true;
-                    }
+                    CalibrationHelper.Save(settings);
+                    saved = true;
                     running = false;
                     break;
 
@@ -219,11 +222,7 @@ public static class CalibrationHandler
 
         if (saved)
         {
-            var savedItems = new List<string>();
-            if (aspectChanged) savedItems.Add($"aspect={calibrationAspect:F3}");
-            if (gammaChanged) savedItems.Add($"gamma={calibrationGamma:F2}");
-
-            Console.WriteLine($"\x1b[32m+\x1b[0m Saved {modeName} calibration ({string.Join(", ", savedItems)}) to: {CalibrationHelper.GetDefaultPath()}");
+            Console.WriteLine($"\x1b[32m+\x1b[0m Saved {modeName} calibration (aspect={calibrationAspect:F3}, gamma={calibrationGamma:F2}) to: {CalibrationHelper.GetDefaultPath()}");
         }
         else
         {

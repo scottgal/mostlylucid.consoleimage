@@ -223,4 +223,177 @@ public class CalibrationHelperTests
         Assert.NotNull(path);
         Assert.EndsWith("calibration.json", path);
     }
+
+    // Gamma tests
+
+    [Fact]
+    public void CalibrationSettings_DefaultGammaValues_Are065()
+    {
+        var settings = new CalibrationSettings();
+
+        Assert.Equal(0.65f, settings.AsciiGamma);
+        Assert.Equal(0.65f, settings.BlocksGamma);
+        Assert.Equal(0.65f, settings.BrailleGamma);
+    }
+
+    [Theory]
+    [InlineData(RenderMode.Ascii, 0.65f)]
+    [InlineData(RenderMode.ColorBlocks, 0.65f)]
+    [InlineData(RenderMode.Braille, 0.65f)]
+    [InlineData(RenderMode.Matrix, 0.65f)] // Matrix uses ASCII gamma
+    public void CalibrationSettings_GetGamma_ReturnsCorrectDefault(RenderMode mode, float expected)
+    {
+        var settings = new CalibrationSettings();
+        Assert.Equal(expected, settings.GetGamma(mode));
+    }
+
+    [Fact]
+    public void CalibrationSettings_GetGamma_ReturnsCustomValues()
+    {
+        var settings = new CalibrationSettings
+        {
+            AsciiGamma = 0.5f,
+            BlocksGamma = 0.7f,
+            BrailleGamma = 0.8f
+        };
+
+        Assert.Equal(0.5f, settings.GetGamma(RenderMode.Ascii));
+        Assert.Equal(0.7f, settings.GetGamma(RenderMode.ColorBlocks));
+        Assert.Equal(0.8f, settings.GetGamma(RenderMode.Braille));
+        Assert.Equal(0.5f, settings.GetGamma(RenderMode.Matrix)); // Matrix uses ASCII
+    }
+
+    [Fact]
+    public void CalibrationSettings_GetGamma_ZeroReturnsDefault()
+    {
+        // Critical test: old calibration files may have 0 for gamma
+        // System.Text.Json deserializes missing floats as 0, not the init default
+        var settings = new CalibrationSettings
+        {
+            AsciiGamma = 0f,
+            BlocksGamma = 0f,
+            BrailleGamma = 0f
+        };
+
+        // GetGamma should return 0.65 (default) when stored value is 0
+        Assert.Equal(0.65f, settings.GetGamma(RenderMode.Ascii));
+        Assert.Equal(0.65f, settings.GetGamma(RenderMode.ColorBlocks));
+        Assert.Equal(0.65f, settings.GetGamma(RenderMode.Braille));
+    }
+
+    [Fact]
+    public void CalibrationSettings_GetGamma_NegativeReturnsDefault()
+    {
+        // Negative gamma values are invalid
+        var settings = new CalibrationSettings
+        {
+            AsciiGamma = -0.5f,
+            BlocksGamma = -1f,
+            BrailleGamma = -0.1f
+        };
+
+        // GetGamma should return 0.65 (default) for negative values
+        Assert.Equal(0.65f, settings.GetGamma(RenderMode.Ascii));
+        Assert.Equal(0.65f, settings.GetGamma(RenderMode.ColorBlocks));
+        Assert.Equal(0.65f, settings.GetGamma(RenderMode.Braille));
+    }
+
+    [Theory]
+    [InlineData(RenderMode.Ascii, 0.5f)]
+    [InlineData(RenderMode.ColorBlocks, 0.8f)]
+    [InlineData(RenderMode.Braille, 1.0f)]
+    [InlineData(RenderMode.Matrix, 0.7f)]
+    public void CalibrationSettings_WithGamma_UpdatesCorrectMode(RenderMode mode, float newValue)
+    {
+        var original = new CalibrationSettings();
+        var updated = original.WithGamma(mode, newValue);
+
+        // Verify the correct mode was updated
+        Assert.Equal(newValue, updated.GetGamma(mode));
+
+        // Verify original is unchanged (immutability)
+        Assert.Equal(0.65f, original.GetGamma(mode));
+    }
+
+    [Fact]
+    public void CalibrationSettings_WithGamma_PreservesOtherValues()
+    {
+        var original = new CalibrationSettings
+        {
+            AsciiGamma = 0.5f,
+            BlocksGamma = 0.6f,
+            BrailleGamma = 0.7f,
+            AsciiCharacterAspectRatio = 0.45f // Also preserve aspect ratios
+        };
+
+        var updated = original.WithGamma(RenderMode.Braille, 0.9f);
+
+        Assert.Equal(0.5f, updated.AsciiGamma);
+        Assert.Equal(0.6f, updated.BlocksGamma);
+        Assert.Equal(0.9f, updated.BrailleGamma);
+        Assert.Equal(0.45f, updated.AsciiCharacterAspectRatio);
+    }
+
+    [Fact]
+    public void SaveAndLoad_WithGamma_PreservesValues()
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"calibration_gamma_{Guid.NewGuid()}.json");
+
+        try
+        {
+            var original = new CalibrationSettings
+            {
+                AsciiCharacterAspectRatio = 0.5f,
+                AsciiGamma = 0.6f,
+                BlocksCharacterAspectRatio = 0.5f,
+                BlocksGamma = 0.7f,
+                BrailleCharacterAspectRatio = 0.5f,
+                BrailleGamma = 0.8f
+            };
+
+            CalibrationHelper.Save(original, tempPath);
+            var loaded = CalibrationHelper.Load(tempPath);
+
+            Assert.NotNull(loaded);
+            Assert.Equal(0.6f, loaded.GetGamma(RenderMode.Ascii));
+            Assert.Equal(0.7f, loaded.GetGamma(RenderMode.ColorBlocks));
+            Assert.Equal(0.8f, loaded.GetGamma(RenderMode.Braille));
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+    }
+
+    [Fact]
+    public void Load_OldCalibrationWithoutGamma_UsesDefault()
+    {
+        // Simulate old calibration file without gamma properties
+        var tempPath = Path.Combine(Path.GetTempPath(), $"calibration_old_{Guid.NewGuid()}.json");
+
+        try
+        {
+            // Old format only had aspect ratios
+            var oldJson = @"{
+                ""AsciiCharacterAspectRatio"": 0.5,
+                ""BlocksCharacterAspectRatio"": 0.5,
+                ""BrailleCharacterAspectRatio"": 0.5
+            }";
+            File.WriteAllText(tempPath, oldJson);
+
+            var loaded = CalibrationHelper.Load(tempPath);
+
+            Assert.NotNull(loaded);
+            // Gamma should return default 0.65 (not 0, which would break rendering)
+            Assert.Equal(0.65f, loaded.GetGamma(RenderMode.Ascii));
+            Assert.Equal(0.65f, loaded.GetGamma(RenderMode.ColorBlocks));
+            Assert.Equal(0.65f, loaded.GetGamma(RenderMode.Braille));
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+    }
 }
