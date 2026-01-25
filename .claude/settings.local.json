@@ -121,7 +121,9 @@
       "Bash(cmd.exe /c \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe --help\")",
       "Bash(timeout 1 head:*)",
       "Bash(wc:*)",
-      "Bash(magick:*)"
+      "Bash(magick:*)",
+      "Bash(cmd.exe /c \"dir F:\\\\gifs\\\\*.gif /b\")",
+      "Bash(cmd.exe /c:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -7,7 +7,7 @@
 
 **[Full documentation with animated examples on GitHub](https://github.com/scottgal/mostlylucid.consoleimage)**
 
-![ASCII Mode](https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/familyguy_ascii.gif)
+![ASCII Mode](https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/video_ascii_status.gif)
 
 *Video to ASCII rendering - see [GitHub](https://github.com/scottgal/mostlylucid.consoleimage) for more examples*
 
@@ -52,7 +52,7 @@ consolevideo "Family Guy S18E01 Yacht Rocky.mkv"
 consolevideo photo.jpg
 
 # Play an animated GIF
-consolevideo cat_wag.gif
+consolevideo wiggum.gif
 ```
 
 ### Render Modes
@@ -154,9 +154,9 @@ consolevideo photo.jpg -w 100             # 100 chars wide, aspect preserved
 consolevideo photo.jpg -h 50              # 50 chars tall, aspect preserved
 
 # Animated GIF playback
-consolevideo cat_wag.gif                  # Play animated GIF
-consolevideo cat_wag.gif -l 0             # Loop forever
-consolevideo cat_wag.gif -s 0.5           # Half speed
+consolevideo wiggum.gif                  # Play animated GIF
+consolevideo wiggum.gif -l 0             # Loop forever
+consolevideo wiggum.gif -s 0.5           # Half speed
 ```
 
 ### Video Information
@@ -257,7 +257,7 @@ consolevideo video.mp4 -w 80 -r 10 -f 2 --no-hwaccel
 consolevideo video.mp4 -B -w 150 --contrast 2.5
 
 # Convert animated GIF to braille
-consolevideo cat_wag.gif -B -l 0
+consolevideo wiggum.gif -B -l 0
 
 # Batch convert images to ASCII GIFs
 for img in *.jpg; do consolevideo "$img" -g "${img%.jpg}_ascii.gif" -B; done

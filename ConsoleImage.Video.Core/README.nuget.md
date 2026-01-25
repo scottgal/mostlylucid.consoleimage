@@ -11,7 +11,7 @@ Real-time video to ASCII art rendering using FFmpeg for .NET 10.
 
 | ASCII | ColorBlocks | Braille |
 |:-----:|:-----------:|:-------:|
-| ![ASCII](https://raw.githubusercontent.com/scottgal/ConsoleImage/master/samples/familyguy_ascii.gif) | ![Blocks](https://raw.githubusercontent.com/scottgal/ConsoleImage/master/samples/familyguy_blocks.gif) | ![Braille](https://raw.githubusercontent.com/scottgal/ConsoleImage/master/samples/familyguy_braille.gif) |
+| ![ASCII](https://raw.githubusercontent.com/scottgal/mostlylucid.consoleimage/master/samples/wiggum_ascii.gif) | ![Blocks](https://raw.githubusercontent.com/scottgal/mostlylucid.consoleimage/master/samples/wiggum_blocks.gif) | ![Braille](https://raw.githubusercontent.com/scottgal/mostlylucid.consoleimage/master/samples/wiggum_braille.gif) |
 | Shape-matched characters | Unicode half-blocks (2x res) | 2x4 dot patterns (highest res) |
 
 ## Features

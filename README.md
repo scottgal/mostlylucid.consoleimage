@@ -201,11 +201,24 @@ consoleimage movie.mp4 -o movie.cidz
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> |
 | 2×4 dot patterns (8x resolution) | Shape-matched characters | Unicode half-blocks (▀▄) |
 
-### Video Example
+### Monochrome Braille: Compact & Fast
+
+Monochrome braille (1-bit) is perfect for quick previews, SSH connections, and maximum detail in minimal file size:
+
+| Monochrome Braille | Full Color Braille |
+|--------------------|-------------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_mono.gif" width="250" alt="Monochrome"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_braille.gif" width="250" alt="Color Braille"> |
+| ~265 KB (3-5x smaller) | ~884 KB |
+
+```bash
+consoleimage animation.gif --mono -w 120  # Fast, compact, high detail
+```
+
+### Landscape Example
 
 | Braille | ASCII | ColorBlocks |
 |---------|-------|-------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_braille.gif" width="250" alt="Bunny Braille"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_ascii.gif" width="250" alt="Bunny ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/bunny_blocks.gif" width="250" alt="Bunny Blocks"> |
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_braille.gif" width="250" alt="Landscape Braille"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_ascii.gif" width="250" alt="Landscape ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_blocks.gif" width="250" alt="Landscape Blocks"> |
 
 ```bash
 consoleimage movie.mp4           # Braille by default
@@ -222,7 +235,7 @@ consoleimage movie.mp4 -a -w 120 # ASCII mode, wider
 
 | Classic Green | Full Color |
 |---------------|------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_portrait_final.gif" width="250" alt="Matrix Classic"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_mountain_fullcolor.gif" width="250" alt="Matrix Full Color"> |
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_matrix.gif" width="250" alt="Matrix Classic"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_matrix_fullcolor.gif" width="250" alt="Matrix Full Color"> |
 
 ```bash
 consoleimage photo.jpg --matrix              # Classic green

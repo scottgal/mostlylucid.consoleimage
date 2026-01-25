@@ -16,9 +16,17 @@
 
 ### Still Images
 
-| Landscape                                                                                                                               | Portrait                                                                                                                                |
-|-----------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_mountain_blocks.gif" width="280" alt="Mountain"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/demo_portrait_blocks.gif" width="200" alt="Portrait"> |
+| Landscape (ColorBlocks) | Landscape (Braille) |
+|-------------------------|---------------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_blocks.gif" width="280" alt="Landscape Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_braille.gif" width="280" alt="Landscape Braille"> |
+
+### Monochrome Braille (Compact & Fast)
+
+| Monochrome (~265 KB) | Full Color (~884 KB) |
+|----------------------|---------------------|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_mono.gif" width="280" alt="Boingball Mono"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_braille.gif" width="280" alt="Boingball Braille"> |
+
+Monochrome braille produces files 3-5x smaller than color modes - ideal for SSH, low bandwidth, or quick previews.
 
 ## Quick Start
 
@@ -86,7 +94,7 @@ threshold for optimal contrast.
 
 ### Matrix Mode (Digital Rain Effect)
 
-<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/matrix_portrait_final.gif" width="300" alt="Matrix Mode">
+<img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_matrix.gif" width="300" alt="Matrix Mode">
 
 The iconic Matrix digital rain effect with authentic color scheme - white glowing heads fading through bright green to
 dark green trails. Works on both static images and animations.
