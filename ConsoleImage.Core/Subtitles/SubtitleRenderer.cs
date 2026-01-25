@@ -13,6 +13,11 @@ public class SubtitleRenderer
     private readonly SubtitleStyle _style;
     private readonly Dictionary<string, SubtitleStyle> _speakerStyles = new();
 
+    // Pre-allocated reusable buffers (avoids per-frame allocations)
+    private readonly StringBuilder _renderSb = new(512);
+    private readonly StringBuilder _positionSb = new(512);
+    private readonly string _blankLine; // Cached blank line of _maxWidth spaces
+
     /// <summary>
     /// Colors used for different speakers in diarization.
     /// First speaker gets yellow (not white) to visually distinguish from non-diarized subtitles.
@@ -42,6 +47,7 @@ public class SubtitleRenderer
         _maxLines = maxLines;
         _useColor = useColor;
         _style = style ?? SubtitleStyle.Default;
+        _blankLine = new string(' ', maxWidth);
     }
 
     /// <summary>
@@ -74,18 +80,18 @@ public class SubtitleRenderer
     /// <returns>Formatted subtitle lines.</returns>
     public string RenderEntry(SubtitleEntry? entry)
     {
-        var sb = new StringBuilder();
+        _renderSb.Clear();
 
         if (entry == null)
         {
             // Render blank lines to clear previous subtitle
             for (var i = 0; i < _maxLines; i++)
             {
-                sb.Append(new string(' ', _maxWidth));
+                _renderSb.Append(_blankLine);
                 if (i < _maxLines - 1)
-                    sb.AppendLine();
+                    _renderSb.AppendLine();
             }
-            return sb.ToString();
+            return _renderSb.ToString();
         }
 
         // SECURITY: Sanitize external text to prevent ANSI escape sequence injection
@@ -111,35 +117,33 @@ public class SubtitleRenderer
                     line = $"{speakerName}: {line}";
                 }
 
-                var padding = (_maxWidth - line.Length) / 2;
-                var centeredLine = new string(' ', Math.Max(0, padding)) + line;
-
-                // Pad to full width
-                if (centeredLine.Length < _maxWidth)
-                    centeredLine = centeredLine.PadRight(_maxWidth);
+                var padding = Math.Max(0, (_maxWidth - line.Length) / 2);
+                var lineLen = Math.Min(padding + line.Length, _maxWidth);
 
                 if (_useColor)
-                {
-                    sb.Append(style.GetAnsiPrefix());
-                    sb.Append(centeredLine);
-                    sb.Append("\x1b[0m");
-                }
-                else
-                {
-                    sb.Append(centeredLine);
-                }
+                    _renderSb.Append(style.AnsiPrefix);
+
+                // Center: padding spaces + line text + trailing spaces
+                _renderSb.Append(_blankLine, 0, padding);
+                _renderSb.Append(line);
+                var remaining = _maxWidth - lineLen;
+                if (remaining > 0)
+                    _renderSb.Append(_blankLine, 0, remaining);
+
+                if (_useColor)
+                    _renderSb.Append("\x1b[0m");
             }
             else
             {
                 // Blank line padding
-                sb.Append(new string(' ', _maxWidth));
+                _renderSb.Append(_blankLine);
             }
 
             if (i < _maxLines - 1)
-                sb.AppendLine();
+                _renderSb.AppendLine();
         }
 
-        return sb.ToString();
+        return _renderSb.ToString();
     }
 
     /// <summary>
@@ -191,17 +195,33 @@ public class SubtitleRenderer
     /// <returns>String with cursor positioning and subtitle content.</returns>
     public string RenderAtPosition(SubtitleEntry? entry, int row, int col = 1)
     {
-        var sb = new StringBuilder();
         var content = RenderEntry(entry);
-        var lines = content.Split('\n');
 
-        for (var i = 0; i < lines.Length; i++)
+        // Reuse position StringBuilder; parse lines without Split allocation
+        _positionSb.Clear();
+        var lineIdx = 0;
+        var start = 0;
+
+        for (var i = 0; i <= content.Length; i++)
         {
-            sb.Append($"\x1b[{row + i};{col}H"); // Move cursor to position
-            sb.Append(lines[i].TrimEnd('\r'));
+            if (i == content.Length || content[i] == '\n')
+            {
+                var end = i;
+                if (end > start && content[end - 1] == '\r') end--;
+
+                _positionSb.Append("\x1b[");
+                _positionSb.Append(row + lineIdx);
+                _positionSb.Append(';');
+                _positionSb.Append(col);
+                _positionSb.Append('H');
+                _positionSb.Append(content, start, end - start);
+
+                lineIdx++;
+                start = i + 1;
+            }
         }
 
-        return sb.ToString();
+        return _positionSb.ToString();
     }
 
     /// <summary>
@@ -389,6 +409,8 @@ public class SubtitleRenderer
 /// </summary>
 public class SubtitleStyle
 {
+    private string? _cachedAnsiPrefix;
+
     /// <summary>
     /// Bold text.
     /// </summary>
@@ -423,33 +445,49 @@ public class SubtitleStyle
     };
 
     /// <summary>
-    /// Get ANSI prefix codes for this style.
+    /// Cached ANSI prefix codes for this style. Computed once on first access.
     /// </summary>
-    public string GetAnsiPrefix()
+    public string AnsiPrefix => _cachedAnsiPrefix ??= BuildAnsiPrefix();
+
+    private string BuildAnsiPrefix()
     {
-        var sb = new StringBuilder();
+        var sb = new StringBuilder(32);
         sb.Append("\x1b[");
 
-        var codes = new List<string>();
+        var needSemicolon = false;
 
         if (Bold)
-            codes.Add("1");
+        {
+            sb.Append('1');
+            needSemicolon = true;
+        }
 
         if (ForegroundColor.HasValue)
         {
             var (r, g, b) = ForegroundColor.Value;
-            codes.Add($"38;2;{r};{g};{b}");
+            if (needSemicolon) sb.Append(';');
+            sb.Append("38;2;");
+            sb.Append(r);
+            sb.Append(';');
+            sb.Append(g);
+            sb.Append(';');
+            sb.Append(b);
+            needSemicolon = true;
         }
 
         if (BackgroundColor.HasValue)
         {
             var (r, g, b) = BackgroundColor.Value;
-            codes.Add($"48;2;{r};{g};{b}");
+            if (needSemicolon) sb.Append(';');
+            sb.Append("48;2;");
+            sb.Append(r);
+            sb.Append(';');
+            sb.Append(g);
+            sb.Append(';');
+            sb.Append(b);
         }
 
-        sb.Append(string.Join(";", codes));
         sb.Append('m');
-
         return sb.ToString();
     }
 }

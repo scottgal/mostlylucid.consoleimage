@@ -191,8 +191,8 @@ public class ColorBlockRenderer : IDisposable
             return string.Join("\n", rowStrings);
         }
 
-        // Sequential fallback
-        var sb = new StringBuilder();
+        // Sequential fallback - pre-size for width × rows × ~30 bytes per cell
+        var sb = new StringBuilder(width * charRows * 30);
         for (var row = 0; row < charRows; row++)
         {
             var y1 = row * 2; // Upper pixel row

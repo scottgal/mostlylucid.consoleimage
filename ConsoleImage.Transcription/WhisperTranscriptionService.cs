@@ -292,6 +292,13 @@ public sealed class WhisperTranscriptionService : IDisposable
         }, ct);
     }
 
+    /// <summary>
+    /// Get the loaded WhisperFactory for creating processors.
+    /// Returns null if not yet initialized.
+    /// Used by RealtimeTranscriber to create processors without reflection.
+    /// </summary>
+    internal WhisperFactory? Factory => _factory;
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -423,7 +430,7 @@ public class RealtimeTranscriber : IAsyncDisposable
                     accumulatedSamples.Clear();
 
                     // Transcribe this chunk
-                    var builder = (await GetProcessorAsync())!.CreateBuilder();
+                    var builder = GetFactory()!.CreateBuilder();
                     using var processor = builder.Build();
 
                     await foreach (var result in processor.ProcessAsync(toProcess, ct))
@@ -446,7 +453,7 @@ public class RealtimeTranscriber : IAsyncDisposable
             // Process remaining samples
             if (accumulatedSamples.Count > 0)
             {
-                var builder = (await GetProcessorAsync())!.CreateBuilder();
+                var builder = GetFactory()!.CreateBuilder();
                 using var processor = builder.Build();
 
                 await foreach (var result in processor.ProcessAsync(accumulatedSamples.ToArray(), ct))
@@ -473,12 +480,7 @@ public class RealtimeTranscriber : IAsyncDisposable
         }
     }
 
-    private Task<WhisperFactory?> GetProcessorAsync()
-    {
-        // Access factory through reflection since it's private
-        // In a real implementation, we'd expose this properly
-        return Task.FromResult<WhisperFactory?>(null);
-    }
+    private WhisperFactory? GetFactory() => _whisper.Factory;
 
     public async ValueTask DisposeAsync()
     {

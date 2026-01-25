@@ -1,5 +1,6 @@
 // StatusLine - Display information below rendered output
 // Shows filename, resolution, progress, duration, etc.
+// Optimized for low allocation: reusable StringBuilder, pre-cached bar characters.
 
 using System.Text;
 
@@ -13,6 +14,14 @@ public class StatusLine
     private readonly int _maxWidth;
     private readonly bool _useColor;
 
+    // Pre-allocated reusable buffers
+    private readonly StringBuilder _sb = new(256);
+    private readonly StringBuilder _barSb = new(64);
+
+    // Pre-cached progress bar fill strings (avoids new string('█', N) per frame)
+    private static readonly string FilledBar = new('█', 20);
+    private static readonly string EmptyBar = new('░', 20);
+
     public StatusLine(int maxWidth = 80, bool useColor = true)
     {
         _maxWidth = maxWidth;
@@ -24,39 +33,58 @@ public class StatusLine
     /// </summary>
     public string Render(StatusInfo info)
     {
-        var sb = new StringBuilder();
+        _sb.Clear();
 
         // Use dim color for status line
         if (_useColor)
-            sb.Append("\x1b[2m"); // Dim
+            _sb.Append("\x1b[2m"); // Dim
 
-        // Build compact info parts
-        var parts = new List<string>();
+        // Build compact info parts directly into StringBuilder (avoids List + string.Join)
+        var partCount = 0;
+
+        // Paused indicator first
+        if (info.IsPaused)
+        {
+            _sb.Append("[PAUSED]");
+            partCount++;
+        }
 
         // Filename (short)
         if (!string.IsNullOrEmpty(info.FileName))
         {
+            if (partCount > 0) _sb.Append(" \u2502 ");
             var name = Path.GetFileName(info.FileName);
             if (name.Length > 20)
-                name = name[..17] + "...";
-            parts.Add(name);
+            {
+                _sb.Append(name, 0, 17);
+                _sb.Append("...");
+            }
+            else
+            {
+                _sb.Append(name);
+            }
+            partCount++;
         }
 
         // Mode
         if (!string.IsNullOrEmpty(info.RenderMode))
-            parts.Add(info.RenderMode);
+        {
+            if (partCount > 0) _sb.Append(" \u2502 ");
+            _sb.Append(info.RenderMode);
+            partCount++;
+        }
 
         // Time: current/total
         if (info.CurrentTime.HasValue && info.TotalDuration.HasValue)
         {
+            if (partCount > 0) _sb.Append(" \u2502 ");
             var currentSec = (int)info.CurrentTime.Value.TotalSeconds;
             var totalSec = (int)info.TotalDuration.Value.TotalSeconds;
-            parts.Add($"{currentSec}s/{totalSec}s");
+            _sb.Append(currentSec);
+            _sb.Append("s/");
+            _sb.Append(totalSec);
+            _sb.Append('s');
         }
-
-        // Paused indicator
-        if (info.IsPaused)
-            parts.Insert(0, "[PAUSED]");
 
         // Calculate progress
         double progress = 0;
@@ -67,69 +95,73 @@ public class StatusLine
         else if (info.CurrentTime.HasValue && info.TotalDuration.HasValue && info.TotalDuration.Value.TotalSeconds > 0)
             progress = info.CurrentTime.Value.TotalSeconds / info.TotalDuration.Value.TotalSeconds;
 
-        // Join parts
-        var infoText = string.Join(" │ ", parts);
-
         // Constrain total status bar to half the max width
         var maxStatusWidth = _maxWidth / 2;
 
         // Progress bar - small (8-12 chars)
         var barWidth = Math.Min(12, Math.Max(8, maxStatusWidth / 3));
-        var progressBar = RenderProgressBar(progress, barWidth);
 
-        // Fit info text to remaining width
-        var availableForInfo = maxStatusWidth - progressBar.Length - 1;
-        if (infoText.Length > availableForInfo && availableForInfo > 5)
+        // Truncate info text if needed (check current length vs available space)
+        var progressBarEstimate = barWidth + 7; // [bar] + space + " 100%"
+        var availableForInfo = maxStatusWidth - progressBarEstimate;
+        if (_sb.Length > availableForInfo && availableForInfo > 5)
         {
-            // Drop parts from end until it fits
-            while (parts.Count > 1 && string.Join(" │ ", parts).Length > availableForInfo)
-                parts.RemoveAt(parts.Count - 1);
-            infoText = string.Join(" │ ", parts);
-            if (infoText.Length > availableForInfo)
-                infoText = infoText[..(availableForInfo - 3)] + "...";
+            _sb.Length = availableForInfo - 3;
+            _sb.Append("...");
         }
 
-        sb.Append(infoText);
-        sb.Append(' ');
-        sb.Append(progressBar);
+        _sb.Append(' ');
+        AppendProgressBar(_sb, progress, barWidth);
 
         // Reset color
         if (_useColor)
-            sb.Append("\x1b[0m");
+            _sb.Append("\x1b[0m");
 
-        return sb.ToString();
+        return _sb.ToString();
     }
 
     /// <summary>
-    ///     Render just a progress bar
+    ///     Append a progress bar directly to a StringBuilder (avoids intermediate string).
     /// </summary>
-    public string RenderProgressBar(double progress, int width = 20)
+    private void AppendProgressBar(StringBuilder sb, double progress, int width)
     {
         progress = Math.Clamp(progress, 0, 1);
         var filled = (int)(progress * width);
         var empty = width - filled;
 
-        var bar = new StringBuilder();
         if (_useColor)
-            bar.Append("\x1b[32m"); // Green for filled
+            sb.Append("\x1b[32m"); // Green for filled
 
-        bar.Append('[');
-        bar.Append(new string('█', filled));
-
-        if (_useColor)
-            bar.Append("\x1b[90m"); // Gray for empty
-
-        bar.Append(new string('░', empty));
+        sb.Append('[');
+        if (filled > 0)
+            sb.Append(FilledBar, 0, Math.Min(filled, FilledBar.Length));
 
         if (_useColor)
-            bar.Append("\x1b[0m");
+            sb.Append("\x1b[90m"); // Gray for empty
 
-        bar.Append(']');
+        if (empty > 0)
+            sb.Append(EmptyBar, 0, Math.Min(empty, EmptyBar.Length));
+
+        if (_useColor)
+            sb.Append("\x1b[0m");
+
+        sb.Append(']');
 
         // Add percentage
-        bar.Append($" {progress:P0}");
+        var pct = (int)(progress * 100);
+        sb.Append(' ');
+        sb.Append(pct);
+        sb.Append('%');
+    }
 
-        return bar.ToString();
+    /// <summary>
+    ///     Render just a progress bar (standalone, returns new string)
+    /// </summary>
+    public string RenderProgressBar(double progress, int width = 20)
+    {
+        _barSb.Clear();
+        AppendProgressBar(_barSb, progress, width);
+        return _barSb.ToString();
     }
 
     /// <summary>
@@ -138,17 +170,6 @@ public class StatusLine
     public static string Clear()
     {
         return "\x1b[2K"; // Clear entire line
-    }
-
-    private static string FormatTime(TimeSpan time)
-    {
-        // Always show total seconds for precision
-        var totalSeconds = (int)time.TotalSeconds;
-        if (time.TotalHours >= 1)
-            return $"{time:h\\:mm\\:ss} ({totalSeconds}s)";
-        if (time.TotalMinutes >= 1)
-            return $"{time:m\\:ss} ({totalSeconds}s)";
-        return $"{totalSeconds}s";
     }
 
     /// <summary>

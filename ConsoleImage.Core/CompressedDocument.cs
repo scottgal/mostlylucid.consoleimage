@@ -191,9 +191,10 @@ public class OptimizedDocument
         foreach (var frame in doc.Frames)
         {
             var (chars, colors) = ParseAnsiContent(frame.Content);
-            foreach (var color in colors.Where(c => !string.IsNullOrEmpty(c)))
+            foreach (var color in colors)
             {
-                colorSet.Add(color);
+                if (color.Length > 0)
+                    colorSet.Add(color);
             }
             parsedFrames.Add((chars, colors, frame.Width, frame.Height, frame.DelayMs));
         }
@@ -212,17 +213,26 @@ public class OptimizedDocument
         List<int>? prevIndices = null;
         List<string>? prevColors = null;
 
+        // Reusable StringBuilders for per-frame operations (avoids per-frame allocations)
+        var deltaSb = new StringBuilder(4096);
+        var compressSb = new StringBuilder(2048);
+
         for (int f = 0; f < parsedFrames.Count; f++)
         {
             var (chars, colors, width, height, delayMs) = parsedFrames[f];
 
-            // Apply temporal stability if enabled
+            // Apply temporal stability if enabled (modifies colors in-place)
             if (enableStability && prevColors != null && colors.Count == prevColors.Count)
             {
-                colors = ApplyColorStability(colors, prevColors, palette, colorThreshold);
+                ApplyColorStabilityInPlace(colors, prevColors, colorThreshold);
             }
 
-            var indices = colors.Select(c => colorToIndex.TryGetValue(c, out var idx) ? idx : 0).ToList();
+            // Convert colors to palette indices without LINQ
+            var indices = new List<int>(colors.Count);
+            foreach (var c in colors)
+            {
+                indices.Add(colorToIndex.TryGetValue(c, out var idx) ? idx : 0);
+            }
 
             // Compute content hash for deduplication (simple hash of chars + first few indices)
             var contentHash = ComputeFrameHash(chars, indices);
@@ -253,7 +263,7 @@ public class OptimizedDocument
             // Calculate delta if not a keyframe
             if (!isKeyframe && prevChars != null && prevIndices != null)
             {
-                var delta = CalculateDelta(prevChars, prevIndices, chars, indices);
+                var delta = CalculateDelta(prevChars, prevIndices, chars, indices, deltaSb);
 
                 // If delta is larger than 60% of full frame, use keyframe instead
                 var fullSize = chars.Length + indices.Count;
@@ -287,7 +297,7 @@ public class OptimizedDocument
             {
                 IsKeyframe = true,
                 Characters = chars,
-                ColorIndices = CompressColorIndices(indices),
+                ColorIndices = CompressColorIndices(indices, compressSb),
                 Width = width,
                 Height = height,
                 DelayMs = delayMs
@@ -460,36 +470,25 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Apply temporal stability to colors - keep previous frame's color if delta is below threshold.
-    /// This reduces visual flickering between frames.
+    /// Apply temporal stability to colors in-place - keep previous frame's color if delta is below threshold.
+    /// This reduces visual flickering between frames. Modifies currColors directly to avoid list allocation.
     /// </summary>
-    private static List<string> ApplyColorStability(List<string> currColors, List<string> prevColors,
-        string[] palette, int threshold)
+    private static void ApplyColorStabilityInPlace(List<string> currColors, List<string> prevColors,
+        int threshold)
     {
-        var result = new List<string>(currColors.Count);
         for (int i = 0; i < currColors.Count; i++)
         {
             var curr = currColors[i];
             var prev = i < prevColors.Count ? prevColors[i] : "";
 
             // If both empty or same, keep current
-            if (curr == prev || string.IsNullOrEmpty(curr) || string.IsNullOrEmpty(prev))
-            {
-                result.Add(curr);
+            if (curr == prev || curr.Length == 0 || prev.Length == 0)
                 continue;
-            }
 
-            // Parse colors and compare
+            // Parse colors and compare - replace with previous if similar
             if (ColorsAreSimilar(curr, prev, threshold))
-            {
-                result.Add(prev); // Keep previous color for stability
-            }
-            else
-            {
-                result.Add(curr);
-            }
+                currColors[i] = prev;
         }
-        return result;
     }
 
     /// <summary>
@@ -500,135 +499,126 @@ public class OptimizedDocument
         if (color1.Length < 6 || color2.Length < 6)
             return false;
 
-        try
-        {
-            var r1 = Convert.ToInt32(color1.Substring(0, 2), 16);
-            var g1 = Convert.ToInt32(color1.Substring(2, 2), 16);
-            var b1 = Convert.ToInt32(color1.Substring(4, 2), 16);
+        var r1 = ParseHexByte(color1, 0);
+        var g1 = ParseHexByte(color1, 2);
+        var b1 = ParseHexByte(color1, 4);
 
-            var r2 = Convert.ToInt32(color2.Substring(0, 2), 16);
-            var g2 = Convert.ToInt32(color2.Substring(2, 2), 16);
-            var b2 = Convert.ToInt32(color2.Substring(4, 2), 16);
+        var r2 = ParseHexByte(color2, 0);
+        var g2 = ParseHexByte(color2, 2);
+        var b2 = ParseHexByte(color2, 4);
 
-            return Math.Abs(r1 - r2) <= threshold &&
-                   Math.Abs(g1 - g2) <= threshold &&
-                   Math.Abs(b1 - b2) <= threshold;
-        }
-        catch
-        {
-            return false;
-        }
+        return Math.Abs(r1 - r2) <= threshold &&
+               Math.Abs(g1 - g2) <= threshold &&
+               Math.Abs(b1 - b2) <= threshold;
     }
 
     /// <summary>
     /// Calculate delta between two frames.
     /// Format: "pos:char,colorIdx;pos:char,colorIdx;..." where pos = offset from start
     /// Uses RLE for consecutive changes.
+    /// Optimized: single-pass scan eliminates intermediate List allocation,
+    /// direct StringBuilder writes eliminate inner StringBuilder and string interpolation.
     /// </summary>
     private static string CalculateDelta(string prevChars, List<int> prevIndices,
-        string currChars, List<int> currIndices)
+        string currChars, List<int> currIndices, StringBuilder? reuseSb = null)
     {
-        var sb = new StringBuilder();
-        var changes = new List<(int pos, char ch, int colorIdx)>();
-
         int minLen = Math.Min(prevChars.Length, currChars.Length);
+        int maxLen = currChars.Length;
 
-        for (int i = 0; i < minLen; i++)
+        var sb = reuseSb ?? new StringBuilder(Math.Max(64, maxLen / 5 * 25));
+        sb.Clear();
+        bool firstEntry = true;
+
+        int i = 0;
+        while (i < maxLen)
         {
-            var prevColor = i < prevIndices.Count ? prevIndices[i] : 0;
-            var currColor = i < currIndices.Count ? currIndices[i] : 0;
+            // Check if this position changed
+            bool changed;
+            int currColor = i < currIndices.Count ? currIndices[i] : 0;
 
-            if (prevChars[i] != currChars[i] || prevColor != currColor)
+            if (i < minLen)
             {
-                changes.Add((i, currChars[i], currColor));
-            }
-        }
-
-        // Handle length differences
-        for (int i = minLen; i < currChars.Length; i++)
-        {
-            var currColor = i < currIndices.Count ? currIndices[i] : 0;
-            changes.Add((i, currChars[i], currColor));
-        }
-
-        // Encode changes with optional RLE for consecutive positions
-        for (int i = 0; i < changes.Count; i++)
-        {
-            if (i > 0) sb.Append(';');
-
-            var (pos, ch, colorIdx) = changes[i];
-
-            // Check for consecutive positions with same color (RLE opportunity)
-            int runLength = 1;
-            var runChars = new StringBuilder();
-            runChars.Append(ch);
-
-            while (i + runLength < changes.Count)
-            {
-                var next = changes[i + runLength];
-                if (next.pos == pos + runLength && next.colorIdx == colorIdx)
-                {
-                    runChars.Append(next.ch);
-                    runLength++;
-                }
-                else break;
-            }
-
-            if (runLength > 1)
-            {
-                // Consecutive run: pos:chars,colorIdx,count
-                sb.Append($"{pos}:{EscapeDeltaChars(runChars.ToString())},{colorIdx},{runLength}");
-                i += runLength - 1;
+                var prevColor = i < prevIndices.Count ? prevIndices[i] : 0;
+                changed = prevChars[i] != currChars[i] || prevColor != currColor;
             }
             else
             {
-                // Single change: pos:char,colorIdx
-                sb.Append($"{pos}:{EscapeDeltaChar(ch)},{colorIdx}");
+                changed = true; // New position beyond prev length
             }
+
+            if (!changed)
+            {
+                i++;
+                continue;
+            }
+
+            // Found a change - check for RLE run (consecutive positions, same color)
+            int runStart = i;
+            int runColor = currColor;
+            int runEnd = i + 1;
+
+            while (runEnd < maxLen)
+            {
+                int nextColor = runEnd < currIndices.Count ? currIndices[runEnd] : 0;
+                if (nextColor != runColor) break;
+
+                // Check if next position is also changed
+                if (runEnd < minLen)
+                {
+                    var prevColor = runEnd < prevIndices.Count ? prevIndices[runEnd] : 0;
+                    if (prevChars[runEnd] == currChars[runEnd] && prevColor == nextColor)
+                        break; // Not changed
+                }
+                // else: beyond prev length, always changed
+
+                runEnd++;
+            }
+
+            int runLength = runEnd - runStart;
+
+            // Write entry
+            if (!firstEntry) sb.Append(';');
+            firstEntry = false;
+
+            sb.Append(runStart);
+            sb.Append(':');
+
+            // Write escaped characters directly (no inner StringBuilder)
+            for (int j = runStart; j < runEnd; j++)
+                AppendEscapedChar(sb, currChars[j]);
+
+            sb.Append(',');
+            sb.Append(runColor);
+
+            if (runLength > 1)
+            {
+                sb.Append(',');
+                sb.Append(runLength);
+            }
+
+            i = runEnd;
         }
 
         return sb.ToString();
     }
 
     /// <summary>
-    /// Apply delta to reconstruct current frame from previous.
-    /// Legacy version kept for compatibility - used by save path.
+    /// Append a delta-escaped character directly to StringBuilder.
+    /// Avoids per-char string allocation from EscapeDeltaChar.
     /// </summary>
-    private static (string chars, List<int> indices) ApplyDelta(string prevChars, List<int> prevIndices, string delta)
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static void AppendEscapedChar(StringBuilder sb, char c)
     {
-        var chars = prevChars.ToCharArray();
-        var indices = new List<int>(prevIndices);
-
-        if (string.IsNullOrEmpty(delta))
-            return (new string(chars), indices);
-
-        foreach (var change in delta.Split(';'))
+        switch (c)
         {
-            if (string.IsNullOrEmpty(change)) continue;
-
-            var colonIdx = change.IndexOf(':');
-            if (colonIdx < 0) continue;
-
-            var pos = int.Parse(change.Substring(0, colonIdx));
-            var rest = change.Substring(colonIdx + 1);
-            var parts = rest.Split(',');
-
-            if (parts.Length >= 2)
-            {
-                var newChars = UnescapeDeltaChars(parts[0]);
-                var colorIdx = int.Parse(parts[1]);
-                var count = parts.Length > 2 ? int.Parse(parts[2]) : 1;
-
-                for (int i = 0; i < count && pos + i < chars.Length; i++)
-                {
-                    chars[pos + i] = i < newChars.Length ? newChars[i] : ' ';
-                    while (indices.Count <= pos + i) indices.Add(0);
-                    indices[pos + i] = colorIdx;
-                }
-            }
+            case ':': sb.Append("\\c"); break;
+            case ',': sb.Append("\\m"); break;
+            case ';': sb.Append("\\s"); break;
+            case '\\': sb.Append("\\\\"); break;
+            case '\n': sb.Append("\\n"); break;
+            case '\r': sb.Append("\\r"); break;
+            default: sb.Append(c); break;
         }
-
-        return (new string(chars), indices);
     }
 
     /// <summary>
@@ -775,93 +765,60 @@ public class OptimizedDocument
         return negative ? -result : result;
     }
 
-    private static string EscapeDeltaChar(char c)
-    {
-        return c switch
-        {
-            ':' => "\\c",
-            ',' => "\\m",
-            ';' => "\\s",
-            '\\' => "\\\\",
-            '\n' => "\\n",
-            '\r' => "\\r",
-            _ => c.ToString()
-        };
-    }
-
-    private static string EscapeDeltaChars(string s)
-    {
-        var sb = new StringBuilder();
-        foreach (var c in s)
-            sb.Append(EscapeDeltaChar(c));
-        return sb.ToString();
-    }
-
-    private static string UnescapeDeltaChars(string s)
-    {
-        var sb = new StringBuilder();
-        for (int i = 0; i < s.Length; i++)
-        {
-            if (s[i] == '\\' && i + 1 < s.Length)
-            {
-                sb.Append(s[i + 1] switch
-                {
-                    'c' => ':',
-                    'm' => ',',
-                    's' => ';',
-                    'n' => '\n',
-                    'r' => '\r',
-                    _ => s[i + 1]
-                });
-                i++;
-            }
-            else
-            {
-                sb.Append(s[i]);
-            }
-        }
-        return sb.ToString();
-    }
-
     /// <summary>
     /// Parse ANSI content to extract characters and colors.
+    /// Optimized: span-based parsing avoids Substring/Split allocations.
+    /// Color strings are interned via dictionary to avoid duplicate heap allocations.
     /// </summary>
     private static (string chars, List<string> colors) ParseAnsiContent(string content)
     {
-        var chars = new StringBuilder();
-        var colors = new List<string>();
+        var chars = new StringBuilder(content.Length / 2); // Rough estimate without ANSI codes
+        var colors = new List<string>(content.Length / 2);
         var currentColor = "";
+
+        // Intern color strings to avoid duplicates (a frame has few unique colors but many cells)
+        var colorIntern = new Dictionary<int, string>(64);
+        colorIntern[0] = ""; // No color sentinel
 
         int i = 0;
         while (i < content.Length)
         {
             if (content[i] == '\x1b' && i + 1 < content.Length && content[i + 1] == '[')
             {
-                // Parse ANSI escape sequence
-                int end = content.IndexOf('m', i);
+                // Find the 'm' terminator
+                int end = content.IndexOf('m', i + 2);
                 if (end > i)
                 {
-                    var seq = content.Substring(i + 2, end - i - 2);
-                    if (seq == "0" || seq == "")
+                    var seqStart = i + 2;
+                    var seqLen = end - seqStart;
+
+                    // Check for reset: \x1b[0m or \x1b[m
+                    if (seqLen == 0 || (seqLen == 1 && content[seqStart] == '0'))
                     {
                         currentColor = "";
                     }
-                    else if (seq.StartsWith("38;2;"))
+                    // Check for 24-bit foreground: \x1b[38;2;R;G;Bm
+                    else if (seqLen > 5 &&
+                             content[seqStart] == '3' && content[seqStart + 1] == '8' &&
+                             content[seqStart + 2] == ';' && content[seqStart + 3] == '2' &&
+                             content[seqStart + 4] == ';')
                     {
-                        // 24-bit color: \x1b[38;2;R;G;Bm
-                        var parts = seq.Split(';');
-                        if (parts.Length >= 5)
+                        // Parse R;G;B directly from content span without Split
+                        var rgbStart = seqStart + 5;
+                        var r = ParseNextInt(content, ref rgbStart, end);
+                        var g = ParseNextInt(content, ref rgbStart, end);
+                        var b = ParseNextInt(content, ref rgbStart, end);
+
+                        // Intern the hex string: pack RGB into int key
+                        var colorKey = (r << 16) | (g << 8) | b;
+                        if (!colorIntern.TryGetValue(colorKey, out var hexStr))
                         {
-                            var r = int.TryParse(parts[2], out var rv) ? rv : 0;
-                            var g = int.TryParse(parts[3], out var gv) ? gv : 0;
-                            var b = int.TryParse(parts[4], out var bv) ? bv : 0;
-                            currentColor = $"{r:X2}{g:X2}{b:X2}";
+                            hexStr = $"{r:X2}{g:X2}{b:X2}";
+                            colorIntern[colorKey] = hexStr;
                         }
+                        currentColor = hexStr;
                     }
-                    else if (seq.StartsWith("48;2;"))
-                    {
-                        // Background color - skip for now but don't break parsing
-                    }
+                    // Background color (48;2;...) - skip
                     i = end + 1;
                     continue;
                 }
@@ -877,43 +834,22 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Rebuild ANSI content from characters and color indices.
-    /// Original version used by save path (FromDocument).
+    /// Parse the next integer from a semicolon-delimited string at the given position.
+    /// Advances pos past the integer and the following semicolon.
     /// </summary>
-    private static string RebuildAnsiContent(string chars, List<int> indices, string[] palette)
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static int ParseNextInt(string content, ref int pos, int end)
     {
-        // Build palette strings for the legacy path
-        var paletteAnsi = BuildPaletteAnsiStrings(palette);
-        var sb = new StringBuilder(chars.Length * 2);
-        var lastColorIdx = -1;
-
-        for (int i = 0; i < chars.Length; i++)
+        int val = 0;
+        while (pos < end && content[pos] != ';')
         {
-            var colorIdx = i < indices.Count ? indices[i] : 0;
-
-            if (colorIdx != lastColorIdx)
-            {
-                if (colorIdx == 0 || colorIdx >= paletteAnsi.Length)
-                    sb.Append("\x1b[0m");
-                else
-                    sb.Append(paletteAnsi[colorIdx]);
-                lastColorIdx = colorIdx;
-            }
-
-            // Reset before newline to prevent color bleeding (not after)
-            if (chars[i] == '\n' && lastColorIdx != 0)
-            {
-                sb.Append("\x1b[0m");
-                lastColorIdx = 0;
-            }
-
-            sb.Append(chars[i]);
+            var c = content[pos];
+            if (c >= '0' && c <= '9')
+                val = val * 10 + (c - '0');
+            pos++;
         }
-
-        if (lastColorIdx != 0)
-            sb.Append("\x1b[0m");
-
-        return sb.ToString();
+        if (pos < end) pos++; // Skip semicolon
+        return val;
     }
 
     /// <summary>
@@ -959,12 +895,14 @@ public class OptimizedDocument
 
     /// <summary>
     /// Compress color indices using run-length encoding.
+    /// Accepts optional reusable StringBuilder to avoid per-call allocation.
     /// </summary>
-    private static string CompressColorIndices(List<int> indices)
+    private static string CompressColorIndices(List<int> indices, StringBuilder? reuseSb = null)
     {
         if (indices.Count == 0) return "";
 
-        var sb = new StringBuilder();
+        var sb = reuseSb ?? new StringBuilder(indices.Count * 3);
+        sb.Clear();
         int currentIdx = indices[0];
         int count = 1;
 
@@ -989,31 +927,12 @@ public class OptimizedDocument
     private static void AppendRun(StringBuilder sb, int idx, int count)
     {
         if (sb.Length > 0) sb.Append(';');
-        if (count == 1)
-            sb.Append(idx);
-        else
-            sb.Append($"{idx},{count}");
-    }
-
-    /// <summary>
-    /// Decompress RLE color indices (legacy version for save path).
-    /// </summary>
-    private static List<int> DecompressColorIndices(string? compressed)
-    {
-        var result = new List<int>();
-        if (string.IsNullOrEmpty(compressed)) return result;
-
-        foreach (var run in compressed.Split(';'))
+        sb.Append(idx);
+        if (count > 1)
         {
-            if (string.IsNullOrEmpty(run)) continue;
-            var parts = run.Split(',');
-            var idx = int.Parse(parts[0]);
-            var count = parts.Length > 1 ? int.Parse(parts[1]) : 1;
-            for (int i = 0; i < count; i++)
-                result.Add(idx);
+            sb.Append(',');
+            sb.Append(count);
         }
-
-        return result;
     }
 
     /// <summary>
@@ -1097,6 +1016,7 @@ public static class DocumentRenderSettingsExtensions
             EnableTemporalStability = src.EnableTemporalStability,
             ColorStabilityThreshold = src.ColorStabilityThreshold,
             SubtitlesEnabled = src.SubtitlesEnabled,
+            SubtitleFile = src.SubtitleFile,
             SubtitleSource = src.SubtitleSource,
             SubtitleLanguage = src.SubtitleLanguage
         };
@@ -1173,7 +1093,7 @@ public static class CompressedDocumentArchive
     private const byte CidzFlagHasSubtitles = 0x01;
 
     /// <summary>
-    /// Save a document to a compressed archive with maximum compression.
+    /// Save a document to a compressed archive.
     /// Applies delta encoding for motion compression.
     /// Loop count is stored in settings - frames are NOT duplicated.
     /// </summary>
@@ -1189,9 +1109,13 @@ public static class CompressedDocumentArchive
     /// Streams JSON directly to Brotli - no full JSON string buffered in memory.
     /// Brotli achieves ~20-30% better compression than Deflate/GZip on text data.
     /// Format: [CIDZ magic 4B][version 1B][flags 1B][Brotli(JSON + \0 + VTT)]
+    /// Default compression level is Optimal (quality ~4) for fast encoding.
+    /// Use SmallestSize for archival when encoding speed doesn't matter.
     /// </summary>
     public static async Task SaveAsync(ConsoleImageDocument doc, string path,
-        int keyframeInterval, SubtitleTrack? subtitles, CancellationToken ct = default)
+        int keyframeInterval, SubtitleTrack? subtitles,
+        CancellationToken ct = default,
+        CompressionLevel compressionLevel = CompressionLevel.Optimal)
     {
         // Convert to optimized format with delta compression and optional stability
         var enableStability = doc.Settings.EnableTemporalStability;
@@ -1207,7 +1131,7 @@ public static class CompressedDocumentArchive
         fileStream.WriteByte(hasSubtitles ? CidzFlagHasSubtitles : (byte)0);
 
         // Stream JSON directly to Brotli - no buffering the full JSON string
-        await using var brotli = new BrotliStream(fileStream, CompressionLevel.SmallestSize);
+        await using var brotli = new BrotliStream(fileStream, compressionLevel);
         await JsonSerializer.SerializeAsync(brotli, optimized,
             CompressedDocumentJsonContext.Default.OptimizedDocument, ct);
 

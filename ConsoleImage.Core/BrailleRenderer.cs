@@ -216,7 +216,8 @@ public class BrailleRenderer : IDisposable
 
         // Delta render - only output changed cells
         // Optimized: batch consecutive changed cells on same row with same color
-        var sb = new StringBuilder(256);
+        // Pre-size for ~20% cell change rate (cursor pos + color + char per changed cell)
+        var sb = new StringBuilder(width * height * 5);
         byte lastR = 0, lastG = 0, lastB = 0;
         var hasColor = false;
         var changedCount = 0;

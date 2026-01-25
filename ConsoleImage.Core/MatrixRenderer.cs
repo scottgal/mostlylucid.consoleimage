@@ -222,6 +222,13 @@ public class MatrixRenderer : IDisposable
     private float[]? _edgesBuffer;
     private int _lastBufferSize;
 
+    // Pre-cached rain colors for non-full-color mode (avoids recomputing per cell per frame)
+    private readonly Rgba32 _cachedHeadColor;
+    private readonly Rgba32 _cachedNearHeadColor;
+    private readonly Rgba32 _cachedBrightColor;
+    private readonly Rgba32 _cachedMidColor;
+    private readonly Rgba32 _cachedDarkColor;
+
     public MatrixRenderer(RenderOptions? options = null, MatrixOptions? matrixOptions = null, int? seed = null)
     {
         _options = options ?? new RenderOptions();
@@ -231,10 +238,57 @@ public class MatrixRenderer : IDisposable
 
         // Select character set based on options (priority: CustomAlphabet > UseAsciiOnly > default katakana)
         if (!string.IsNullOrEmpty(_matrixOptions.CustomAlphabet))
-            // Use custom alphabet - deduplicate characters
             _matrixCharacters = _matrixOptions.CustomAlphabet.Distinct().ToArray();
         else
             _matrixCharacters = _matrixOptions.UseAsciiOnly ? AsciiCharacters : KatakanaCharacters;
+
+        // Pre-compute rain colors for non-full-color mode (constant across all cells)
+        if (!_matrixOptions.UseFullColor)
+        {
+            var baseColor = _matrixOptions.BaseColor ?? new Rgba32(0, 255, 65, 255);
+            (_cachedHeadColor, _cachedNearHeadColor, _cachedBrightColor, _cachedMidColor, _cachedDarkColor) =
+                ComputeRainPalette(baseColor);
+        }
+    }
+
+    /// <summary>
+    /// Compute the 5-color rain palette from a base color.
+    /// Called once at construction for non-full-color mode, or per-cell for full-color mode.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (Rgba32 head, Rgba32 nearHead, Rgba32 bright, Rgba32 mid, Rgba32 dark) ComputeRainPalette(Rgba32 baseColor)
+    {
+        float maxChannel = Math.Max(baseColor.R, Math.Max(baseColor.G, baseColor.B));
+        var rRatio = maxChannel > 0 ? baseColor.R / maxChannel : 0;
+        var bRatio = maxChannel > 0 ? baseColor.B / maxChannel : 0;
+
+        var head = new Rgba32(
+            (byte)Math.Min(255, 200 + 55 * rRatio),
+            255,
+            (byte)Math.Min(255, 200 + 55 * bRatio),
+            255);
+
+        var nearHead = new Rgba32(
+            (byte)Math.Min(255, 150 + baseColor.R * 0.4f),
+            (byte)Math.Min(255, 220 + baseColor.G * 0.14f),
+            (byte)Math.Min(255, 150 + baseColor.B * 0.4f),
+            255);
+
+        var bright = new Rgba32(baseColor.R, baseColor.G, baseColor.B, 255);
+
+        var mid = new Rgba32(
+            (byte)(baseColor.R * 0.56f),
+            (byte)(baseColor.G * 0.56f),
+            (byte)(baseColor.B * 0.56f),
+            255);
+
+        var dark = new Rgba32(
+            (byte)(baseColor.R * 0.23f),
+            (byte)(baseColor.G * 0.23f),
+            (byte)(baseColor.B * 0.23f),
+            255);
+
+        return (head, nearHead, bright, mid, dark);
     }
 
     public void Dispose()
@@ -844,119 +898,57 @@ public class MatrixRenderer : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Rgba32 CalculateRainColor(int distFromHead, float normalizedDist, float imageBrightness, Rgba32 sourceColor)
     {
-        // Base color is always used as the starting point
-        var matrixBaseColor = _matrixOptions.BaseColor ?? new Rgba32(0, 255, 65, 255); // #00FF41 Malachite
+        Rgba32 headColor, nearHeadColor, brightColor, midColor, darkColor;
 
-        // Determine effective color based on mode
-        Rgba32 baseColor;
         if (_matrixOptions.UseFullColor)
         {
             // Full color "reveal" mode: blend from base color to source color based on brightness
-            // Dark areas (black) = show normal matrix rain (base color)
-            // Bright/colored areas = reveal the source image color
-            //
-            // Use a power curve to make the reveal more dramatic - bright areas pop more
-            var revealFactor = MathF.Pow(imageBrightness, 0.7f); // Power < 1 makes brights reveal faster
+            var matrixBaseColor = _matrixOptions.BaseColor ?? new Rgba32(0, 255, 65, 255);
+            var revealFactor = MathF.Pow(imageBrightness, 0.7f);
 
-            // Also consider source color saturation - colorful areas should reveal more
             var srcMax = Math.Max(sourceColor.R, Math.Max(sourceColor.G, sourceColor.B));
             var srcMin = Math.Min(sourceColor.R, Math.Min(sourceColor.G, sourceColor.B));
             var saturation = srcMax > 0 ? (srcMax - srcMin) / (float)srcMax : 0;
-
-            // Boost reveal factor for saturated colors
             revealFactor = Math.Min(1.0f, revealFactor + saturation * 0.3f);
 
-            // Blend between base color and source color
-            baseColor = new Rgba32(
+            var baseColor = new Rgba32(
                 (byte)(matrixBaseColor.R + (sourceColor.R - matrixBaseColor.R) * revealFactor),
                 (byte)(matrixBaseColor.G + (sourceColor.G - matrixBaseColor.G) * revealFactor),
                 (byte)(matrixBaseColor.B + (sourceColor.B - matrixBaseColor.B) * revealFactor),
-                255
-            );
+                255);
+
+            (headColor, nearHeadColor, brightColor, midColor, darkColor) = ComputeRainPalette(baseColor);
         }
         else
         {
-            // Single color mode - use configured base color
-            baseColor = matrixBaseColor;
+            // Non-full-color: use pre-cached palette (computed once in constructor)
+            headColor = _cachedHeadColor;
+            nearHeadColor = _cachedNearHeadColor;
+            brightColor = _cachedBrightColor;
+            midColor = _cachedMidColor;
+            darkColor = _cachedDarkColor;
         }
-
-        // Authentic Matrix color scheme:
-        // Head: White/cyan glow (the "phosphor burst")
-        // Near head: Bright color (#00FF41 for green)
-        // Mid trail: Medium color (#008F11 for green)
-        // Trail end: Dark color (#003B00 for green)
-
-        // Calculate color multipliers based on base color's dominant channel
-        float maxChannel = Math.Max(baseColor.R, Math.Max(baseColor.G, baseColor.B));
-        var rRatio = maxChannel > 0 ? baseColor.R / maxChannel : 0;
-        var gRatio = maxChannel > 0 ? baseColor.G / maxChannel : 0;
-        var bRatio = maxChannel > 0 ? baseColor.B / maxChannel : 0;
-
-        // Head color - WHITE with slight tint of base color (the phosphor burst)
-        var headColor = new Rgba32(
-            (byte)Math.Min(255, 200 + 55 * rRatio),
-            (byte)Math.Min(255, 255), // Always bright
-            (byte)Math.Min(255, 200 + 55 * bRatio),
-            255
-        );
-
-        // Near-head color - Very bright, almost white with color tint
-        var nearHeadColor = new Rgba32(
-            (byte)Math.Min(255, 150 + baseColor.R * 0.4f),
-            (byte)Math.Min(255, 220 + baseColor.G * 0.14f),
-            (byte)Math.Min(255, 150 + baseColor.B * 0.4f),
-            255
-        );
-
-        // Bright trail color - Full saturation of base color
-        var brightColor = new Rgba32(
-            baseColor.R,
-            baseColor.G,
-            baseColor.B,
-            255
-        );
-
-        // Mid trail color - Reduced brightness
-        var midColor = new Rgba32(
-            (byte)(baseColor.R * 0.56f),
-            (byte)(baseColor.G * 0.56f),
-            (byte)(baseColor.B * 0.56f),
-            255
-        );
-
-        // Dark trail color - Very dim
-        var darkColor = new Rgba32(
-            (byte)(baseColor.R * 0.23f),
-            (byte)(baseColor.G * 0.23f),
-            (byte)(baseColor.B * 0.23f),
-            255
-        );
 
         // Calculate final color based on position in trail
         if (distFromHead == 0)
-            // Head of raindrop - WHITE/cyan glow
             return headColor;
 
         if (distFromHead == 1)
-            // Just after head - transition from white to near-head bright
             return nearHeadColor;
 
         if (distFromHead <= 3)
         {
-            // Near head zone - bright with slight fade
             var t = (distFromHead - 1) / 2.0f;
             return InterpolateColor(nearHeadColor, brightColor, t);
         }
 
         if (normalizedDist < 0.5f)
         {
-            // Upper trail - fade from bright to mid
             var t = normalizedDist * 2;
             return InterpolateColor(brightColor, midColor, t);
         }
         else
         {
-            // Lower trail - fade from mid to dark
             var t = (normalizedDist - 0.5f) * 2;
             return InterpolateColor(midColor, darkColor, t);
         }

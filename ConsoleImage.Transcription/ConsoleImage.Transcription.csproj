@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ConsoleImage.Transcription</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
 
     <!-- NuGet Package Properties -->
     <PackageId>mostlylucid.consoleimage.transcription</PackageId>

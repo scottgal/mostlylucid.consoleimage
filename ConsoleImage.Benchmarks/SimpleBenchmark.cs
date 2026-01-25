@@ -27,6 +27,8 @@ public static class SimpleBenchmark
         RunMatrixTests();
         Console.WriteLine();
         RunMemoryAllocationTest();
+        Console.WriteLine();
+        DocumentBenchmarks.RunAll();
     }
 
     private static void RunBrightnessTests()

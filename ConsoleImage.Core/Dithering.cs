@@ -1,5 +1,6 @@
 // ASCII Art Renderer - C# implementation based on Alex Harri's approach
 // Floyd-Steinberg dithering implementation
+// Optimized: in-place dithering to reduce allocations, serpentine scanning.
 // Reference: https://en.wikipedia.org/wiki/Floyd–Steinberg_dithering
 
 namespace ConsoleImage.Core;
@@ -26,6 +27,18 @@ public static class Dithering
         var result = new float[height, width];
         Array.Copy(values, result, values.Length);
 
+        ApplyFloydSteinbergInPlace(result, levels);
+        return result;
+    }
+
+    /// <summary>
+    ///     Apply Floyd-Steinberg dithering in-place (modifies the input array).
+    ///     Avoids allocation of a copy array when caller owns the buffer.
+    /// </summary>
+    public static void ApplyFloydSteinbergInPlace(float[,] values, int levels)
+    {
+        var height = values.GetLength(0);
+        var width = values.GetLength(1);
         var step = 1.0f / (levels - 1);
 
         // Process with serpentine scanning (alternating direction each row)
@@ -39,13 +52,13 @@ public static class Dithering
 
             for (var x = xStart; x != xEnd; x += xStep)
             {
-                var oldValue = result[y, x];
+                var oldValue = values[y, x];
 
                 // Quantize to nearest level
                 var newValue = MathF.Round(oldValue / step) * step;
                 newValue = Math.Clamp(newValue, 0, 1);
 
-                result[y, x] = newValue;
+                values[y, x] = newValue;
 
                 // Calculate quantization error
                 var error = oldValue - newValue;
@@ -57,50 +70,34 @@ public static class Dithering
 
                 if (leftToRight)
                 {
-                    // Right neighbor: 7/16
                     if (x + 1 < width)
-                        result[y, x + 1] += error * (7f / 16f);
-
-                    // Below-left: 3/16
+                        values[y, x + 1] += error * (7f / 16f);
                     if (y + 1 < height && x - 1 >= 0)
-                        result[y + 1, x - 1] += error * (3f / 16f);
-
-                    // Below: 5/16
+                        values[y + 1, x - 1] += error * (3f / 16f);
                     if (y + 1 < height)
-                        result[y + 1, x] += error * (5f / 16f);
-
-                    // Below-right: 1/16
+                        values[y + 1, x] += error * (5f / 16f);
                     if (y + 1 < height && x + 1 < width)
-                        result[y + 1, x + 1] += error * (1f / 16f);
+                        values[y + 1, x + 1] += error * (1f / 16f);
                 }
                 else
                 {
-                    // Going right-to-left (mirrored pattern)
-                    // Left neighbor: 7/16
                     if (x - 1 >= 0)
-                        result[y, x - 1] += error * (7f / 16f);
-
-                    // Below-right: 3/16
+                        values[y, x - 1] += error * (7f / 16f);
                     if (y + 1 < height && x + 1 < width)
-                        result[y + 1, x + 1] += error * (3f / 16f);
-
-                    // Below: 5/16
+                        values[y + 1, x + 1] += error * (3f / 16f);
                     if (y + 1 < height)
-                        result[y + 1, x] += error * (5f / 16f);
-
-                    // Below-left: 1/16
+                        values[y + 1, x] += error * (5f / 16f);
                     if (y + 1 < height && x - 1 >= 0)
-                        result[y + 1, x - 1] += error * (1f / 16f);
+                        values[y + 1, x - 1] += error * (1f / 16f);
                 }
             }
         }
-
-        return result;
     }
 
     /// <summary>
     ///     Apply Floyd-Steinberg dithering to shape vectors.
     ///     Each component of the 6D vector is dithered independently.
+    ///     Optimized: uses in-place dithering to avoid 6 extra copy arrays.
     /// </summary>
     public static ShapeVector[,] ApplyToShapeVectors(ShapeVector[,] vectors, int levels)
     {
@@ -117,9 +114,9 @@ public static class Dithering
                 components[c][y, x] = vectors[y, x][c];
         }
 
-        // Apply dithering to each component
-        var ditheredComponents = new float[6][,];
-        for (var c = 0; c < 6; c++) ditheredComponents[c] = ApplyFloydSteinberg(components[c], levels);
+        // Apply dithering in-place (no copy arrays needed)
+        for (var c = 0; c < 6; c++)
+            ApplyFloydSteinbergInPlace(components[c], levels);
 
         // Reconstruct shape vectors
         var result = new ShapeVector[height, width];
@@ -128,7 +125,7 @@ public static class Dithering
         for (var y = 0; y < height; y++)
         for (var x = 0; x < width; x++)
         {
-            for (var c = 0; c < 6; c++) vals[c] = Math.Clamp(ditheredComponents[c][y, x], 0, 1);
+            for (var c = 0; c < 6; c++) vals[c] = Math.Clamp(components[c][y, x], 0, 1);
             result[y, x] = new ShapeVector(vals);
         }
 
