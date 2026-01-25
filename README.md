@@ -519,9 +519,9 @@ consoleimage --version
 
 ```bash
 # === IMAGES ===
-consoleimage photo.jpg                    # Render to terminal
+consoleimage photo.jpg                    # Render to terminal (braille default)
+consoleimage photo.png -a                 # Classic ASCII mode (--ascii)
 consoleimage photo.png --blocks           # High-fidelity color blocks (▀▄)
-consoleimage photo.png --braille          # Ultra-high resolution braille
 consoleimage photo.png --matrix           # Matrix digital rain effect
 consoleimage https://example.com/photo.jpg # Load from URL
 
