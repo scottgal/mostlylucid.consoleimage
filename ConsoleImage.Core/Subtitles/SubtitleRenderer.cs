@@ -15,17 +15,18 @@ public class SubtitleRenderer
 
     /// <summary>
     /// Colors used for different speakers in diarization.
+    /// First speaker gets yellow (not white) to visually distinguish from non-diarized subtitles.
     /// </summary>
     private static readonly (byte R, byte G, byte B)[] SpeakerColors =
     [
-        ((byte)255, (byte)255, (byte)255),  // White (default)
-        ((byte)255, (byte)255, (byte)100),  // Yellow
-        ((byte)100, (byte)255, (byte)255),  // Cyan
-        ((byte)255, (byte)150, (byte)150),  // Light red/pink
-        ((byte)150, (byte)255, (byte)150),  // Light green
-        ((byte)200, (byte)150, (byte)255),  // Light purple
-        ((byte)255, (byte)200, (byte)100),  // Orange
-        ((byte)150, (byte)200, (byte)255),  // Light blue
+        ((byte)255, (byte)255, (byte)100),  // Yellow (Speaker 1)
+        ((byte)100, (byte)255, (byte)255),  // Cyan (Speaker 2)
+        ((byte)255, (byte)150, (byte)150),  // Light red/pink (Speaker 3)
+        ((byte)150, (byte)255, (byte)150),  // Light green (Speaker 4)
+        ((byte)200, (byte)150, (byte)255),  // Light purple (Speaker 5)
+        ((byte)255, (byte)200, (byte)100),  // Orange (Speaker 6)
+        ((byte)150, (byte)200, (byte)255),  // Light blue (Speaker 7)
+        ((byte)255, (byte)255, (byte)255),  // White (Speaker 8)
     ];
 
     /// <summary>

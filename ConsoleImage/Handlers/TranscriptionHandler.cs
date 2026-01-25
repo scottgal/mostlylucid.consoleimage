@@ -19,6 +19,16 @@ public static class TranscriptionHandler
         public int? Threads { get; set; }
 
         /// <summary>
+        /// Start time in seconds (for time-limited transcription).
+        /// </summary>
+        public double? StartTime { get; set; }
+
+        /// <summary>
+        /// Duration in seconds (for time-limited transcription).
+        /// </summary>
+        public double? Duration { get; set; }
+
+        /// <summary>
         /// Stream transcribed text to stdout as it's generated (for tool/pipe usage).
         /// </summary>
         public bool StreamToStdout { get; set; } = false;
@@ -111,7 +121,7 @@ public static class TranscriptionHandler
                 if (!quiet)
                     Console.Error.WriteLine("Extracting audio...");
                 tempAudioPath = Path.Combine(Path.GetTempPath(), $"consoleimage_audio_{Guid.NewGuid():N}.wav");
-                await ExtractAudioAsync(opts.InputPath, tempAudioPath, ct);
+                await ExtractAudioAsync(opts.InputPath, tempAudioPath, opts.StartTime, opts.Duration, ct);
                 audioPath = tempAudioPath;
                 if (!quiet)
                     Console.Error.WriteLine("Audio extracted.");
@@ -211,7 +221,7 @@ public static class TranscriptionHandler
                path.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task ExtractAudioAsync(string inputPath, string audioPath, CancellationToken ct)
+    private static async Task ExtractAudioAsync(string inputPath, string audioPath, double? startTime, double? duration, CancellationToken ct)
     {
         // Use FFmpeg to extract audio
         var ffmpegPath = FindFFmpeg();
@@ -227,8 +237,15 @@ public static class TranscriptionHandler
             ? $"-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -i \"{inputPath}\""
             : $"-i \"{inputPath}\"";
 
+        // Add time range options if specified
+        var timeArgs = "";
+        if (startTime.HasValue)
+            timeArgs += $"-ss {startTime.Value:F2} ";
+        if (duration.HasValue)
+            timeArgs += $"-t {duration.Value:F2} ";
+
         // Extract audio: 16kHz mono WAV (required for Whisper)
-        var args = $"{inputArg} -vn -ar 16000 -ac 1 -acodec pcm_s16le -y \"{audioPath}\"";
+        var args = $"{timeArgs}{inputArg} -vn -ar 16000 -ac 1 -acodec pcm_s16le -y \"{audioPath}\"";
 
         var psi = new System.Diagnostics.ProcessStartInfo
         {

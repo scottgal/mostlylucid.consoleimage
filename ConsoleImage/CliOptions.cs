@@ -68,6 +68,8 @@ public class CliOptions
 
     // yt-dlp (YouTube support)
     public Option<string?> YtdlpPath { get; }
+    public Option<string?> CookiesFromBrowser { get; }
+    public Option<string?> CookiesFile { get; }
 
     // Subtitles - unified flag: auto|off|<path>|yt|whisper|whisper+diarize
     public Option<string?> Subs { get; }
@@ -77,6 +79,7 @@ public class CliOptions
 
     // Transcript-only mode (no video rendering)
     public Option<bool> Transcript { get; }
+    public Option<bool> ForceSubs { get; }
 
     // Output
     public Option<string?> Output { get; }
@@ -262,6 +265,8 @@ public class CliOptions
         FfmpegYes.Aliases.Add("-y");
 
         YtdlpPath = new Option<string?>("--ytdlp-path") { Description = "Path to yt-dlp executable (for YouTube URLs)" };
+        CookiesFromBrowser = new Option<string?>("--cookies-from-browser") { Description = "Use cookies from browser (chrome, firefox, edge) for YouTube" };
+        CookiesFile = new Option<string?>("--cookies") { Description = "Path to Netscape cookies.txt file for YouTube" };
 
         // Subtitles - unified: auto|off|<path>|yt|whisper|whisper+diarize
         Subs = new Option<string?>("--subs") { Description = "Subtitles: auto, off, <path>, yt, whisper, whisper+diarize" };
@@ -282,6 +287,9 @@ public class CliOptions
         Transcript = new Option<bool>("--transcript") { Description = "Transcript only: generate subtitles without video (streams text to stdout)" };
         Transcript.Aliases.Add("-T");
         Transcript.Aliases.Add("--transcribe");
+
+        ForceSubs = new Option<bool>("--force-subs") { Description = "Force re-transcription, ignoring cached subtitles" };
+        ForceSubs.Aliases.Add("--force-transcribe");
 
         // Output
         Output = new Option<string?>("--output") { Description = "Output file (.gif, .cidz, .json)" };
@@ -457,6 +465,8 @@ public class CliOptions
         command.Options.Add(NoFfmpegDownload);
         command.Options.Add(FfmpegYes);
         command.Options.Add(YtdlpPath);
+        command.Options.Add(CookiesFromBrowser);
+        command.Options.Add(CookiesFile);
 
         // Subtitles
         command.Options.Add(Subs);
@@ -464,6 +474,7 @@ public class CliOptions
         command.Options.Add(WhisperModel);
         command.Options.Add(WhisperThreads);
         command.Options.Add(Transcript);
+        command.Options.Add(ForceSubs);
 
         command.Options.Add(Output);
         command.Options.Add(Info);

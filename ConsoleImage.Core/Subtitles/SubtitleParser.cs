@@ -15,9 +15,17 @@ public static partial class SubtitleParser
     [GeneratedRegex(@"(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})", RegexOptions.Compiled)]
     private static partial Regex VttTimecodeRegex();
 
-    // HTML tags to strip
-    [GeneratedRegex(@"<[^>]+>", RegexOptions.Compiled)]
+    // HTML tags to strip (but not voice tags)
+    [GeneratedRegex(@"<(?!v\s)[^>]+>", RegexOptions.Compiled)]
     private static partial Regex HtmlTagRegex();
+
+    // VTT voice tag: <v SPEAKER_00> or <v.loud Speaker Name>
+    [GeneratedRegex(@"<v(?:\.[^\s>]+)?\s+([^>]+)>", RegexOptions.Compiled)]
+    private static partial Regex VttVoiceTagRegex();
+
+    // Speaker label patterns in text: "[John]:", "(Speaker 1):", "JOHN:", "Speaker 1:"
+    [GeneratedRegex(@"^\s*(?:\[([^\]]+)\]|\(([^)]+)\)|([A-Z][A-Z\s]*\d*)):\s*", RegexOptions.Compiled)]
+    private static partial Regex SpeakerLabelRegex();
 
     // VTT cue settings (position, align, etc.)
     [GeneratedRegex(@"\s+(position|line|align|size|vertical):[^\s]+", RegexOptions.Compiled)]
@@ -131,13 +139,19 @@ public static partial class SubtitleParser
 
             if (textLines.Count > 0)
             {
-                var text = StripHtmlTags(string.Join("\n", textLines));
+                var rawText = string.Join("\n", textLines);
+                var text = StripHtmlTags(rawText);
+
+                // Try to extract speaker from text patterns
+                var (speakerId, cleanText) = ExtractSpeakerFromText(text);
+
                 track.Entries.Add(new SubtitleEntry
                 {
                     Index = index,
                     StartTime = startTime,
                     EndTime = endTime,
-                    Text = text
+                    Text = cleanText,
+                    SpeakerId = speakerId
                 });
             }
         }
@@ -157,26 +171,22 @@ public static partial class SubtitleParser
         var i = 0;
         var index = 0;
 
-        // Skip WEBVTT header and any metadata
-        while (i < lines.Length)
+        // Skip WEBVTT header line
+        if (i < lines.Length && lines[i].Trim().StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase))
         {
-            var line = lines[i].Trim();
-            if (string.IsNullOrEmpty(line))
-            {
-                i++;
-                break;
-            }
-            // Skip header, NOTE, STYLE, REGION blocks
-            if (line.StartsWith("WEBVTT", StringComparison.OrdinalIgnoreCase) ||
-                line.StartsWith("NOTE", StringComparison.OrdinalIgnoreCase) ||
-                line.StartsWith("STYLE", StringComparison.OrdinalIgnoreCase) ||
-                line.StartsWith("REGION", StringComparison.OrdinalIgnoreCase))
-            {
-                // Skip until empty line
-                while (i < lines.Length && !string.IsNullOrWhiteSpace(lines[i]))
-                    i++;
-            }
             i++;
+            // Skip any optional header metadata on the same line or subsequent lines until empty line
+            while (i < lines.Length && !string.IsNullOrWhiteSpace(lines[i]))
+            {
+                var line = lines[i].Trim();
+                // Stop if we hit what looks like a cue (timecode or cue identifier)
+                if (VttTimecodeRegex().IsMatch(line) || int.TryParse(line, out _))
+                    break;
+                i++;
+            }
+            // Skip the empty line after header
+            if (i < lines.Length && string.IsNullOrWhiteSpace(lines[i]))
+                i++;
         }
 
         while (i < lines.Length)
@@ -240,18 +250,59 @@ public static partial class SubtitleParser
             if (textLines.Count > 0)
             {
                 index++;
-                var text = StripHtmlTags(string.Join("\n", textLines));
+                var rawText = string.Join("\n", textLines);
+
+                // Extract speaker from VTT voice tag <v SpeakerId>
+                string? speakerId = null;
+                var voiceMatch = VttVoiceTagRegex().Match(rawText);
+                if (voiceMatch.Success)
+                {
+                    speakerId = voiceMatch.Groups[1].Value.Trim();
+                }
+
+                var text = StripHtmlTags(rawText);
+
+                // Try to extract speaker from text patterns if not found in voice tag
+                if (string.IsNullOrEmpty(speakerId))
+                {
+                    (speakerId, text) = ExtractSpeakerFromText(text);
+                }
+
                 track.Entries.Add(new SubtitleEntry
                 {
                     Index = index,
                     StartTime = startTime,
                     EndTime = endTime,
-                    Text = text
+                    Text = text,
+                    SpeakerId = speakerId
                 });
             }
         }
 
         return track;
+    }
+
+    /// <summary>
+    /// Extract speaker ID from text patterns like "[John]:", "(Speaker 1):", "JOHN:".
+    /// </summary>
+    private static (string? speakerId, string text) ExtractSpeakerFromText(string text)
+    {
+        var match = SpeakerLabelRegex().Match(text);
+        if (match.Success)
+        {
+            // Group 1: [brackets], Group 2: (parens), Group 3: UPPERCASE:
+            var speakerId = match.Groups[1].Success ? match.Groups[1].Value :
+                           match.Groups[2].Success ? match.Groups[2].Value :
+                           match.Groups[3].Success ? match.Groups[3].Value.Trim() : null;
+
+            if (!string.IsNullOrEmpty(speakerId))
+            {
+                // Remove the speaker label from the text
+                text = text.Substring(match.Length).Trim();
+                return (speakerId, text);
+            }
+        }
+        return (null, text);
     }
 
     /// <summary>

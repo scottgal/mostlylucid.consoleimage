@@ -5,12 +5,15 @@ using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Video.Core;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.Formats.Gif;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Metadata;
 using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.Fonts;
 
 namespace ConsoleImage.Cli.Handlers;
 
@@ -204,10 +207,13 @@ public static class VideoHandler
         FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo,
         VideoHandlerOptions opts, double? end, CancellationToken ct)
     {
-        var targetWidth = opts.RawWidth ?? 320;
-        var targetHeight = opts.RawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+        // Raw mode uses original video dimensions unless explicitly overridden
+        var targetWidth = opts.RawWidth ?? opts.Width ?? videoInfo.Width;
+        var targetHeight = opts.RawHeight ?? opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
 
-        var maxFrames = opts.GifFrames ?? 4;
+        // Only limit frames when --gif-frames is explicitly specified
+        // Otherwise extract all frames for the specified duration
+        var maxFrames = opts.GifFrames;
         var maxLength = opts.GifLength ?? opts.Duration ?? 10.0;
         var rawStartTime = opts.Start ?? 0;
         var rawEndTime = end ?? rawStartTime + maxLength;
@@ -225,6 +231,17 @@ public static class VideoHandler
         Console.WriteLine($"  Output: {opts.OutputGif!.FullName}");
         Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
         Console.WriteLine($"  Target: {targetWidth}x{targetHeight} @ {uniformTargetFps:F1} fps, step {opts.FrameStep}");
+        Console.WriteLine($"  Time range: {rawStartTime:F1}s - {rawEndTime:F1}s");
+        if (opts.Subtitles != null)
+        {
+            Console.WriteLine($"  Subtitles: {opts.Subtitles.Entries.Count} entries");
+            if (opts.Subtitles.Entries.Count > 0)
+            {
+                var first = opts.Subtitles.Entries.First();
+                var last = opts.Subtitles.Entries.Last();
+                Console.WriteLine($"  Subtitle range: {first.StartTime.TotalSeconds:F1}s - {last.EndTime.TotalSeconds:F1}s");
+            }
+        }
         Console.WriteLine("  Memory: streaming (1 frame at a time)");
 
         await using var streamingGif = new FFmpegGifWriter(
@@ -235,11 +252,15 @@ public static class VideoHandler
             opts.Loop != 1 ? opts.Loop : 0,
             opts.GifColors,
             maxLength,
-            maxFrames > 0 ? maxFrames : null);
+            maxFrames);
 
         await streamingGif.StartAsync(null, ct);
 
         var uniformFrameCount = 0;
+        var frameIntervalSec = 1.0 / uniformTargetFps;
+
+        // Timing tolerance for subtitle lookup (handles frame/subtitle timing misalignment)
+        const double toleranceSeconds = 0.5;
 
         await foreach (var frameImage in ffmpeg.StreamFramesAsync(
                            inputPath, targetWidth, targetHeight,
@@ -249,6 +270,21 @@ public static class VideoHandler
             {
                 frameImage.Dispose();
                 break;
+            }
+
+            // Burn subtitle onto frame if subtitles are available
+            if (opts.Subtitles != null)
+            {
+                // Use absolute time (matches offset subtitle times)
+                var currentTime = rawStartTime + uniformFrameCount * frameIntervalSec;
+
+                // Use fuzzy lookup - finds subtitle active within ±tolerance of current time
+                var entry = opts.Subtitles.GetActiveAtWithTolerance(currentTime, toleranceSeconds);
+
+                if (entry != null)
+                {
+                    BurnSubtitleOntoImage(frameImage, entry.Text);
+                }
             }
 
             await streamingGif.AddFrameAsync(frameImage, ct);
@@ -270,9 +306,10 @@ public static class VideoHandler
         FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo,
         VideoHandlerOptions opts, double? end, CancellationToken ct)
     {
-        var targetWidth = opts.RawWidth ?? 320;
-        var targetHeight = opts.RawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
-        var maxFrames = opts.GifFrames ?? 30;
+        // Raw mode uses original video dimensions unless explicitly overridden
+        var targetWidth = opts.RawWidth ?? opts.Width ?? videoInfo.Width;
+        var targetHeight = opts.RawHeight ?? opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+        var maxFrames = opts.GifFrames;
         var maxLength = opts.GifLength ?? opts.Duration ?? 10.0;
         var rawStartTime = opts.Start ?? 0;
         var rawEndTime = end ?? rawStartTime + maxLength;
@@ -293,7 +330,8 @@ public static class VideoHandler
                            inputPath, targetWidth, targetHeight,
                            rawStartTime, rawEndTime, opts.FrameStepValue, targetFps, videoInfo.VideoCodec, ct))
         {
-            if (maxFrames > 0 && frameCount >= maxFrames)
+            // Stop if we've hit the frame limit (if specified)
+            if (maxFrames.HasValue && frameCount >= maxFrames.Value)
             {
                 frameImage.Dispose();
                 break;
@@ -321,9 +359,10 @@ public static class VideoHandler
         FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo,
         VideoHandlerOptions opts, double? end, CancellationToken ct)
     {
-        var targetWidth = opts.RawWidth ?? 320;
-        var targetHeight = opts.RawHeight ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
-        var maxFrames = opts.GifFrames ?? 1;
+        // Raw mode uses original video dimensions unless explicitly overridden
+        var targetWidth = opts.RawWidth ?? opts.Width ?? videoInfo.Width;
+        var targetHeight = opts.RawHeight ?? opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+        var maxFrames = opts.GifFrames ?? 1;  // Still default to 1 for single image extraction
         var rawStartTime = opts.Start ?? 0;
         var rawEndTime = end ?? rawStartTime + (opts.GifLength ?? opts.Duration ?? 10.0);
         var outputPath = opts.OutputGif!.FullName;
@@ -422,13 +461,19 @@ public static class VideoHandler
         FFmpegService ffmpeg, string inputPath, VideoHandlerOptions opts, double? end, CancellationToken ct)
     {
         var outputPath = opts.OutputGif!.FullName;
-        var targetWidth = opts.RawWidth ?? 320;
+        // Get video info to use original dimensions as default
+        var videoInfo = await ffmpeg.GetVideoInfoAsync(inputPath, ct);
+        var originalWidth = videoInfo?.Width ?? 1920;
+
+        // Raw mode uses original width unless explicitly overridden
+        var targetWidth = opts.RawWidth ?? opts.Width ?? originalWidth;
         var rawStartTime = opts.Start ?? 0;
         var duration = opts.Duration ?? (end.HasValue ? end.Value - rawStartTime : 10.0);
 
         Console.WriteLine("Re-encoding video with FFmpeg...");
         Console.WriteLine($"  Output: {outputPath}");
-        Console.WriteLine($"  Width: {targetWidth}, Duration: {duration:F1}s");
+        Console.WriteLine($"  Source: {videoInfo?.Width ?? 0}x{videoInfo?.Height ?? 0}");
+        Console.WriteLine($"  Target width: {targetWidth}, Duration: {duration:F1}s");
 
         // Use FFmpeg directly for video output
         var success = await ffmpeg.ExtractClipAsync(
@@ -444,9 +489,12 @@ public static class VideoHandler
 
     private static async Task<int> HandleSmartKeyframeExtraction(
         FFmpegService ffmpeg, string inputPath, VideoInfo videoInfo, VideoHandlerOptions opts,
-        int targetWidth, int targetHeight, int maxFrames, double rawStartTime, double rawEndTime,
+        int targetWidth, int targetHeight, int? maxFramesArg, double rawStartTime, double rawEndTime,
         CancellationToken ct)
     {
+        // Smart keyframe extraction defaults to 10 keyframes if not specified
+        var maxFrames = maxFramesArg ?? 10;
+
         Console.WriteLine("Smart keyframe extraction (scene detection)...");
         Console.WriteLine($"  Output: {opts.OutputGif!.FullName}");
         Console.WriteLine($"  Source: {videoInfo.Width}x{videoInfo.Height} @ {videoInfo.FrameRate:F2} fps");
@@ -505,6 +553,8 @@ public static class VideoHandler
         gifMetaData.RepeatCount = (ushort)(opts.Loop != 1 ? opts.Loop : 0);
 
         var frameCount = 0;
+        const double toleranceSeconds = 0.3; // Timing tolerance for subtitle lookup
+
         foreach (var timestamp in keyframeTimes)
         {
             Console.Write($"\rExtracting frame at {timestamp:F1}s...");
@@ -513,6 +563,17 @@ public static class VideoHandler
 
             if (frameImage != null)
             {
+                // Burn subtitle onto frame if subtitles are available
+                if (opts.Subtitles != null)
+                {
+                    // Use fuzzy lookup with tolerance for timing imprecision
+                    var entry = opts.Subtitles.GetActiveAtWithTolerance(timestamp, toleranceSeconds);
+                    if (entry != null)
+                    {
+                        BurnSubtitleOntoImage(frameImage, entry.Text);
+                    }
+                }
+
                 var gifFrameMetadata = frameImage.Frames.RootFrame.Metadata.GetGifMetadata();
                 gifFrameMetadata.FrameDelay = rawDelayMs / 10;
                 rawGif.Frames.AddFrame(frameImage.Frames.RootFrame);
@@ -1177,6 +1238,76 @@ public static class VideoHandler
             TotalDuration = TimeSpan.FromSeconds(totalDuration),
             Fps = fps
         };
+    }
+
+    /// <summary>
+    /// Burn subtitle text onto an image frame.
+    /// Uses accessible sizing (approximately 5-8% of video height).
+    /// </summary>
+    private static void BurnSubtitleOntoImage(Image<Rgba32> image, string subtitle)
+    {
+        var lines = subtitle.Split('\n', StringSplitOptions.RemoveEmptyEntries).Take(2).ToArray();
+        if (lines.Length == 0) return;
+
+        // Accessible subtitle sizing: ~5-8% of video height
+        // WCAG guidelines recommend captions be clearly readable
+        // Using height/14 (~7%) with min 16px for readability, max 64px for aesthetics
+        var fontSize = Math.Clamp(image.Height / 14, 16, 64);
+        Font font;
+
+        try
+        {
+            var families = SystemFonts.Collection.Families;
+            var family = families.FirstOrDefault(f =>
+                f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase) ||
+                f.Name.Contains("Sans", StringComparison.OrdinalIgnoreCase) ||
+                f.Name.Contains("Helvetica", StringComparison.OrdinalIgnoreCase));
+            family = family == default ? families.First() : family;
+            font = family.CreateFont(fontSize, FontStyle.Bold);
+        }
+        catch
+        {
+            return; // Skip subtitle if font loading fails
+        }
+
+        var textColor = Color.White;
+        var outlineColor = Color.Black;
+
+        var bottomMargin = image.Height / 20;
+        var lineHeight = fontSize + 4;
+        var startY = image.Height - bottomMargin - (lines.Length * lineHeight);
+
+        image.Mutate(ctx =>
+        {
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var text = lines[i].Trim();
+                if (string.IsNullOrEmpty(text)) continue;
+
+                var textOptions = new RichTextOptions(font)
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Origin = new PointF(image.Width / 2f, startY + i * lineHeight)
+                };
+
+                // Draw outline
+                var outlineOffset = Math.Max(1, fontSize / 10);
+                var offsets = new[] { (-outlineOffset, 0), (outlineOffset, 0), (0, -outlineOffset), (0, outlineOffset) };
+
+                foreach (var (dx, dy) in offsets)
+                {
+                    var outlineOptions = new RichTextOptions(font)
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Origin = new PointF(image.Width / 2f + dx, startY + i * lineHeight + dy)
+                    };
+                    ctx.DrawText(outlineOptions, text, outlineColor);
+                }
+
+                // Draw main text
+                ctx.DrawText(textOptions, text, textColor);
+            }
+        });
     }
 }
 

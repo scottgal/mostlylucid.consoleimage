@@ -209,6 +209,8 @@ public static class YtdlpProvider
         string? ytdlpPath = null,
         int? maxHeight = null,
         double? startTimeSeconds = null,
+        string? cookiesFromBrowser = null,
+        string? cookiesFile = null,
         CancellationToken ct = default)
     {
         // Note: startTimeSeconds is not used here because --download-sections
@@ -227,8 +229,15 @@ public static class YtdlpProvider
             ? $"best[height<={maxHeight}][protocol!*=m3u8]/bestvideo[height<={maxHeight}][protocol!*=m3u8]+bestaudio[protocol!*=m3u8]/best[height<={maxHeight}]/best"
             : "best[protocol!*=m3u8]/bestvideo[protocol!*=m3u8]+bestaudio[protocol!*=m3u8]/best";
 
+        // Build cookie arguments
+        var cookieArgs = "";
+        if (!string.IsNullOrEmpty(cookiesFromBrowser))
+            cookieArgs = $"--cookies-from-browser {cookiesFromBrowser} ";
+        else if (!string.IsNullOrEmpty(cookiesFile))
+            cookieArgs = $"--cookies \"{cookiesFile}\" ";
+
         // Get URL and title
-        var args = $"-f \"{format}\" -g --no-warnings --no-playlist \"{youtubeUrl}\"";
+        var args = $"{cookieArgs}-f \"{format}\" -g --no-warnings --no-playlist \"{youtubeUrl}\"";
 
         try
         {
@@ -267,7 +276,7 @@ public static class YtdlpProvider
             var audioUrl = lines.Length > 1 ? lines[1].Trim() : null;
 
             // Get title separately
-            var title = await GetTitleAsync(ytdlp, youtubeUrl, ct);
+            var title = await GetTitleAsync(ytdlp, youtubeUrl, cookiesFromBrowser, cookiesFile, ct);
 
             return new YouTubeStreamInfo
             {
@@ -290,6 +299,8 @@ public static class YtdlpProvider
     /// <param name="outputDirectory">Directory to save subtitle file.</param>
     /// <param name="preferredLanguage">Preferred language code (default: "en").</param>
     /// <param name="ytdlpPath">Optional custom yt-dlp path.</param>
+    /// <param name="cookiesFromBrowser">Browser to extract cookies from (chrome, firefox, etc.).</param>
+    /// <param name="cookiesFile">Path to Netscape-format cookies file.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Path to downloaded subtitle file, or null if not available.</returns>
     public static async Task<string?> DownloadSubtitlesAsync(
@@ -297,6 +308,8 @@ public static class YtdlpProvider
         string outputDirectory,
         string? preferredLanguage = null,
         string? ytdlpPath = null,
+        string? cookiesFromBrowser = null,
+        string? cookiesFile = null,
         CancellationToken ct = default)
     {
         var ytdlp = ytdlpPath ?? FindInPath() ?? FindInCache();
@@ -310,8 +323,15 @@ public static class YtdlpProvider
         var videoId = ExtractVideoId(youtubeUrl) ?? "video";
         var outputTemplate = Path.Combine(outputDirectory, $"{videoId}.%(ext)s");
 
+        // Build cookie arguments
+        var cookieArgs = "";
+        if (!string.IsNullOrEmpty(cookiesFromBrowser))
+            cookieArgs = $"--cookies-from-browser {cookiesFromBrowser} ";
+        else if (!string.IsNullOrEmpty(cookiesFile))
+            cookieArgs = $"--cookies \"{cookiesFile}\" ";
+
         // Try to download subtitles (prefer manual subs, fall back to auto-generated)
-        var args = $"--skip-download --write-sub --write-auto-sub --sub-lang \"{lang}\" --sub-format srt --convert-subs srt -o \"{outputTemplate}\" --no-warnings --no-playlist \"{youtubeUrl}\"";
+        var args = $"{cookieArgs}--skip-download --write-sub --write-auto-sub --sub-lang \"{lang}\" --sub-format srt --convert-subs srt -o \"{outputTemplate}\" --no-warnings --no-playlist \"{youtubeUrl}\"";
 
         try
         {
@@ -394,14 +414,20 @@ public static class YtdlpProvider
         return null;
     }
 
-    private static async Task<string?> GetTitleAsync(string ytdlp, string youtubeUrl, CancellationToken ct)
+    private static async Task<string?> GetTitleAsync(string ytdlp, string youtubeUrl, string? cookiesFromBrowser, string? cookiesFile, CancellationToken ct)
     {
         try
         {
+            var cookieArgs = "";
+            if (!string.IsNullOrEmpty(cookiesFromBrowser))
+                cookieArgs = $"--cookies-from-browser {cookiesFromBrowser} ";
+            else if (!string.IsNullOrEmpty(cookiesFile))
+                cookieArgs = $"--cookies \"{cookiesFile}\" ";
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = ytdlp,
-                Arguments = $"--get-title --no-warnings --no-playlist \"{youtubeUrl}\"",
+                Arguments = $"{cookieArgs}--get-title --no-warnings --no-playlist \"{youtubeUrl}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

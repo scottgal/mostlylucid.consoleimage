@@ -540,6 +540,25 @@ Install manually with:
 **YouTube Options:**
 - `--ytdlp-path` - Path to yt-dlp executable
 - `-y, --yes` - Auto-confirm yt-dlp download (no prompt)
+- `--cookies-from-browser <browser>` - Use cookies from browser (chrome, firefox, edge, etc.)
+- `--cookies <file>` - Path to Netscape cookies.txt file
+
+**YouTube Authentication:**
+YouTube may require authentication to prevent bot access. If you see:
+```
+Sign in to confirm you're not a bot
+```
+Use one of these cookie options:
+```bash
+# Use cookies from your browser (recommended)
+consoleimage "https://youtu.be/xyz" --cookies-from-browser chrome
+consoleimage "https://youtu.be/xyz" --cookies-from-browser firefox
+
+# Or export cookies to a file and use that
+consoleimage "https://youtu.be/xyz" --cookies cookies.txt
+```
+
+See [yt-dlp FAQ](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp) for more details.
 
 **How it works:**
 1. Detects YouTube URL patterns (youtube.com, youtu.be, shorts)

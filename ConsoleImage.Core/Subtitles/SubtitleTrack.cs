@@ -66,6 +66,57 @@ public class SubtitleTrack
     public SubtitleEntry? GetActiveAt(double seconds) => GetActiveAt(TimeSpan.FromSeconds(seconds));
 
     /// <summary>
+    /// Get the subtitle active at or near the given timestamp, with tolerance for timing imprecision.
+    /// Useful for GIF/video output where frame times may not align exactly with subtitle times.
+    /// </summary>
+    /// <param name="timestamp">The timestamp to check.</param>
+    /// <param name="tolerance">Tolerance window (checks timestamp ± tolerance).</param>
+    /// <returns>The active subtitle entry, or null if none.</returns>
+    public SubtitleEntry? GetActiveAtWithTolerance(TimeSpan timestamp, TimeSpan tolerance)
+    {
+        // First try exact match
+        var exact = GetActiveAt(timestamp);
+        if (exact != null)
+            return exact;
+
+        // Look for subtitle that overlaps with [timestamp - tolerance, timestamp + tolerance]
+        // This catches both:
+        // - Subtitles we're in the middle of (started before, ends after)
+        // - Subtitles that just started (starts within tolerance after timestamp)
+        // - Subtitles that just ended (ends within tolerance before timestamp)
+
+        var windowStart = timestamp - tolerance;
+        var windowEnd = timestamp + tolerance;
+
+        foreach (var entry in Entries)
+        {
+            // Skip entries that end before our window
+            if (entry.EndTime < windowStart)
+                continue;
+
+            // Stop if entries start after our window (list is sorted)
+            if (entry.StartTime > windowEnd)
+                break;
+
+            // Entry overlaps with our tolerance window
+            // Prefer entries that are actually active at timestamp or start soon
+            if (entry.StartTime <= windowEnd && entry.EndTime >= windowStart)
+                return entry;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Get the subtitle active at or near the given timestamp in seconds, with tolerance.
+    /// </summary>
+    /// <param name="seconds">The timestamp in seconds.</param>
+    /// <param name="toleranceSeconds">Tolerance window in seconds (default: 0.5).</param>
+    /// <returns>The active subtitle entry, or null if none.</returns>
+    public SubtitleEntry? GetActiveAtWithTolerance(double seconds, double toleranceSeconds = 0.5)
+        => GetActiveAtWithTolerance(TimeSpan.FromSeconds(seconds), TimeSpan.FromSeconds(toleranceSeconds));
+
+    /// <summary>
     /// Get formatted display lines for the subtitle at the given timestamp.
     /// </summary>
     /// <param name="timestamp">The timestamp to check.</param>

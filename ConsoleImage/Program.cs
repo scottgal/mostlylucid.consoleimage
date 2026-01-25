@@ -156,6 +156,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var whisperModel = parseResult.GetValue(cliOptions.WhisperModel);
     var whisperThreads = parseResult.GetValue(cliOptions.WhisperThreads);
     var transcriptOnly = parseResult.GetValue(cliOptions.Transcript);
+    var forceSubs = parseResult.GetValue(cliOptions.ForceSubs);
+    var cookiesFromBrowser = parseResult.GetValue(cliOptions.CookiesFromBrowser);
+    var cookiesFile = parseResult.GetValue(cliOptions.CookiesFile);
 
     // Slideshow mode
     var slideDelay = parseResult.GetValue(cliOptions.SlideDelay);
@@ -203,7 +206,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             SlideDelay = slideDelay,
             Shuffle = shuffle,
             Recursive = recursive,
-            SortBy = sortBy,
+            SortBy = sortBy ?? "date",
             SortDesc = sortDesc,
             VideoPreview = videoPreview,
             GifLoop = gifLoop,
@@ -310,7 +313,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // For ASCII rendering, we don't need high resolution - 480p is plenty
         var ytMaxHeight = useBraille ? 480 : 360;
         // Pass start time to yt-dlp so it can use download-sections for efficient seeking
-        var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, start, cancellationToken);
+        var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, start, cookiesFromBrowser, cookiesFile, cancellationToken);
 
         if (streamInfo == null)
         {
@@ -334,7 +337,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             Console.Error.Write($"Downloading subtitles ({subtitleLang})... ");
             var tempDir = Path.Combine(Path.GetTempPath(), "consoleimage_subs");
             var srtPath = await YtdlpProvider.DownloadSubtitlesAsync(
-                inputPath, tempDir, subtitleLang, ytdlpPath, cancellationToken);
+                inputPath, tempDir, subtitleLang, ytdlpPath, cookiesFromBrowser, cookiesFile, cancellationToken);
 
             if (!string.IsNullOrEmpty(srtPath))
             {
@@ -419,18 +422,32 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             Console.Error.Write($"Checking for YouTube subtitles ({subtitleLang})... ");
             var subsTempDir = Path.Combine(Path.GetTempPath(), "consoleimage_subs");
             var srtPath = await YtdlpProvider.DownloadSubtitlesAsync(
-                inputPath, subsTempDir, subtitleLang, ytdlpPath, cancellationToken);
+                inputPath, subsTempDir, subtitleLang, ytdlpPath, cookiesFromBrowser, cookiesFile, cancellationToken);
 
             if (srtPath != null && File.Exists(srtPath))
             {
                 Console.Error.WriteLine("found!");
 
-                // Read and output the subtitle file
+                // Read and output the subtitle file, respecting -t (duration) and --start options
                 var track = await SubtitleParser.ParseAsync(srtPath, cancellationToken);
+                var effectiveStart = TimeSpan.FromSeconds(start ?? 0);
+                var effectiveEnd = duration.HasValue
+                    ? effectiveStart + TimeSpan.FromSeconds(duration.Value)
+                    : TimeSpan.MaxValue;
+
                 foreach (var entry in track.Entries)
                 {
-                    var startTime = FormatTranscriptTime(entry.StartTime);
-                    var endTime = FormatTranscriptTime(entry.EndTime);
+                    // Filter by time range if specified
+                    if (entry.EndTime < effectiveStart)
+                        continue; // Subtitle ends before our start time
+                    if (entry.StartTime > effectiveEnd)
+                        break; // Subtitle starts after our end time (sorted list, so we can stop)
+
+                    var displayStart = entry.StartTime < effectiveStart ? effectiveStart : entry.StartTime;
+                    var displayEnd = entry.EndTime > effectiveEnd ? effectiveEnd : entry.EndTime;
+
+                    var startTime = FormatTranscriptTime(displayStart);
+                    var endTime = FormatTranscriptTime(displayEnd);
                     Console.WriteLine($"[{startTime} --> {endTime}] {entry.Text.Trim()}");
                 }
 
@@ -518,14 +535,22 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         if (subtitleSource == "whisper" && isPlaybackMode)
         {
             // First, check if we have a cached subtitle file from previous transcription
+            // Skip cache if --force-subs is used
             var cachedSubPath = GetSubtitlePathForVideo(inputFullPath);
-            if (File.Exists(cachedSubPath))
+            if (!forceSubs && File.Exists(cachedSubPath))
             {
                 Console.Error.WriteLine($"Using cached subtitles: {cachedSubPath}");
+                Console.Error.WriteLine("(use --force-subs to re-transcribe)");
                 subtitles = await SubtitleParser.ParseAsync(cachedSubPath, cancellationToken);
             }
             else
             {
+                // Delete existing cache if forcing re-transcription
+                if (forceSubs && File.Exists(cachedSubPath))
+                {
+                    try { File.Delete(cachedSubPath); }
+                    catch { /* ignore */ }
+                }
                 var effectiveStart = start ?? 0.0;
                 Console.Error.WriteLine($"Starting live transcription with Whisper ({whisperModel ?? "base"})...");
                 chunkedTranscriber = new ChunkedTranscriber(
@@ -577,7 +602,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             // For file sources or output mode, use full batch transcription
             subtitles = await LoadSubtitlesAsync(
                 subtitleSource, subtitleFilePath, inputFullPath, subtitleLang ?? "en",
-                whisperModel ?? "base", whisperThreads, diarize, cancellationToken);
+                whisperModel ?? "base", whisperThreads, diarize, start, duration, cancellationToken);
         }
     }
 
@@ -1000,6 +1025,8 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
     string whisperModel,
     int? whisperThreads,
     bool diarize,
+    double? startTime,
+    double? duration,
     CancellationToken ct)
 {
     try
@@ -1017,14 +1044,14 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                 return null;
 
             case "whisper":
-                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, ct);
+                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, ct);
 
             case "auto":
                 // For auto mode, whisper is fallback if YouTube subs not available
                 // (YouTube subs handled separately in the YouTube URL flow)
                 if (WhisperTranscriptionService.IsAvailable())
                 {
-                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, ct);
+                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, ct);
                 }
                 Console.Error.WriteLine("Note: Whisper not available for auto-transcription. Run: consoleimage transcribe --help");
                 return null;
@@ -1046,6 +1073,8 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
     string model,
     int? threads,
     bool diarize,
+    double? startTime,
+    double? duration,
     CancellationToken ct)
 {
     Console.Error.WriteLine($"Transcribing with Whisper ({model})...");
@@ -1062,7 +1091,9 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
             ModelSize = model,
             Language = lang,
             Diarize = diarize,
-            Threads = threads
+            Threads = threads,
+            StartTime = startTime,
+            Duration = duration
         };
 
         var result = await TranscriptionHandler.HandleAsync(opts, ct);
@@ -1073,7 +1104,29 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
         }
 
         var track = await SubtitleParser.ParseAsync(tempVtt, ct);
+
+        // Offset subtitle times if we extracted a time range
+        // (Whisper sees times relative to extracted audio, but we need original video timeline)
+        if (startTime.HasValue && startTime.Value > 0)
+        {
+            var offset = TimeSpan.FromSeconds(startTime.Value);
+            foreach (var entry in track.Entries)
+            {
+                entry.StartTime += offset;
+                entry.EndTime += offset;
+            }
+        }
+
         Console.Error.WriteLine($"Transcribed {track.Count} segments");
+
+        // Debug: show subtitle time range
+        if (track.Entries.Count > 0)
+        {
+            var first = track.Entries.First();
+            var last = track.Entries.Last();
+            Console.Error.WriteLine($"Subtitle range: {first.StartTime:mm\\:ss\\.ff} - {last.EndTime:mm\\:ss\\.ff} (relative to extraction start)");
+        }
+
         return track;
     }
     finally
@@ -1157,15 +1210,15 @@ static Command CreateTranscribeSubcommand()
         // If whisper URL specified, use remote API instead
         if (!string.IsNullOrEmpty(whisperUrl))
         {
-            return await TranscribeWithRemoteApiAsync(input, output, lang, whisperUrl, ct);
+            return await TranscribeWithRemoteApiAsync(input, output, lang ?? "en", whisperUrl, ct);
         }
 
         var opts = new TranscriptionHandler.TranscriptionOptions
         {
             InputPath = input,
             OutputPath = output,
-            ModelSize = model,
-            Language = lang,
+            ModelSize = model ?? "base",
+            Language = lang ?? "en",
             Diarize = diarize,
             Threads = threads,
             StreamToStdout = stream,
