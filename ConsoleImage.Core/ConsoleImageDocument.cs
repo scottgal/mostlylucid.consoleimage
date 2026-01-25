@@ -196,13 +196,18 @@ public class ConsoleImageDocument
     /// </summary>
     public void AddFrame(string content, int delayMs = 0, int width = 0, int height = 0)
     {
-        var lines = content.Split('\n');
+        if (width <= 0 || height <= 0)
+        {
+            var (w, h) = DocumentFrame.GetContentDimensions(content);
+            if (width <= 0) width = w;
+            if (height <= 0) height = h;
+        }
         Frames.Add(new DocumentFrame
         {
             Content = content,
             DelayMs = delayMs,
-            Width = width > 0 ? width : lines.Length > 0 ? lines[0].Length : 0,
-            Height = height > 0 ? height : lines.Length
+            Width = width,
+            Height = height
         });
     }
 
@@ -466,13 +471,13 @@ public class DocumentFrame
     /// </summary>
     public static DocumentFrame FromColorBlockFrame(ColorBlockFrame frame)
     {
-        var lines = frame.Content.Split('\n');
+        var (w, h) = GetContentDimensions(frame.Content);
         return new DocumentFrame
         {
             Content = frame.Content,
             DelayMs = frame.DelayMs,
-            Width = lines.Length > 0 ? lines[0].Length : 0,
-            Height = lines.Length
+            Width = w,
+            Height = h
         };
     }
 
@@ -481,25 +486,47 @@ public class DocumentFrame
     /// </summary>
     public static DocumentFrame FromBrailleFrame(BrailleFrame frame)
     {
-        var lines = frame.Content.Split('\n');
+        var (w, h) = GetContentDimensions(frame.Content);
         return new DocumentFrame
         {
             Content = frame.Content,
             DelayMs = frame.DelayMs,
-            Width = lines.Length > 0 ? lines[0].Length : 0,
-            Height = lines.Length
+            Width = w,
+            Height = h
         };
     }
 
     public static DocumentFrame FromMatrixFrame(MatrixFrame frame)
     {
-        var lines = frame.Content.Split('\n');
+        var (w, h) = GetContentDimensions(frame.Content);
         return new DocumentFrame
         {
             Content = frame.Content,
             DelayMs = frame.DelayMs,
-            Width = lines.Length > 0 ? lines[0].Length : 0,
-            Height = lines.Length
+            Width = w,
+            Height = h
         };
+    }
+
+    /// <summary>
+    ///     Get frame dimensions from content without allocating a string array.
+    ///     Returns (firstLineLength, lineCount) matching the behavior of content.Split('\n').
+    /// </summary>
+    public static (int width, int height) GetContentDimensions(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return (0, 1); // Split('\n') returns [""] for empty string
+
+        var firstNewline = content.IndexOf('\n');
+        var firstLineLen = firstNewline >= 0 ? firstNewline : content.Length;
+
+        var lineCount = 1;
+        for (var i = 0; i < content.Length; i++)
+        {
+            if (content[i] == '\n')
+                lineCount++;
+        }
+
+        return (firstLineLen, lineCount);
     }
 }

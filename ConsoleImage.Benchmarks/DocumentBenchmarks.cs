@@ -183,42 +183,97 @@ public static class DocumentBenchmarks
         var frame2 = BuildTestAnsiFrame(80, 40, 43); // Slightly different seed
 
         var sb = new StringBuilder(8192);
-
-        // Warm up - use reflection or direct method access
-        // Since BuildFrameBuffer is private, we simulate its behavior
-        var sw = Stopwatch.StartNew();
         const int iterations = 1000;
 
-        // Test diff rendering path: count lines, compare, build buffer
+        // Warm up
+        for (var i = 0; i < 50; i++)
+        {
+            DiffRenderWithOffsets(sb, frame1, frame2);
+        }
+
+        // Benchmark: offset-based O(N) single-pass diff
+        var sw = Stopwatch.StartNew();
         for (var i = 0; i < iterations; i++)
         {
-            sb.Clear();
-            sb.Append("\x1b[?2026h"); // Sync start
-
-            // Simulate diff comparison
-            var currLines = CountLines(frame1);
-            var prevLines = CountLines(frame2);
-            var maxLines = Math.Max(currLines, prevLines);
-
-            var changed = 0;
-            for (int line = 0; line < maxLines; line++)
-            {
-                var curr = GetLineSpan(frame1, line);
-                var prev = GetLineSpan(frame2, line);
-                if (!curr.SequenceEqual(prev))
-                {
-                    changed++;
-                    sb.Append($"\x1b[{line + 1};1H");
-                    sb.Append(curr);
-                    sb.Append("\x1b[0m");
-                }
-            }
-
-            sb.Append("\x1b[?2026l"); // Sync end
-            _ = sb.ToString();
+            DiffRenderWithOffsets(sb, frame1, frame2);
         }
         sw.Stop();
         Console.WriteLine($"Diff render (80x40): {sw.Elapsed.TotalMicroseconds / iterations:F1} µs/frame");
+    }
+
+    /// <summary>
+    ///     Simulates DocumentPlayer.BuildFrameBuffer using offset-based line access.
+    /// </summary>
+    private static void DiffRenderWithOffsets(StringBuilder sb, string frame1, string frame2)
+    {
+        sb.Clear();
+        sb.Append("\x1b[?2026h");
+
+        Span<int> currStarts = stackalloc int[301];
+        Span<int> prevStarts = stackalloc int[301];
+        var currLineCount = BuildLineStarts(frame1, currStarts);
+        var prevLineCount = BuildLineStarts(frame2, prevStarts);
+        var maxLines = Math.Max(currLineCount, prevLineCount);
+        var abandonThreshold = (int)(maxLines * 0.6) + 1;
+
+        var diffStart = sb.Length;
+        var changedLines = 0;
+
+        for (int line = 0; line < maxLines; line++)
+        {
+            var curr = GetLineFromStarts(frame1, currStarts, currLineCount, line);
+            var prev = GetLineFromStarts(frame2, prevStarts, prevLineCount, line);
+            if (!curr.SequenceEqual(prev))
+            {
+                changedLines++;
+                if (changedLines >= abandonThreshold)
+                {
+                    sb.Length = diffStart;
+                    sb.Append("\x1b[H");
+                    sb.Append(frame1);
+                    break;
+                }
+                sb.Append("\x1b[");
+                sb.Append(line + 1);
+                sb.Append(";1H");
+                sb.Append(curr);
+                sb.Append("\x1b[0m");
+            }
+        }
+
+        sb.Append("\x1b[?2026l");
+        _ = sb.ToString();
+    }
+
+    private static int BuildLineStarts(string content, Span<int> starts)
+    {
+        if (string.IsNullOrEmpty(content)) return 0;
+        int count = 0;
+        starts[count++] = 0;
+        for (int i = 0; i < content.Length && count < starts.Length; i++)
+        {
+            if (content[i] == '\n')
+                starts[count++] = i + 1;
+        }
+        return count;
+    }
+
+    private static ReadOnlySpan<char> GetLineFromStarts(string content, Span<int> starts, int lineCount, int lineIndex)
+    {
+        if (lineIndex >= lineCount) return ReadOnlySpan<char>.Empty;
+        int start = starts[lineIndex];
+        int end;
+        if (lineIndex + 1 < lineCount)
+        {
+            end = starts[lineIndex + 1] - 1;
+            if (end > start && content[end - 1] == '\r') end--;
+        }
+        else
+        {
+            end = content.Length;
+            if (end > start && content[end - 1] == '\r') end--;
+        }
+        return content.AsSpan(start, end - start);
     }
 
     // --- Helpers ---
@@ -302,45 +357,4 @@ public static class DocumentBenchmarks
         return size;
     }
 
-    // Line counting (mirrors DocumentPlayer logic)
-    private static int CountLines(string content)
-    {
-        if (string.IsNullOrEmpty(content)) return 0;
-        var count = 1;
-        foreach (var c in content)
-            if (c == '\n') count++;
-        return count;
-    }
-
-    private static ReadOnlySpan<char> GetLineSpan(string content, int lineIndex)
-    {
-        if (string.IsNullOrEmpty(content)) return ReadOnlySpan<char>.Empty;
-
-        var currentLine = 0;
-        var lineStart = 0;
-
-        for (var i = 0; i < content.Length; i++)
-        {
-            if (content[i] == '\n')
-            {
-                if (currentLine == lineIndex)
-                {
-                    var end = i;
-                    if (end > lineStart && content[end - 1] == '\r') end--;
-                    return content.AsSpan(lineStart, end - lineStart);
-                }
-                currentLine++;
-                lineStart = i + 1;
-            }
-        }
-
-        if (currentLine == lineIndex && lineStart < content.Length)
-        {
-            var end = content.Length;
-            if (end > lineStart && content[end - 1] == '\r') end--;
-            return content.AsSpan(lineStart, end - lineStart);
-        }
-
-        return ReadOnlySpan<char>.Empty;
-    }
 }

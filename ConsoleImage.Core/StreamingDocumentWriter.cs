@@ -196,14 +196,19 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         if (!_headerWritten) WriteHeader();
 
-        var lines = content.Split('\n');
+        if (width <= 0 || height <= 0)
+        {
+            var (w, h) = DocumentFrame.GetContentDimensions(content);
+            if (width <= 0) width = w;
+            if (height <= 0) height = h;
+        }
         var frame = new StreamingDocumentFrame
         {
             Index = FrameCount,
             Content = content,
             DelayMs = delayMs,
-            Width = width > 0 ? width : lines.Length > 0 ? lines[0].Length : 0,
-            Height = height > 0 ? height : lines.Length
+            Width = width,
+            Height = height
         };
 
         var json = JsonSerializer.Serialize(frame, StreamingDocumentJsonContext.Default.StreamingDocumentFrame);
@@ -222,14 +227,19 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         if (!_headerWritten) await WriteHeaderAsync(ct);
 
-        var lines = content.Split('\n');
+        if (width <= 0 || height <= 0)
+        {
+            var (w, h) = DocumentFrame.GetContentDimensions(content);
+            if (width <= 0) width = w;
+            if (height <= 0) height = h;
+        }
         var frame = new StreamingDocumentFrame
         {
             Index = FrameCount,
             Content = content,
             DelayMs = delayMs,
-            Width = width > 0 ? width : lines.Length > 0 ? lines[0].Length : 0,
-            Height = height > 0 ? height : lines.Length
+            Width = width,
+            Height = height
         };
 
         var json = JsonSerializer.Serialize(frame, StreamingDocumentJsonContext.Default.StreamingDocumentFrame);

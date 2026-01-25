@@ -2,6 +2,7 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 // Animation player for displaying animated GIFs in the console
 
+using System.Diagnostics;
 using System.Text;
 
 namespace ConsoleImage.Core;
@@ -123,7 +124,11 @@ public class AsciiAnimationPlayer : IDisposable
         }
 
         // Second pass: build atomic frame buffers with diff-based rendering
+        // Uses O(N) offset-based line access instead of O(N²) per-line scanning
         var sb = new StringBuilder(8192);
+        Span<int> currStarts = stackalloc int[301];
+        Span<int> prevStarts = stackalloc int[301];
+
         for (var i = 0; i < _frames.Count; i++)
         {
             sb.Clear();
@@ -137,42 +142,39 @@ public class AsciiAnimationPlayer : IDisposable
             }
             else
             {
-                // Diff against previous frame - only update changed lines
+                // Diff against previous frame using offset-based line access
                 var curr = frameStrings[i];
                 var prev = frameStrings[i - 1];
-                var currLines = frameLineCounts[i];
-                var prevLines = frameLineCounts[i - 1];
-                var lineCount = Math.Max(currLines, prevLines);
+                var currLineCount = LineUtils.BuildLineStarts(curr, currStarts);
+                var prevLineCount = LineUtils.BuildLineStarts(prev, prevStarts);
+                var lineCount = Math.Max(currLineCount, prevLineCount);
+                var abandonThreshold = (int)(lineCount * 0.6) + 1;
 
-                // Count changes to decide diff vs full redraw
+                // Single pass: compare and build diff, abandon if >60% changed
+                var diffStart = sb.Length;
                 var changes = 0;
+
                 for (int line = 0; line < lineCount; line++)
                 {
-                    if (!GetLineSpan(curr, line).SequenceEqual(GetLineSpan(prev, line)))
-                        changes++;
-                }
+                    var currLine = LineUtils.GetLineFromStarts(curr, currStarts, currLineCount, line);
+                    var prevLine = LineUtils.GetLineFromStarts(prev, prevStarts, prevLineCount, line);
 
-                if (changes > lineCount * 0.6)
-                {
-                    // >60% changed: full redraw is more efficient
-                    sb.Append(CursorHome);
-                    AppendWithLineClearing(sb, curr, maxHeight);
-                }
-                else
-                {
-                    // Diff rendering: only update changed lines
-                    for (int line = 0; line < lineCount; line++)
+                    if (!currLine.SequenceEqual(prevLine))
                     {
-                        var currLine = GetLineSpan(curr, line);
-                        var prevLine = GetLineSpan(prev, line);
-
-                        if (!currLine.SequenceEqual(prevLine))
+                        changes++;
+                        if (changes >= abandonThreshold)
                         {
-                            sb.Append(line < CursorMoveCache.Length ? CursorMoveCache[line] : $"\x1b[{line + 1};1H");
-                            sb.Append("\x1b[2K"); // Clear line
-                            sb.Append(currLine);
-                            sb.Append("\x1b[0m");
+                            // >60% changed: full redraw is more efficient
+                            sb.Length = diffStart;
+                            sb.Append(CursorHome);
+                            AppendWithLineClearing(sb, curr, maxHeight);
+                            break;
                         }
+
+                        sb.Append(line < CursorMoveCache.Length ? CursorMoveCache[line] : $"\x1b[{line + 1};1H");
+                        sb.Append("\x1b[2K"); // Clear line
+                        sb.Append(currLine);
+                        sb.Append("\x1b[0m");
                     }
                 }
             }
@@ -197,9 +199,20 @@ public class AsciiAnimationPlayer : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
+                double timeDebtMs = 0;
+
                 for (var i = 0; i < _frames.Count; i++)
                 {
                     if (token.IsCancellationRequested) break;
+
+                    var targetDelayMs = (double)(fixedDelayMs ?? _frames[i].DelayMs);
+
+                    // Adaptive frame skipping: drop frames when behind schedule
+                    if (i < _frames.Count - 1 &&
+                        FrameTiming.ShouldSkipFrame(targetDelayMs, ref timeDebtMs))
+                        continue;
+
+                    var renderStart = Stopwatch.GetTimestamp();
 
                     CurrentFrame = i;
 
@@ -209,10 +222,15 @@ public class AsciiAnimationPlayer : IDisposable
 
                     FrameRendered?.Invoke(this, new FrameRenderedEventArgs(i, _frames.Count));
 
-                    // Wait for frame delay with responsive cancellation
-                    // Use fixed delay if target FPS is set, otherwise use frame's embedded delay
-                    var delayMs = fixedDelayMs ?? _frames[i].DelayMs;
-                    if (delayMs > 0) await ResponsiveDelay(delayMs, token);
+                    // Adaptive timing: compensate for render time
+                    if (targetDelayMs > 0)
+                    {
+                        var (remainingDelay, newDebt) = FrameTiming.CalculateAdaptiveDelay(
+                            targetDelayMs, renderStart, timeDebtMs);
+                        timeDebtMs = newDebt;
+                        if (remainingDelay > 0)
+                            await FrameTiming.ResponsiveDelayAsync(remainingDelay, token);
+                    }
                 }
 
                 loops++;
@@ -232,30 +250,6 @@ public class AsciiAnimationPlayer : IDisposable
             else
                 Console.WriteLine();
             AnimationCompleted?.Invoke(this, EventArgs.Empty);
-        }
-    }
-
-    /// <summary>
-    ///     Delay that responds quickly to cancellation
-    /// </summary>
-    private static async Task ResponsiveDelay(int totalMs, CancellationToken token)
-    {
-        const int chunkMs = 50; // Check cancellation every 50ms
-        var remaining = totalMs;
-
-        while (remaining > 0 && !token.IsCancellationRequested)
-        {
-            var delay = Math.Min(remaining, chunkMs);
-            try
-            {
-                await Task.Delay(delay, token);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-
-            remaining -= delay;
         }
     }
 
@@ -336,41 +330,6 @@ public class AsciiAnimationPlayer : IDisposable
             sb.Append("\x1b[2K");
             lineIdx++;
         }
-    }
-
-    /// <summary>
-    ///     Get a line from content by index as a span (zero-allocation).
-    /// </summary>
-    private static ReadOnlySpan<char> GetLineSpan(string content, int lineIndex)
-    {
-        if (string.IsNullOrEmpty(content)) return ReadOnlySpan<char>.Empty;
-
-        var currentLine = 0;
-        var lineStart = 0;
-
-        for (var i = 0; i < content.Length; i++)
-        {
-            if (content[i] == '\n')
-            {
-                if (currentLine == lineIndex)
-                {
-                    var end = i;
-                    if (end > lineStart && content[end - 1] == '\r') end--;
-                    return content.AsSpan(lineStart, end - lineStart);
-                }
-                currentLine++;
-                lineStart = i + 1;
-            }
-        }
-
-        if (currentLine == lineIndex && lineStart < content.Length)
-        {
-            var end = content.Length;
-            if (end > lineStart && content[end - 1] == '\r') end--;
-            return content.AsSpan(lineStart, end - lineStart);
-        }
-
-        return ReadOnlySpan<char>.Empty;
     }
 
     private static string[] BuildCursorMoveCache(int maxLines)

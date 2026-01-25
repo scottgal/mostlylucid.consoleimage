@@ -1272,9 +1272,13 @@ public static class CompressedDocumentArchive
             }
         }
 
-        // Parse JSON portion
-        var json = Encoding.UTF8.GetString(payload, 0, jsonLen);
-        var doc = ParseOptimizedJson(json, loopCountOverride);
+        // Parse JSON directly from UTF-8 bytes (skip string conversion)
+        var jsonSpan = new ReadOnlySpan<byte>(payload, 0, jsonLen);
+        var optimized = JsonSerializer.Deserialize(jsonSpan,
+            CompressedDocumentJsonContext.Default.OptimizedDocument);
+        if (optimized == null)
+            throw new InvalidOperationException("Failed to parse CIDZ v2 document");
+        var doc = optimized.ToDocument(loopCountOverride);
 
         // Parse VTT portion if present
         if (hasSubtitles && vttStart < payloadLen)

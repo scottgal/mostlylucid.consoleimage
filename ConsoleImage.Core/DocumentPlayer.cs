@@ -3,6 +3,7 @@
 // reusable StringBuilder for frame buffer construction.
 // Supports sidecar subtitle tracks with optimized sequential timing.
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using ConsoleImage.Core.Subtitles;
@@ -107,10 +108,22 @@ public class DocumentPlayer : IDisposable
             while (loopsRemaining > 0 && !ct.IsCancellationRequested)
             {
                 double cumulativeMs = 0;
+                double timeDebtMs = 0;
 
                 for (var i = 0; i < _document.Frames.Count && !ct.IsCancellationRequested; i++)
                 {
                     var frame = _document.Frames[i];
+                    var targetDelayMs = (double)frame.DelayMs / _speedMultiplier;
+
+                    // Adaptive frame skipping: drop frames when behind schedule
+                    if (i < _document.Frames.Count - 1 &&
+                        FrameTiming.ShouldSkipFrame(targetDelayMs, ref timeDebtMs))
+                    {
+                        cumulativeMs += frame.DelayMs;
+                        continue;
+                    }
+
+                    var renderStart = Stopwatch.GetTimestamp();
 
                     // Build optimized frame buffer with diff rendering
                     var buffer = BuildFrameBuffer(frameSb, frame.Content, previousContent, i == 0 && previousContent == null);
@@ -134,14 +147,16 @@ public class DocumentPlayer : IDisposable
                     }
 
                     Console.Out.Flush();
+                    cumulativeMs += frame.DelayMs;
 
-                    // Wait for frame delay with responsive cancellation
-                    if (frame.DelayMs > 0)
+                    // Adaptive timing: compensate for render time
+                    if (targetDelayMs > 0)
                     {
-                        var adjustedDelay = (int)(frame.DelayMs / _speedMultiplier);
-                        cumulativeMs += frame.DelayMs;
-                        if (adjustedDelay > 0)
-                            await ResponsiveDelay(adjustedDelay, ct);
+                        var (remainingDelay, newDebt) = FrameTiming.CalculateAdaptiveDelay(
+                            targetDelayMs, renderStart, timeDebtMs);
+                        timeDebtMs = newDebt;
+                        if (remainingDelay > 0)
+                            await FrameTiming.ResponsiveDelayAsync(remainingDelay, ct);
                     }
                 }
 
@@ -164,6 +179,8 @@ public class DocumentPlayer : IDisposable
     /// <summary>
     ///     Build frame buffer with diff-based rendering.
     ///     Only updates lines that changed between frames.
+    ///     Uses pre-computed line offsets for O(N) total instead of O(N²) per-line scanning,
+    ///     and merges change-counting with diff output into a single pass.
     /// </summary>
     private static string BuildFrameBuffer(StringBuilder sb, string content, string? previousContent, bool isFirstFrame)
     {
@@ -178,106 +195,57 @@ public class DocumentPlayer : IDisposable
         }
         else
         {
-            // Count lines in both frames
-            var currLineCount = CountLines(content);
-            var prevLineCount = CountLines(previousContent);
+            // Build line offset tables in O(N) - stackalloc avoids heap allocation
+            Span<int> currStarts = stackalloc int[301];
+            Span<int> prevStarts = stackalloc int[301];
+            var currLineCount = LineUtils.BuildLineStarts(content, currStarts);
+            var prevLineCount = LineUtils.BuildLineStarts(previousContent, prevStarts);
             var maxLines = Math.Max(currLineCount, prevLineCount);
 
-            // First pass: count changes to decide diff vs full redraw
+            // Pre-compute threshold for abandoning diff in favor of full redraw
+            var abandonThreshold = (int)(maxLines * 0.6) + 1;
+
+            // Single pass: compare lines and build diff output simultaneously.
+            // If too many lines changed, abandon diff and fall back to full redraw.
+            var diffStart = sb.Length;
             var changedLines = 0;
+
             for (int line = 0; line < maxLines; line++)
             {
-                var currLine = GetLineSpan(content, line);
-                var prevLine = GetLineSpan(previousContent, line);
-                if (!currLine.SequenceEqual(prevLine)) changedLines++;
-            }
+                var currLine = LineUtils.GetLineFromStarts(content, currStarts, currLineCount, line);
+                var prevLine = LineUtils.GetLineFromStarts(previousContent, prevStarts, prevLineCount, line);
 
-            // If >60% changed, full redraw is faster
-            if (changedLines > maxLines * 0.6)
-            {
-                sb.Append(CursorHome);
-                sb.Append(content);
-            }
-            else
-            {
-                // Diff rendering: only update changed lines
-                for (int line = 0; line < maxLines; line++)
+                if (!currLine.SequenceEqual(prevLine))
                 {
-                    var currLine = GetLineSpan(content, line);
-                    var prevLine = GetLineSpan(previousContent, line);
+                    changedLines++;
 
-                    if (!currLine.SequenceEqual(prevLine))
+                    // Too many changes - full redraw is faster
+                    if (changedLines >= abandonThreshold)
                     {
-                        sb.Append(GetCursorMove(line));
-                        sb.Append(currLine);
-
-                        // Pad to clear leftover characters from longer previous line
-                        var currVisible = GetVisibleLength(currLine);
-                        var prevVisible = GetVisibleLength(prevLine);
-                        if (currVisible < prevVisible)
-                        {
-                            var padding = Math.Min(prevVisible - currVisible, BlankLine200.Length);
-                            sb.Append(BlankLine200.AsSpan(0, padding));
-                        }
-                        sb.Append(ColorReset);
+                        sb.Length = diffStart;
+                        sb.Append(CursorHome);
+                        sb.Append(content);
+                        break;
                     }
+
+                    sb.Append(GetCursorMove(line));
+                    sb.Append(currLine);
+
+                    // Pad to clear leftover characters from longer previous line
+                    var currVisible = GetVisibleLength(currLine);
+                    var prevVisible = GetVisibleLength(prevLine);
+                    if (currVisible < prevVisible)
+                    {
+                        var padding = Math.Min(prevVisible - currVisible, BlankLine200.Length);
+                        sb.Append(BlankLine200.AsSpan(0, padding));
+                    }
+                    sb.Append(ColorReset);
                 }
             }
         }
 
         sb.Append(SyncEnd);
         return sb.ToString();
-    }
-
-    /// <summary>
-    ///     Count newlines in a string without allocation.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CountLines(string content)
-    {
-        if (string.IsNullOrEmpty(content)) return 0;
-        var count = 1;
-        foreach (var c in content)
-        {
-            if (c == '\n') count++;
-        }
-        return count;
-    }
-
-    /// <summary>
-    ///     Get a line from content by index without allocating the split array.
-    /// </summary>
-    private static ReadOnlySpan<char> GetLineSpan(string content, int lineIndex)
-    {
-        if (string.IsNullOrEmpty(content)) return ReadOnlySpan<char>.Empty;
-
-        var currentLine = 0;
-        var lineStart = 0;
-
-        for (var i = 0; i < content.Length; i++)
-        {
-            if (content[i] == '\n')
-            {
-                if (currentLine == lineIndex)
-                {
-                    var end = i;
-                    if (end > lineStart && content[end - 1] == '\r') end--;
-                    return content.AsSpan(lineStart, end - lineStart);
-                }
-                currentLine++;
-                lineStart = i + 1;
-            }
-        }
-
-        // Last line (no trailing newline)
-        if (currentLine == lineIndex && lineStart < content.Length)
-        {
-            var end = content.Length;
-            if (end > lineStart && content[end - 1] == '\r') end--;
-            return content.AsSpan(lineStart, end - lineStart);
-        }
-
-        return ReadOnlySpan<char>.Empty;
     }
 
     /// <summary>
@@ -319,29 +287,6 @@ public class DocumentPlayer : IDisposable
         for (var i = 0; i < maxLines; i++)
             cache[i] = $"\x1b[{i + 1};1H";
         return cache;
-    }
-
-    /// <summary>
-    ///     Delay with responsive cancellation (checks every 50ms).
-    /// </summary>
-    private static async Task ResponsiveDelay(int totalMs, CancellationToken ct)
-    {
-        const int chunkMs = 50;
-        var remaining = totalMs;
-
-        while (remaining > 0 && !ct.IsCancellationRequested)
-        {
-            var delay = Math.Min(remaining, chunkMs);
-            try
-            {
-                await Task.Delay(delay, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            remaining -= delay;
-        }
     }
 
     /// <summary>

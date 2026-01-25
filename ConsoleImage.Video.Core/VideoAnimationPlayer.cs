@@ -141,6 +141,7 @@ public class VideoAnimationPlayer : IDisposable
                 {
                     effectiveStartTime = Math.Clamp(_seekRequest.Value, 0, _videoInfo.Duration - 1);
                     _seekRequest = null;
+                    _smartSampler?.Reset(); // Clear stale cached frames from old position
                     Console.Write("\x1b[2J\x1b[H"); // Clear screen for new position
                     Console.Out.Flush();
                 }
@@ -184,6 +185,11 @@ public class VideoAnimationPlayer : IDisposable
         // Create renderer based on mode
         using var renderer = CreateRenderer();
 
+        // Linked CTS allows cancelling the render task independently (for seek/resize)
+        // without cancelling the main token (which is Ctrl+C)
+        using var streamCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var streamCt = streamCts.Token;
+
         // Buffer for lookahead frames
         var frameBuffer = new ConcurrentQueue<string>();
         var renderingComplete = false;
@@ -203,7 +209,7 @@ public class VideoAnimationPlayer : IDisposable
                     _options.FrameStep,
                     _options.TargetFps,
                     _videoInfo?.VideoCodec,
-                    ct))
+                    streamCt))
                 {
                     using (image)
                     {
@@ -222,12 +228,12 @@ public class VideoAnimationPlayer : IDisposable
                         }
 
                         // Wait if buffer is full
-                        while (frameBuffer.Count >= _options.BufferAheadFrames && !ct.IsCancellationRequested)
+                        while (frameBuffer.Count >= _options.BufferAheadFrames && !streamCt.IsCancellationRequested)
                         {
-                            await Task.Delay(5, ct);
+                            await Task.Delay(5, streamCt);
                         }
 
-                        if (ct.IsCancellationRequested) break;
+                        if (streamCt.IsCancellationRequested) break;
 
                         frameBuffer.Enqueue(frameContent);
                     }
@@ -242,10 +248,11 @@ public class VideoAnimationPlayer : IDisposable
             {
                 renderingComplete = true;
             }
-        }, ct);
+        }, streamCt);
 
         string? previousFrame = null;
         var frameIndex = 0;
+        double timeDebtMs = 0;
 
         // Play frames as they become available
         while (!ct.IsCancellationRequested && !_requestQuit)
@@ -284,6 +291,12 @@ public class VideoAnimationPlayer : IDisposable
                 // Calculate absolute video time (includes seek position)
                 var absoluteTime = startTime + (frameIndex / effectiveFps);
                 _currentPosition = absoluteTime; // Track for seeking
+
+                // Adaptive frame skipping: drop display when behind schedule
+                if (FrameTiming.ShouldSkipFrame(frameDelayMs, ref timeDebtMs))
+                    continue;
+
+                var renderStart = Stopwatch.GetTimestamp();
 
                 // Build status line if enabled
                 string? statusContent = null;
@@ -361,10 +374,14 @@ public class VideoAnimationPlayer : IDisposable
                 Console.Write(buffer);
                 Console.Out.Flush();
 
-                // Delay for timing
+                // Adaptive timing: compensate for render time
                 if (frameDelayMs > 0)
                 {
-                    await ResponsiveDelayAsync(frameDelayMs, ct);
+                    var (remainingDelay, newDebt) = FrameTiming.CalculateAdaptiveDelay(
+                        frameDelayMs, renderStart, timeDebtMs);
+                    timeDebtMs = newDebt;
+                    if (remainingDelay > 0)
+                        await ResponsiveDelayAsync(remainingDelay, ct);
                 }
 
                 // Check for resize during playback
@@ -379,6 +396,9 @@ public class VideoAnimationPlayer : IDisposable
                 break;
             }
         }
+
+        // Cancel the render task (kills FFmpeg process for seek/resize/quit)
+        await streamCts.CancelAsync();
 
         try
         {

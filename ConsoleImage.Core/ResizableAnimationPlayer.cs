@@ -1,6 +1,7 @@
 // ASCII Art Renderer - Resizable animation player
 // Handles dynamic console resize during animation playback
 
+using System.Diagnostics;
 using System.Text;
 
 namespace ConsoleImage.Core;
@@ -139,6 +140,8 @@ public class ResizableAnimationPlayer
             {
                 var frames = _frames; // Capture to avoid null warnings
                 var frameBuffers = _frameBuffers;
+                double timeDebtMs = 0;
+
                 for (var i = 0; i < frames.Count; i++)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
@@ -148,10 +151,20 @@ public class ResizableAnimationPlayer
                     {
                         i = 0; // Restart from first frame
                         loopsDone = 0; // Reset loop count on resize
+                        timeDebtMs = 0; // Reset timing on resize
                         frames = _frames;
                         frameBuffers = _frameBuffers;
                         if (frames == null || frameBuffers == null) break;
                     }
+
+                    var targetDelayMs = (double)(fixedDelayMs ?? frames[i].DelayMs);
+
+                    // Adaptive frame skipping: drop frames when behind schedule
+                    if (i < frames.Count - 1 &&
+                        FrameTiming.ShouldSkipFrame(targetDelayMs, ref timeDebtMs))
+                        continue;
+
+                    var renderStart = Stopwatch.GetTimestamp();
 
                     // Write frame with status line
                     Console.Write(frameBuffers[i]);
@@ -174,9 +187,15 @@ public class ResizableAnimationPlayer
 
                     Console.Out.Flush();
 
-                    // Delay
-                    var delayMs = fixedDelayMs ?? frames[i].DelayMs;
-                    if (delayMs > 0) await ResponsiveDelay(delayMs, cancellationToken);
+                    // Adaptive timing: compensate for render time
+                    if (targetDelayMs > 0)
+                    {
+                        var (remainingDelay, newDebt) = FrameTiming.CalculateAdaptiveDelay(
+                            targetDelayMs, renderStart, timeDebtMs);
+                        timeDebtMs = newDebt;
+                        if (remainingDelay > 0)
+                            await FrameTiming.ResponsiveDelayAsync(remainingDelay, cancellationToken);
+                    }
                 }
 
                 // Play transition frames for smooth looping (if available and looping continues)
@@ -189,7 +208,8 @@ public class ResizableAnimationPlayer
                             if (cancellationToken.IsCancellationRequested) break;
                             Console.Write(transitionBuffer);
                             Console.Out.Flush();
-                            if (_transitionDelayMs > 0) await ResponsiveDelay(_transitionDelayMs, cancellationToken);
+                            if (_transitionDelayMs > 0)
+                                await FrameTiming.ResponsiveDelayAsync(_transitionDelayMs, cancellationToken);
                         }
                 }
 
@@ -439,7 +459,10 @@ public class ResizableAnimationPlayer
         _transitionBuffers = new string[transitionFrameCount];
 
         // Use average frame delay for transitions, or 50ms default
-        var avgDelay = _frames.Count > 0 ? _frames.Sum(f => f.DelayMs) / _frames.Count : 50;
+        var totalDelay = 0;
+        for (var i = 0; i < _frames.Count; i++)
+            totalDelay += _frames[i].DelayMs;
+        var avgDelay = _frames.Count > 0 ? totalDelay / _frames.Count : 50;
         _transitionDelayMs = Math.Max(16, avgDelay / 2); // Half speed for smooth transition
 
         // Distribute changed lines across transition frames
@@ -560,24 +583,4 @@ public class ResizableAnimationPlayer
         return false;
     }
 
-    private static async Task ResponsiveDelay(int totalMs, CancellationToken token)
-    {
-        const int chunkMs = 50;
-        var remaining = totalMs;
-
-        while (remaining > 0 && !token.IsCancellationRequested)
-        {
-            var delay = Math.Min(remaining, chunkMs);
-            try
-            {
-                await Task.Delay(delay, token);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-
-            remaining -= delay;
-        }
-    }
 }
