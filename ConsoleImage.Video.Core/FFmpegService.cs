@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -492,80 +493,89 @@ public sealed class FFmpegService : IDisposable
         var args = $"-loglevel error {inputArgs}-vf \"{filterChain}\" -f rawvideo -pix_fmt rgba -";
 
         var frameSize = outputWidth * outputHeight * 4; // RGBA = 4 bytes per pixel
-        var buffer = new byte[frameSize];
-
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = _ffmpegPath,
-                Arguments = args,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
-        };
-
-        process.Start();
-
-        // Capture stderr for error reporting
-        var stderrTask = process.StandardError.ReadToEndAsync(ct);
-
-        var stream = process.StandardOutput.BaseStream;
-        var framesProduced = 0;
-
-        while (!ct.IsCancellationRequested)
-        {
-            var bytesRead = 0;
-            while (bytesRead < frameSize)
-            {
-                var read = await stream.ReadAsync(buffer.AsMemory(bytesRead, frameSize - bytesRead), ct);
-                if (read == 0)
-                {
-                    // End of stream - check if this is an error
-                    if (framesProduced == 0)
-                    {
-                        // No frames produced - likely an error
-                        await process.WaitForExitAsync(ct);
-                        var stderr = await stderrTask;
-                        if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(stderr))
-                        {
-                            var errorMsg = !string.IsNullOrWhiteSpace(stderr)
-                                ? $"FFmpeg error: {stderr.Trim()}"
-                                : $"FFmpeg exited with code {process.ExitCode} without producing any frames";
-                            throw new InvalidOperationException(errorMsg);
-                        }
-                    }
-                    yield break;
-                }
-                bytesRead += read;
-            }
-
-            // Create image from raw RGBA data
-            var image = Image.LoadPixelData<Rgba32>(buffer, outputWidth, outputHeight);
-
-            // Skip potentially corrupted frames at start from some codecs
-            // Some codecs output garbage frames before keyframes are fully decoded
-            // Check up to first 5 frames for corruption (after that, assume codec is stable)
-            if (framesProduced < 5 && IsLikelyCorruptedFrame(buffer, outputWidth, outputHeight))
-            {
-                image.Dispose();
-                continue; // Skip this frame, try next
-            }
-
-            framesProduced++;
-            yield return image;
-        }
+        // Use ArrayPool to avoid large heap allocations (8MB+ for 1080p frames)
+        var buffer = ArrayPool<byte>.Shared.Rent(frameSize);
 
         try
         {
-            if (!process.HasExited)
+            using var process = new Process
             {
-                process.Kill();
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = _ffmpegPath,
+                    Arguments = args,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+
+            // Capture stderr for error reporting
+            var stderrTask = process.StandardError.ReadToEndAsync(ct);
+
+            var stream = process.StandardOutput.BaseStream;
+            var framesProduced = 0;
+
+            while (!ct.IsCancellationRequested)
+            {
+                var bytesRead = 0;
+                while (bytesRead < frameSize)
+                {
+                    var read = await stream.ReadAsync(buffer.AsMemory(bytesRead, frameSize - bytesRead), ct);
+                    if (read == 0)
+                    {
+                        // End of stream - check if this is an error
+                        if (framesProduced == 0)
+                        {
+                            // No frames produced - likely an error
+                            await process.WaitForExitAsync(ct);
+                            var stderr = await stderrTask;
+                            if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(stderr))
+                            {
+                                var errorMsg = !string.IsNullOrWhiteSpace(stderr)
+                                    ? $"FFmpeg error: {stderr.Trim()}"
+                                    : $"FFmpeg exited with code {process.ExitCode} without producing any frames";
+                                throw new InvalidOperationException(errorMsg);
+                            }
+                        }
+                        yield break;
+                    }
+                    bytesRead += read;
+                }
+
+                // Create image from raw RGBA data
+                var image = Image.LoadPixelData<Rgba32>(buffer, outputWidth, outputHeight);
+
+                // Skip potentially corrupted frames at start from some codecs
+                // Some codecs output garbage frames before keyframes are fully decoded
+                // Check up to first 5 frames for corruption (after that, assume codec is stable)
+                if (framesProduced < 5 && IsLikelyCorruptedFrame(buffer, outputWidth, outputHeight))
+                {
+                    image.Dispose();
+                    continue; // Skip this frame, try next
+                }
+
+                framesProduced++;
+                yield return image;
             }
+
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill();
+                }
+            }
+            catch { }
         }
-        catch { }
+        finally
+        {
+            // Always return buffer to pool
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     /// <summary>

@@ -473,6 +473,58 @@ public class VideoAnimationPlayer : IDisposable
     /// <summary>
     /// Build optimized frame buffer with diff-based rendering.
     /// </summary>
+    /// <summary>
+    /// Count newlines in a string without allocating an array.
+    /// </summary>
+    private static int CountLines(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return 0;
+        var count = 1;
+        foreach (var c in content)
+        {
+            if (c == '\n') count++;
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// Get a line from content by index without allocating the entire split array.
+    /// Returns empty span if index is out of range.
+    /// </summary>
+    private static ReadOnlySpan<char> GetLineSpan(string content, int lineIndex)
+    {
+        if (string.IsNullOrEmpty(content)) return ReadOnlySpan<char>.Empty;
+
+        var currentLine = 0;
+        var lineStart = 0;
+
+        for (var i = 0; i < content.Length; i++)
+        {
+            if (content[i] == '\n')
+            {
+                if (currentLine == lineIndex)
+                {
+                    // Found the line, trim trailing \r if present
+                    var end = i;
+                    if (end > lineStart && content[end - 1] == '\r') end--;
+                    return content.AsSpan(lineStart, end - lineStart);
+                }
+                currentLine++;
+                lineStart = i + 1;
+            }
+        }
+
+        // Last line (no trailing newline)
+        if (currentLine == lineIndex && lineStart < content.Length)
+        {
+            var end = content.Length;
+            if (end > lineStart && content[end - 1] == '\r') end--;
+            return content.AsSpan(lineStart, end - lineStart);
+        }
+
+        return ReadOnlySpan<char>.Empty;
+    }
+
     private static string BuildFrameBuffer(
         string content,
         string? previousContent,
@@ -484,8 +536,8 @@ public class VideoAnimationPlayer : IDisposable
         var sb = new StringBuilder();
         sb.Append("\x1b[?2026h"); // Begin synchronized output
 
-        // Count frame lines for status/subtitle positioning
-        var frameLines = content.Split('\n').Length;
+        // Count frame lines for status/subtitle positioning (without allocating)
+        var frameLines = CountLines(content);
 
         if (isFirstFrame || previousContent == null)
         {
@@ -495,18 +547,18 @@ public class VideoAnimationPlayer : IDisposable
         }
         else
         {
-            // Diff-based rendering
-            var currLines = content.Split('\n');
-            var prevLines = previousContent.Split('\n');
-            var maxLines = Math.Max(currLines.Length, prevLines.Length);
+            // Diff-based rendering using spans to avoid allocations
+            var currLineCount = frameLines;
+            var prevLineCount = CountLines(previousContent);
+            var maxLines = Math.Max(currLineCount, prevLineCount);
             var changedLines = 0;
 
-            // First pass: count changes
+            // First pass: count changes (using spans)
             for (int i = 0; i < maxLines; i++)
             {
-                var currLine = i < currLines.Length ? currLines[i].TrimEnd('\r') : "";
-                var prevLine = i < prevLines.Length ? prevLines[i].TrimEnd('\r') : "";
-                if (currLine != prevLine) changedLines++;
+                var currLine = GetLineSpan(content, i);
+                var prevLine = GetLineSpan(previousContent, i);
+                if (!currLine.SequenceEqual(prevLine)) changedLines++;
             }
 
             // If more than 60% changed, do full redraw
@@ -520,10 +572,10 @@ public class VideoAnimationPlayer : IDisposable
                 // Only update changed lines
                 for (int i = 0; i < maxLines; i++)
                 {
-                    var currLine = i < currLines.Length ? currLines[i].TrimEnd('\r') : "";
-                    var prevLine = i < prevLines.Length ? prevLines[i].TrimEnd('\r') : "";
+                    var currLine = GetLineSpan(content, i);
+                    var prevLine = GetLineSpan(previousContent, i);
 
-                    if (currLine != prevLine)
+                    if (!currLine.SequenceEqual(prevLine))
                     {
                         sb.Append($"\x1b[{i + 1};1H"); // Move to line
                         sb.Append(currLine);
@@ -548,14 +600,14 @@ public class VideoAnimationPlayer : IDisposable
         // Render subtitles at fixed position below frame (overwrite, don't clear)
         if (!string.IsNullOrEmpty(subtitleContent))
         {
-            var subtitleLines = subtitleContent.Split('\n');
+            var subtitleLineCount = CountLines(subtitleContent);
             for (var i = 0; i < maxSubtitleLines; i++)
             {
                 sb.Append($"\x1b[{frameLines + 1 + i};1H"); // Move to subtitle row
-                if (i < subtitleLines.Length)
+                if (i < subtitleLineCount)
                 {
                     // Write subtitle line (already padded to width by SubtitleRenderer)
-                    sb.Append(subtitleLines[i].TrimEnd('\r'));
+                    sb.Append(GetLineSpan(subtitleContent, i));
                 }
                 else
                 {
@@ -592,7 +644,12 @@ public class VideoAnimationPlayer : IDisposable
     /// <summary>
     /// Get visible character count (excluding ANSI sequences).
     /// </summary>
-    private static int GetVisibleLength(string line)
+    private static int GetVisibleLength(string line) => GetVisibleLength(line.AsSpan());
+
+    /// <summary>
+    /// Get visible character count (excluding ANSI sequences) - span version.
+    /// </summary>
+    private static int GetVisibleLength(ReadOnlySpan<char> line)
     {
         int len = 0;
         bool inEscape = false;
