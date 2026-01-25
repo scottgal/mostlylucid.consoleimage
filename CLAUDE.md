@@ -625,3 +625,72 @@ See [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md) for the full specification.
 - Delta encoding stores only changed cells between frames
 - Global color palette reduces redundancy
 - Optional temporal stability (de-jitter) reduces visual flickering
+
+## LLM Integration
+
+ConsoleImage serves as a powerful **video probe for LLMs**, enabling text-based AI models to perceive and extract content from videos without requiring vision APIs.
+
+### Use Cases
+
+**1. Visual Probe - "See" video content as text**
+```bash
+# Render video frames as ASCII/Braille text an LLM can read
+consoleimage video.mp4 -ss 60 -t 5 -w 80
+
+# Lower width for more compact output
+consoleimage video.mp4 -ss 120 -t 10 -w 40 --mono
+```
+
+**2. Audio Probe - Extract spoken content**
+```bash
+# Stream transcript to stdout (pipe-friendly)
+consoleimage video.mp4 --transcript -t 30
+
+# Transcribe specific segment
+consoleimage video.mp4 --transcript -ss 60 -t 15
+```
+
+**3. Combined Analysis - Visual + dialogue**
+```bash
+# Watch video with live subtitles
+consoleimage video.mp4 -ss 120 -t 10 -w 60 --subs whisper
+```
+
+**4. GIF Extraction - Create clips with burned-in subtitles**
+```bash
+# Extract 10s GIF with auto-transcribed subtitles
+consoleimage video.mp4 -ss 120 -t 10 --subs whisper --raw -o clip.gif
+
+# From YouTube (requires cookies for some videos)
+consoleimage "https://youtu.be/xyz" -t 15 --subs whisper --raw -o demo.gif
+
+# With existing SRT file
+consoleimage movie.mp4 -ss 300 -t 20 --srt movie.srt --raw -o scene.gif
+```
+
+### LLM Capabilities Enabled
+
+| Capability | Command | Output |
+|------------|---------|--------|
+| Analyze video visually | `consoleimage video.mp4 -w 60` | ASCII frames to stdout |
+| Extract dialogue | `--transcript` | Timestamped text |
+| Search for scenes | Watch ASCII + transcript | Text patterns |
+| Create captioned GIFs | `--raw --subs whisper -o out.gif` | GIF file with subtitles |
+| Describe with context | `-w 60 --subs whisper` | Visual + audio as text |
+
+### Key Options for LLM Use
+
+- `-w 40-80` - Width in characters (smaller = less tokens)
+- `--mono` - Monochrome braille (compact, high detail)
+- `--transcript` - Output only the transcript (no video)
+- `--subs whisper` - Auto-transcribe with Whisper AI
+- `--raw -o file.gif` - Extract actual video frames to GIF
+- `-ss N -t M` - Select time range (start at N seconds, M seconds duration)
+
+### Benefits
+
+- **No vision API required**: ASCII output is readable text
+- **Automatic transcription**: Whisper AI generates captions
+- **Self-contained**: FFmpeg and Whisper models auto-download
+- **Accessible output**: Subtitles burned at WCAG-compliant sizes
+- **Streaming**: Can process videos of any length
