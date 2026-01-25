@@ -72,6 +72,24 @@ public sealed class WhisperTranscriptionService : IDisposable
         {
             if (_factory != null) return;
 
+            // Step 1: Ensure native runtime is available (downloads if needed)
+            if (!WhisperRuntimeDownloader.IsRuntimeAvailable())
+            {
+                var (rid, sizeMB) = WhisperRuntimeDownloader.GetRuntimeInfo();
+                progress?.Report((0, 0, $"Downloading Whisper runtime for {rid} (~{sizeMB}MB)..."));
+
+                var runtimeSuccess = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
+                if (!runtimeSuccess)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to download Whisper runtime. {WhisperRuntimeDownloader.GetManualInstallInstructions(rid)}");
+                }
+            }
+
+            // Step 2: Configure runtime path so Whisper.NET can find native libs
+            WhisperRuntimeDownloader.ConfigureRuntimePath();
+
+            // Step 3: Download model if needed
             var modelPath = await WhisperModelDownloader.EnsureModelAsync(
                 _modelSize, _language, progress, ct);
 
@@ -92,7 +110,14 @@ public sealed class WhisperTranscriptionService : IDisposable
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"Failed to load Whisper model from {modelPath}: {ex.GetType().Name} - {ex.Message}", ex);
+                // Provide helpful error message with runtime location info
+                var rid = WhisperRuntimeDownloader.GetRuntimeIdentifier();
+                var runtimeDir = WhisperRuntimeDownloader.RuntimesDirectory;
+                throw new InvalidOperationException(
+                    $"Failed to load Whisper model from {modelPath}: {ex.GetType().Name} - {ex.Message}\n" +
+                    $"Runtime directory: {runtimeDir}\n" +
+                    $"Platform: {rid}\n" +
+                    $"Ensure whisper.dll/libwhisper.so exists in the runtime directory.", ex);
             }
 
             progress?.Report((0, 0, "Whisper ready"));

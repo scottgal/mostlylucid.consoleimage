@@ -150,19 +150,29 @@ public static class WhisperRuntimeDownloader
             }
 
             // Extract native libraries from NuGet package
-            // Whisper.net.Runtime v1.9.0+ stores libs at: build/{rid}/
+            // Whisper.net.Runtime stores libs at multiple possible locations:
+            // - runtimes/{rid}/native/ (standard NuGet layout)
+            // - build/{rid}/ (older layout)
             try
             {
-                var nativePath = GetNativePathInPackage(rid);
                 using var archive = ZipFile.OpenRead(tempZip);
                 var extractedCount = 0;
 
+                // Try multiple paths where native libs might be stored
+                var possiblePaths = new[]
+                {
+                    $"runtimes/{rid}/native/",
+                    $"build/{rid}/",
+                    $"runtimes/{rid.Replace("-", "_")}/native/", // Some packages use underscores
+                };
+
                 foreach (var entry in archive.Entries)
                 {
-                    // Look for native libraries in the correct RID folder
-                    if (entry.FullName.StartsWith(nativePath, StringComparison.OrdinalIgnoreCase) &&
-                        IsNativeLibrary(entry.Name) &&
-                        !string.IsNullOrEmpty(entry.Name))
+                    // Check if this entry matches any of our expected paths
+                    var matchesPath = possiblePaths.Any(p =>
+                        entry.FullName.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+
+                    if (matchesPath && IsNativeLibrary(entry.Name) && !string.IsNullOrEmpty(entry.Name))
                     {
                         var destPath = Path.Combine(targetDir, entry.Name);
                         entry.ExtractToFile(destPath, overwrite: true);
@@ -174,14 +184,22 @@ public static class WhisperRuntimeDownloader
                 if (extractedCount == 0)
                 {
                     // List what's in the package for debugging
-                    progress?.Report((0, 0, $"No libs found at {nativePath}, checking package contents..."));
-                    var buildFolders = archive.Entries
-                        .Where(e => e.FullName.StartsWith("build/", StringComparison.OrdinalIgnoreCase))
-                        .Select(e => e.FullName.Split('/').Take(2).Aggregate((a, b) => $"{a}/{b}"))
+                    progress?.Report((0, 0, $"No libs found for {rid}, checking package contents..."));
+                    var nativeEntries = archive.Entries
+                        .Where(e => IsNativeLibrary(e.Name))
+                        .Select(e => e.FullName)
+                        .Take(10);
+                    foreach (var entry in nativeEntries)
+                        progress?.Report((0, 0, $"  Found: {entry}"));
+
+                    // Also show available RIDs
+                    var rids = archive.Entries
+                        .Where(e => e.FullName.StartsWith("runtimes/", StringComparison.OrdinalIgnoreCase))
+                        .Select(e => e.FullName.Split('/').Skip(1).FirstOrDefault())
+                        .Where(r => !string.IsNullOrEmpty(r))
                         .Distinct()
                         .Take(10);
-                    foreach (var folder in buildFolders)
-                        progress?.Report((0, 0, $"  Found: {folder}"));
+                    progress?.Report((0, 0, $"Available RIDs: {string.Join(", ", rids)}"));
                 }
             }
             finally

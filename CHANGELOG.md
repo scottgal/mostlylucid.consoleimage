@@ -22,6 +22,13 @@ All notable changes to this project will be documented in this file.
 - **Automatic migration** - Old cached subtitle files are automatically renamed to new hash format
 - **No re-transcription needed** - Existing Whisper transcriptions are found and reused
 
+#### Whisper Runtime Auto-Download Fix (AOT builds)
+- **Runtime not found in AOT** - Native Whisper library wasn't being downloaded before model load
+- **Added runtime check** - `WhisperRuntimeDownloader.EnsureRuntimeAsync()` called before loading model
+- **PATH configuration** - Runtime directory added to PATH so Whisper.NET finds native libs
+- **Improved extraction** - Now checks multiple paths in NuGet package (`runtimes/{rid}/native/`, `build/{rid}/`)
+- **Better error messages** - Shows runtime directory and available RIDs on failure
+
 ### Performance Improvements
 
 #### Memory Optimizations
