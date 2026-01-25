@@ -34,10 +34,7 @@ public static class ImageHandler
         ConsoleHelper.EnableAnsiSupport();
 
         // Determine render mode
-        var renderMode = useBraille ? RenderMode.Braille
-            : useBlocks ? RenderMode.ColorBlocks
-            : useMatrix ? RenderMode.Matrix
-            : RenderMode.Ascii;
+        var renderMode = RenderHelpers.GetRenderMode(useBraille, useBlocks, useMatrix);
 
         // Get effective aspect ratio
         var effectiveAspect = RenderHelpers.GetEffectiveAspectRatio(charAspect, savedCalibration, renderMode);
@@ -471,15 +468,15 @@ public static class ImageHandler
     }
 
     /// <summary>
-    /// Play continuous Matrix rain animation over an image until cancelled.
-    /// Space to pause, Q/Escape to quit.
+    /// Common animation loop for Matrix rain playback with pause/resume support.
     /// </summary>
-    private static async Task PlayMatrixContinuousAsync(
-        MatrixRenderer renderer, MatrixOptions matrixOpts, Image<Rgba32> image, int loop, float speed, CancellationToken ct)
+    private static async Task PlayMatrixAnimationLoopAsync(
+        Func<IEnumerable<MatrixFrame>> frameGenerator,
+        int delayMs,
+        CancellationToken ct)
     {
         ConsoleHelper.EnableAnsiSupport();
 
-        var delayMs = (int)(1000.0 / matrixOpts.TargetFps / speed);
         var frameHeight = 0;
         var isFirstFrame = true;
         var isPaused = false;
@@ -488,87 +485,7 @@ public static class ImageHandler
         {
             while (!ct.IsCancellationRequested)
             {
-                // Check for space to pause/resume
-                while (Console.KeyAvailable)
-                {
-                    var key = Console.ReadKey(intercept: true);
-                    if (key.Key == ConsoleKey.Spacebar)
-                        isPaused = !isPaused;
-                    else if (key.Key == ConsoleKey.Q || key.Key == ConsoleKey.Escape)
-                        return;
-                }
-
-                if (isPaused)
-                {
-                    await Task.Delay(50, ct);
-                    continue;
-                }
-
-                // Generate frames in batches for efficiency
-                foreach (var frame in renderer.RenderContinuous(image, 100))
-                {
-                    if (ct.IsCancellationRequested) break;
-
-                    // Check for pause during batch
-                    while (Console.KeyAvailable)
-                    {
-                        var key = Console.ReadKey(intercept: true);
-                        if (key.Key == ConsoleKey.Spacebar)
-                            isPaused = !isPaused;
-                        else if (key.Key == ConsoleKey.Q || key.Key == ConsoleKey.Escape)
-                            return;
-                    }
-
-                    if (isPaused)
-                    {
-                        await Task.Delay(50, ct);
-                        continue;
-                    }
-
-                    // Move cursor up for subsequent frames
-                    if (!isFirstFrame && frameHeight > 0)
-                        Console.Write($"\x1b[{frameHeight}A");
-                    else
-                        isFirstFrame = false;
-
-                    // Move to column 0 and use synchronized output for flicker-free rendering
-                    Console.Write("\r\x1b[?2026h"); // Begin sync
-                    Console.Write(frame.Content);
-                    Console.Write("\x1b[?2026l"); // End sync
-
-                    // Calculate frame height from content
-                    if (frameHeight == 0)
-                        frameHeight = frame.Content.Split('\n').Length;
-
-                    await Task.Delay(delayMs, ct);
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Normal exit via Ctrl+C
-        }
-    }
-
-    /// <summary>
-    /// Play pure Matrix rain effect with no image until cancelled.
-    /// </summary>
-    public static async Task PlayPureMatrixAsync(
-        RenderOptions options, MatrixOptions matrixOpts, int loop, float speed, CancellationToken ct)
-    {
-        ConsoleHelper.EnableAnsiSupport();
-
-        using var renderer = new MatrixRenderer(options, matrixOpts);
-        var delayMs = (int)(1000.0 / matrixOpts.TargetFps / speed);
-        var frameHeight = 0;
-        var isFirstFrame = true;
-        var isPaused = false;
-
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                // Check for space to pause/resume
+                // Check for space to pause/resume at batch boundary
                 while (Console.KeyAvailable)
                 {
                     var key = Console.ReadKey(intercept: true);
@@ -585,7 +502,7 @@ public static class ImageHandler
                 }
 
                 // Generate frames in batches
-                foreach (var frame in renderer.RenderPureRainContinuous(100))
+                foreach (var frame in frameGenerator())
                 {
                     if (ct.IsCancellationRequested) break;
 
@@ -605,12 +522,13 @@ public static class ImageHandler
                         continue;
                     }
 
-                    if (!isFirstFrame && frameHeight > 0)
-                        Console.Write($"\x1b[{frameHeight}A");
+                    // Move cursor up for subsequent frames (N lines = N-1 newlines, cursor on line N-1)
+                    if (!isFirstFrame && frameHeight > 1)
+                        Console.Write($"\x1b[{frameHeight - 1}A");
                     else
                         isFirstFrame = false;
 
-                    // Move to column 0 and begin synchronized output
+                    // Move to column 0 and use synchronized output for flicker-free rendering
                     Console.Write("\r\x1b[?2026h");
                     Console.Write(frame.Content);
                     Console.Write("\x1b[?2026l");
@@ -624,8 +542,36 @@ public static class ImageHandler
         }
         catch (OperationCanceledException)
         {
-            // Normal exit
+            // Normal exit via Ctrl+C
         }
+    }
+
+    /// <summary>
+    /// Play continuous Matrix rain animation over an image until cancelled.
+    /// Space to pause, Q/Escape to quit.
+    /// </summary>
+    private static async Task PlayMatrixContinuousAsync(
+        MatrixRenderer renderer, MatrixOptions matrixOpts, Image<Rgba32> image, int loop, float speed, CancellationToken ct)
+    {
+        var delayMs = (int)(1000.0 / matrixOpts.TargetFps / speed);
+        await PlayMatrixAnimationLoopAsync(
+            () => renderer.RenderContinuous(image, 100),
+            delayMs,
+            ct);
+    }
+
+    /// <summary>
+    /// Play pure Matrix rain effect with no image until cancelled.
+    /// </summary>
+    public static async Task PlayPureMatrixAsync(
+        RenderOptions options, MatrixOptions matrixOpts, int loop, float speed, CancellationToken ct)
+    {
+        using var renderer = new MatrixRenderer(options, matrixOpts);
+        var delayMs = (int)(1000.0 / matrixOpts.TargetFps / speed);
+        await PlayMatrixAnimationLoopAsync(
+            () => renderer.RenderPureRainContinuous(100),
+            delayMs,
+            ct);
     }
 
     /// <summary>

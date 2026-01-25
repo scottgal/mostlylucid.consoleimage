@@ -122,4 +122,40 @@ public static class RenderHelpers
                ?? savedCalibration?.GetAspectRatio(mode)
                ?? 0.5f;
     }
+
+    /// <summary>
+    /// Determine render mode from boolean CLI flags.
+    /// Priority: Matrix > Braille > Blocks > ASCII (default)
+    /// </summary>
+    public static RenderMode GetRenderMode(bool useBraille, bool useBlocks, bool useMatrix)
+    {
+        if (useMatrix) return RenderMode.Matrix;
+        if (useBraille) return RenderMode.Braille;
+        if (useBlocks) return RenderMode.ColorBlocks;
+        return RenderMode.Ascii;
+    }
+
+    /// <summary>
+    /// Get display name for render mode.
+    /// </summary>
+    public static string GetRenderModeName(RenderMode mode) => mode switch
+    {
+        RenderMode.Braille => "Braille",
+        RenderMode.ColorBlocks => "Blocks",
+        RenderMode.Matrix => "Matrix",
+        _ => "ASCII"
+    };
+
+    /// <summary>
+    /// Get effective gamma from explicit value, saved calibration, or default.
+    /// </summary>
+    public static float GetEffectiveGamma(
+        float? explicitGamma,
+        CalibrationSettings? savedCalibration,
+        RenderMode mode)
+    {
+        return explicitGamma
+               ?? savedCalibration?.GetGamma(mode)
+               ?? 0.65f;
+    }
 }

@@ -616,9 +616,7 @@ public static class VideoHandler
         FFmpegService ffmpeg, string inputPath, FileInfo inputInfo, VideoInfo videoInfo,
         VideoHandlerOptions opts, double? end, CancellationToken ct)
     {
-        var renderMode = opts.UseBraille ? RenderMode.Braille
-            : opts.UseBlocks ? RenderMode.ColorBlocks
-            : RenderMode.Ascii;
+        var renderMode = RenderHelpers.GetRenderMode(opts.UseBraille, opts.UseBlocks, false);
 
         var effectiveAspect = RenderHelpers.GetEffectiveAspectRatio(
             opts.CharAspect, opts.SavedCalibration, renderMode);
@@ -671,7 +669,7 @@ public static class VideoHandler
         var estimatedTotalFrames = (int)(effectiveDuration * gifTargetFps / opts.FrameStepValue);
 
         var statusRenderer = opts.ShowStatus ? new StatusLine(charWidth, !opts.NoColor) : null;
-        var renderModeName = opts.UseBraille ? "Braille" : opts.UseBlocks ? "Blocks" : "ASCII";
+        var renderModeName = RenderHelpers.GetRenderModeName(renderMode);
 
         // Create subtitle renderer if subtitles are available
         SubtitleRenderer? subtitleRenderer = null;
@@ -818,9 +816,7 @@ public static class VideoHandler
             return 1;
         }
 
-        var renderMode = opts.UseBraille ? RenderMode.Braille
-            : opts.UseBlocks ? RenderMode.ColorBlocks
-            : RenderMode.Ascii;
+        var renderMode = RenderHelpers.GetRenderMode(opts.UseBraille, opts.UseBlocks, false);
 
         var effectiveAspect = RenderHelpers.GetEffectiveAspectRatio(
             opts.CharAspect, opts.SavedCalibration, renderMode);
@@ -857,7 +853,7 @@ public static class VideoHandler
         Console.WriteLine();
 
         var jsonRenderOptions = CreateRenderOptions(opts, charWidth, charHeight, effectiveAspect);
-        var renderModeName = opts.UseBraille ? "Braille" : opts.UseBlocks ? "ColorBlocks" : "ASCII";
+        var renderModeName = RenderHelpers.GetRenderModeName(renderMode);
 
         if (opts.OutputAsCompressed)
             return await HandleCompressedJsonOutput(ffmpeg, inputPath, jsonRenderOptions, opts, videoInfo,

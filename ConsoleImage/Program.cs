@@ -226,12 +226,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     var outputGif = !string.IsNullOrEmpty(gifOutputPath) ? new FileInfo(gifOutputPath) : null;
 
-    // Calibration mode
+    // Determine render mode for calibration value lookup
+    var renderMode = RenderHelpers.GetRenderMode(useBraille, useBlocks, useMatrix);
+
+    // Calibration mode - supports aspect ratio and gamma calibration per render mode
+    // Tab switches between aspect ratio (circle test) and gamma (color test card)
     if (calibrate)
         return CalibrationHandler.Handle(
             useBraille, useBlocks, useMatrix,
-            charAspect, savedCalibration,
-            noColor, saveCalibrationOpt);
+            charAspect, gamma, savedCalibration,
+            noColor, saveCalibrationOpt,
+            width, height,
+            colorCalibration: false); // Start in aspect ratio mode by default
+
+    // Compute effective gamma from explicit value or saved calibration
+    var effectiveGamma = RenderHelpers.GetEffectiveGamma(gamma, savedCalibration, renderMode);
 
     // Input required for non-calibration modes (except Matrix mode which can run standalone)
     if (string.IsNullOrEmpty(inputPath))
@@ -299,7 +308,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             UseMatrix = useMatrix,
             UseColor = !noColor,
             Contrast = contrast,
-            Gamma = gamma,
+            Gamma = effectiveGamma,
             CharAspect = charAspect,
             ShowStatus = showStatus
         };
@@ -637,7 +646,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             useBlocks, useBraille,
             useMatrix, matrixColor, matrixFullColor,
             matrixDensity, matrixSpeed, matrixAlphabet,
-            noColor, colorCount, contrast, gamma, loop, speed,
+            noColor, colorCount, contrast, effectiveGamma, loop, speed,
             outputGif, gifFontSize, gifScale, gifColors,
             outputAsJson, jsonOutputPath,
             showStatus,
@@ -781,7 +790,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         NoColor = noColor,
         ColorCount = colorCount,
         Contrast = contrast,
-        Gamma = gamma,
+        Gamma = effectiveGamma,
         CharAspect = charAspect,
         Charset = charset,
         Preset = preset,

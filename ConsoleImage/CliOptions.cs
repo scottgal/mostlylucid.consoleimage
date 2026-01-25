@@ -56,7 +56,7 @@ public class CliOptions
     public Option<bool> NoColor { get; }
     public Option<int?> Colors { get; }
     public Option<float> Contrast { get; }
-    public Option<float> Gamma { get; }
+    public Option<float?> Gamma { get; }
     public Option<float?> CharAspect { get; }
     public Option<string?> Charset { get; }
     public Option<string?> Preset { get; }
@@ -157,6 +157,10 @@ public class CliOptions
 
     // Read-only mode (no caching or downloading)
     public Option<bool> NoWrite { get; }
+
+    // Template support
+    public Option<string?> Template { get; }
+    public Option<string?> SaveTemplate { get; }
 
     public CliOptions()
     {
@@ -278,8 +282,7 @@ public class CliOptions
         Contrast = new Option<float>("--contrast") { Description = "Contrast enhancement (1.0 = none)" };
         Contrast.DefaultValueFactory = _ => 2.5f;
 
-        Gamma = new Option<float>("--gamma") { Description = "Gamma correction (< 1.0 brighter)" };
-        Gamma.DefaultValueFactory = _ => 0.65f;
+        Gamma = new Option<float?>("--gamma") { Description = "Gamma correction (< 1.0 brighter, default uses calibration or 0.65)" };
         Gamma.Aliases.Add("-g");
 
         CharAspect = new Option<float?>("--char-aspect") { Description = "Character aspect ratio (width/height)" };
@@ -392,7 +395,7 @@ public class CliOptions
         Quality.Aliases.Add("-q");
 
         // Calibration
-        Calibrate = new Option<bool>("--calibrate") { Description = "Display calibration pattern" };
+        Calibrate = new Option<bool>("--calibrate") { Description = "Display calibration pattern (Tab to switch aspect/gamma)" };
         SaveCalibration = new Option<bool>("--save") { Description = "Save calibration to calibration.json" };
 
         // Image adjustments

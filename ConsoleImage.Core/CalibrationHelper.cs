@@ -11,10 +11,12 @@ namespace ConsoleImage.Core;
 
 /// <summary>
 ///     Settings for calibration, saved to calibration.json.
-///     Each render mode has its own character aspect ratio since they map pixels differently.
+///     Each render mode has its own character aspect ratio and gamma since they map pixels differently.
 /// </summary>
 public record CalibrationSettings
 {
+    // === Aspect Ratio Settings ===
+
     /// <summary>Character aspect ratio for ASCII mode (1 char = 1 pixel)</summary>
     public float AsciiCharacterAspectRatio { get; init; } = 0.5f;
 
@@ -23,6 +25,17 @@ public record CalibrationSettings
 
     /// <summary>Character aspect ratio for Braille mode (1 char = 2x4 pixels)</summary>
     public float BrailleCharacterAspectRatio { get; init; } = 0.5f;
+
+    // === Gamma Settings (color calibration) ===
+
+    /// <summary>Gamma correction for ASCII mode (1.0 = neutral, &lt;1.0 = brighter, &gt;1.0 = darker)</summary>
+    public float AsciiGamma { get; init; } = 0.65f;
+
+    /// <summary>Gamma correction for ColorBlocks mode</summary>
+    public float BlocksGamma { get; init; } = 0.65f;
+
+    /// <summary>Gamma correction for Braille mode</summary>
+    public float BrailleGamma { get; init; } = 0.65f;
 
     /// <summary>Get the character aspect ratio for a specific render mode</summary>
     public float GetAspectRatio(RenderMode mode)
@@ -36,6 +49,23 @@ public record CalibrationSettings
         };
     }
 
+    /// <summary>Get the gamma correction for a specific render mode</summary>
+    public float GetGamma(RenderMode mode)
+    {
+        // Get the stored gamma value
+        var gamma = mode switch
+        {
+            RenderMode.ColorBlocks => BlocksGamma,
+            RenderMode.Braille => BrailleGamma,
+            RenderMode.Matrix => AsciiGamma, // Matrix uses same gamma as ASCII
+            _ => AsciiGamma
+        };
+
+        // Return default 0.65 if gamma is 0 (unset - old calibration files without gamma)
+        // System.Text.Json deserializes missing float properties as 0, not the init default
+        return gamma <= 0f ? 0.65f : gamma;
+    }
+
     /// <summary>Create a new settings with updated aspect ratio for a specific mode</summary>
     public CalibrationSettings WithAspectRatio(RenderMode mode, float aspectRatio)
     {
@@ -45,6 +75,18 @@ public record CalibrationSettings
             RenderMode.Braille => this with { BrailleCharacterAspectRatio = aspectRatio },
             RenderMode.Matrix => this with { AsciiCharacterAspectRatio = aspectRatio }, // Shares with ASCII
             _ => this with { AsciiCharacterAspectRatio = aspectRatio }
+        };
+    }
+
+    /// <summary>Create a new settings with updated gamma for a specific mode</summary>
+    public CalibrationSettings WithGamma(RenderMode mode, float gamma)
+    {
+        return mode switch
+        {
+            RenderMode.ColorBlocks => this with { BlocksGamma = gamma },
+            RenderMode.Braille => this with { BrailleGamma = gamma },
+            RenderMode.Matrix => this with { AsciiGamma = gamma }, // Shares with ASCII
+            _ => this with { AsciiGamma = gamma }
         };
     }
 }
@@ -129,6 +171,151 @@ public static class CalibrationHelper
         });
 
         return image;
+    }
+
+    /// <summary>
+    ///     Generate a SMPTE-style color test card for terminal calibration.
+    ///     Includes color bars, grayscale ramp, and PLUGE bars for gamma adjustment.
+    /// </summary>
+    public static Image<Rgba32> GenerateColorCalibrationImage(int width = 320, int height = 240)
+    {
+        var image = new Image<Rgba32>(width, height, Color.Black);
+
+        // SMPTE color bar layout (top 2/3)
+        // 75% color bars: Gray, Yellow, Cyan, Green, Magenta, Red, Blue
+        var topHeight = height * 2 / 3;
+        var colorBars = new[]
+        {
+            new Rgba32(191, 191, 191, 255), // 75% Gray
+            new Rgba32(191, 191, 0, 255),   // 75% Yellow
+            new Rgba32(0, 191, 191, 255),   // 75% Cyan
+            new Rgba32(0, 191, 0, 255),     // 75% Green
+            new Rgba32(191, 0, 191, 255),   // 75% Magenta
+            new Rgba32(191, 0, 0, 255),     // 75% Red
+            new Rgba32(0, 0, 191, 255)      // 75% Blue
+        };
+        var barWidth = width / colorBars.Length;
+        for (var i = 0; i < colorBars.Length; i++)
+        {
+            for (var x = i * barWidth; x < (i + 1) * barWidth && x < width; x++)
+            for (var y = 0; y < topHeight; y++)
+                image[x, y] = colorBars[i];
+        }
+
+        // Castellations (middle strip - reverse color signal)
+        var midStart = topHeight;
+        var midHeight = height / 12;
+        var castellations = new[]
+        {
+            new Rgba32(0, 0, 191, 255),     // Blue
+            new Rgba32(0, 0, 0, 255),       // Black
+            new Rgba32(191, 0, 191, 255),   // Magenta
+            new Rgba32(0, 0, 0, 255),       // Black
+            new Rgba32(0, 191, 191, 255),   // Cyan
+            new Rgba32(0, 0, 0, 255),       // Black
+            new Rgba32(191, 191, 191, 255)  // Gray
+        };
+        for (var i = 0; i < castellations.Length; i++)
+        {
+            for (var x = i * barWidth; x < (i + 1) * barWidth && x < width; x++)
+            for (var y = midStart; y < midStart + midHeight; y++)
+                image[x, y] = castellations[i];
+        }
+
+        // Bottom section: PLUGE bars and grayscale
+        var bottomStart = midStart + midHeight;
+        var bottomHeight = height - bottomStart;
+        var subBarWidth = width / 7;
+
+        // PLUGE section (left side) - for checking black level
+        // -4%, 0%, +4% black levels
+        var plugeColors = new[]
+        {
+            new Rgba32(0, 0, 0, 255),    // Superblack (clipped to 0)
+            new Rgba32(8, 8, 8, 255),    // -4% (should be nearly invisible)
+            new Rgba32(0, 0, 0, 255),    // Black reference
+            new Rgba32(8, 8, 8, 255)     // +4% (should be barely visible if gamma correct)
+        };
+
+        // I and Q bars (for color decoder testing)
+        var iqColor1 = new Rgba32(0, 68, 130, 255);   // -I (dark blue)
+        var iqColor2 = new Rgba32(255, 255, 255, 255); // White
+        var iqColor3 = new Rgba32(75, 0, 139, 255);    // +Q (purple)
+
+        // Grayscale ramp (right side)
+        var grayRampStart = width * 4 / 7;
+
+        for (var x = 0; x < width; x++)
+        {
+            for (var y = bottomStart; y < height; y++)
+            {
+                if (x < subBarWidth)
+                {
+                    // PLUGE super black
+                    image[x, y] = plugeColors[0];
+                }
+                else if (x < subBarWidth * 2)
+                {
+                    // PLUGE 4% below black
+                    image[x, y] = plugeColors[1];
+                }
+                else if (x < subBarWidth * 3)
+                {
+                    // PLUGE black
+                    image[x, y] = plugeColors[2];
+                }
+                else if (x < subBarWidth * 4)
+                {
+                    // PLUGE 4% above black
+                    image[x, y] = plugeColors[3];
+                }
+                else if (x < grayRampStart)
+                {
+                    // White reference
+                    image[x, y] = iqColor2;
+                }
+                else
+                {
+                    // Grayscale ramp (11 steps from black to white)
+                    var rampPos = (float)(x - grayRampStart) / (width - grayRampStart);
+                    var gray = (byte)(255 * rampPos);
+                    image[x, y] = new Rgba32(gray, gray, gray, 255);
+                }
+            }
+        }
+
+        return image;
+    }
+
+    /// <summary>
+    ///     Render color calibration pattern using the specified mode and gamma
+    /// </summary>
+    public static string RenderColorCalibrationPattern(
+        RenderMode mode,
+        float charAspect,
+        float gamma,
+        bool useColor = true,
+        int width = 60,
+        int height = 20)
+    {
+        using var image = GenerateColorCalibrationImage();
+
+        var renderOpts = new RenderOptions
+        {
+            CharacterAspectRatio = charAspect,
+            UseColor = useColor,
+            MaxWidth = width,
+            MaxHeight = height,
+            Gamma = gamma
+        };
+
+        return mode switch
+        {
+            RenderMode.Braille => RenderBraille(image, renderOpts),
+            RenderMode.ColorBlocks => RenderColorBlocks(image, renderOpts),
+            RenderMode.Matrix => RenderMatrix(image, renderOpts),
+            _ => RenderAscii(image, renderOpts)
+        };
     }
 
     /// <summary>
