@@ -6,7 +6,20 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ConsoleImage.Transcription</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Description>Whisper transcription support for ConsoleImage - cross-platform</Description>
+
+    <!-- NuGet Package Properties -->
+    <PackageId>mostlylucid.consoleimage.transcription</PackageId>
+    <Authors>Scott Galloway</Authors>
+    <MinVerTagPrefix>consoleimage-transcription-v</MinVerTagPrefix>
+    <Description>Whisper-based audio transcription for ConsoleImage. Auto-generates subtitles from video/audio files using OpenAI Whisper models. Supports speaker diarization and multiple output formats (SRT, VTT).</Description>
+    <PackageTags>whisper;transcription;subtitles;srt;vtt;speech-to-text;consoleimage;aot</PackageTags>
+    <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageIconUrl>https://raw.githubusercontent.com/scottgal/ConsoleImage/master/icon.png</PackageIconUrl>
+    <RepositoryUrl>https://github.com/scottgal/mostlylucid.consoleimage</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <!-- Whisper.NET - includes cross-platform native binaries -->
@@ -20,9 +33,24 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
-  <!-- Reference to Core for subtitle types -->
   <ItemGroup>
+    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all"/>
+  </ItemGroup>
+
+  <!-- Local development: use ProjectReference -->
+  <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
     <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+  </ItemGroup>
+
+  <!-- NuGet packaging: use PackageReference to the published Core package -->
+  <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
+    <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Use NuGet-specific README with proper image URLs -->
+    <None Include="README.nuget.md" Pack="true" PackagePath="README.md"/>
+    <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')"/>
   </ItemGroup>
 
 </Project>

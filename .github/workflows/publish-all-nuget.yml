@@ -148,7 +148,55 @@ jobs:
       run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
 
   # ============================================
-  # STEP 3: Publish Spectre (depends on Core, parallel with Video)
+  # STEP 3: Publish Transcription (depends on Core, parallel with Video/Spectre)
+  # ============================================
+  publish-transcription:
+    runs-on: ubuntu-latest
+    needs: [publish-core, wait-for-core]
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Create version tag for MinVer
+      run: |
+        TAG="consoleimage-transcription-v${{ needs.publish-core.outputs.version }}"
+        if git rev-parse "$TAG" >/dev/null 2>&1; then
+          echo "Tag $TAG already exists, skipping creation"
+        else
+          git tag "$TAG"
+          echo "Created tag $TAG"
+        fi
+
+    - name: Build & Pack Transcription
+      run: |
+        dotnet restore ConsoleImage.Transcription/ConsoleImage.Transcription.csproj \
+          -p:UseNuGetDependency=true \
+          -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
+        dotnet pack ConsoleImage.Transcription/ConsoleImage.Transcription.csproj \
+          -c Release \
+          -o ./artifacts \
+          -p:UseNuGetDependency=true \
+          -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
+
+    - name: NuGet Login (OIDC)
+      id: nuget
+      uses: NuGet/login@v1
+      with:
+        user: 'mostlylucid'
+
+    - name: Publish Transcription to NuGet.org
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+    - name: Publish Transcription to GitHub Packages
+      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json --skip-duplicate
+
+  # ============================================
+  # STEP 3b: Publish Spectre (depends on Core, parallel with Video/Transcription)
   # ============================================
   publish-spectre:
     runs-on: ubuntu-latest
@@ -306,10 +354,44 @@ jobs:
         exit 0
 
   # ============================================
+  # Wait for Transcription to be available (for CLI)
+  # ============================================
+  wait-for-transcription:
+    runs-on: ubuntu-latest
+    needs: [publish-core, publish-transcription]
+    steps:
+    - name: Wait for Transcription package availability on NuGet
+      run: |
+        VERSION="${{ needs.publish-core.outputs.version }}"
+        echo "Waiting for mostlylucid.consoleimage.transcription version ${VERSION} to be available on NuGet..."
+
+        MAX_ATTEMPTS=60
+        ATTEMPT=0
+
+        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          ATTEMPT=$((ATTEMPT + 1))
+          echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: Checking NuGet API..."
+
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.nuget.org/v3-flatcontainer/mostlylucid.consoleimage.transcription/${VERSION}/mostlylucid.consoleimage.transcription.${VERSION}.nupkg")
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Package mostlylucid.consoleimage.transcription ${VERSION} is available!"
+            exit 0
+          fi
+
+          echo "Package not yet available (HTTP ${HTTP_STATUS}), waiting 30 seconds..."
+          sleep 30
+        done
+
+        echo "Warning: Timeout waiting for package. It may still be indexing."
+        exit 0
+
+  # ============================================
   # STEP 4: Build ALL CLI binaries (AOT) for all platforms
   # ============================================
   build-cli:
-    needs: [publish-core, publish-video, wait-for-core, wait-for-video]
+    needs: [publish-core, publish-video, publish-transcription, wait-for-core, wait-for-video, wait-for-transcription]
     strategy:
       matrix:
         include:
@@ -415,7 +497,7 @@ jobs:
   # STEP 5: Create GitHub Release with all CLI binaries
   # ============================================
   release:
-    needs: [publish-core, publish-video, publish-spectre, publish-player, build-cli]
+    needs: [publish-core, publish-video, publish-transcription, publish-spectre, publish-player, build-cli]
     runs-on: ubuntu-latest
 
     steps:
@@ -522,6 +604,9 @@ jobs:
             # Video support (requires FFmpeg)
             dotnet add package mostlylucid.consoleimage.video --version ${{ needs.publish-core.outputs.version }}
 
+            # Whisper transcription for auto-subtitles
+            dotnet add package mostlylucid.consoleimage.transcription --version ${{ needs.publish-core.outputs.version }}
+
             # Spectre.Console integration
             dotnet add package mostlylucid.consoleimage.spectre --version ${{ needs.publish-core.outputs.version }}
             ```
@@ -545,7 +630,7 @@ jobs:
   # ============================================
   summary:
     runs-on: ubuntu-latest
-    needs: [publish-core, publish-video, publish-spectre, publish-player, build-cli, release]
+    needs: [publish-core, publish-video, publish-transcription, publish-spectre, publish-player, build-cli, release]
     if: always()
     steps:
     - name: Summary
@@ -558,6 +643,7 @@ jobs:
         echo "| mostlylucid.consoleimage | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
         echo "| mostlylucid.consoleimage.player | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.player/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
         echo "| mostlylucid.consoleimage.video | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.video/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
+        echo "| mostlylucid.consoleimage.transcription | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.transcription/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
         echo "| mostlylucid.consoleimage.spectre | ${VERSION} | [NuGet](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/${VERSION}) |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## CLI Releases" >> $GITHUB_STEP_SUMMARY
