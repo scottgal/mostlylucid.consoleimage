@@ -2,6 +2,7 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 // Main renderer class for converting images to ASCII art
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -64,6 +65,10 @@ public class AsciiRenderer : IDisposable
     private readonly RenderOptions _options;
     private bool _disposed;
 
+    // Reusable pixel buffer to avoid repeated allocations
+    private Rgba32[]? _pixelBuffer;
+    private int _lastBufferSize;
+
     public AsciiRenderer(RenderOptions? options = null)
     {
         _options = options ?? RenderOptions.Default;
@@ -77,6 +82,13 @@ public class AsciiRenderer : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        if (_pixelBuffer != null)
+        {
+            ArrayPool<Rgba32>.Shared.Return(_pixelBuffer);
+            _pixelBuffer = null;
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -167,6 +179,21 @@ public class AsciiRenderer : IDisposable
         var characters = new char[height, width];
         var colors = _options.UseColor ? new Rgb24[height, width] : null;
 
+        // Copy pixels to flat buffer for fast access (avoids image[x,y] overhead)
+        var imgWidth = image.Width;
+        var imgHeight = image.Height;
+        var totalPixels = imgWidth * imgHeight;
+
+        if (_pixelBuffer == null || _lastBufferSize < totalPixels)
+        {
+            if (_pixelBuffer != null)
+                ArrayPool<Rgba32>.Shared.Return(_pixelBuffer);
+            _pixelBuffer = ArrayPool<Rgba32>.Shared.Rent(totalPixels);
+            _lastBufferSize = totalPixels;
+        }
+
+        image.CopyPixelDataTo(_pixelBuffer.AsSpan(0, totalPixels));
+
         // Pre-compute all internal vectors for directional contrast
         var internalVectors = new ShapeVector[height, width];
         var externalVectors = new float[height, width, 10];
@@ -177,9 +204,12 @@ public class AsciiRenderer : IDisposable
         if (_options.EnableEdgeDirectionChars)
             (edgeMagnitudes, edgeAngles) = EdgeDirection.ComputeEdges(image, width, height);
 
+        // Create local references for lambda capture
+        var pixelData = _pixelBuffer!;
+
         if (_options.UseParallelProcessing && height > 4)
         {
-            // First pass: compute all vectors
+            // First pass: compute all vectors using fast buffer access
             Parallel.For(0, height, y =>
             {
                 for (var x = 0; x < width; x++)
@@ -187,12 +217,13 @@ public class AsciiRenderer : IDisposable
                     var srcX = x * cellWidth;
                     var srcY = y * cellHeight;
 
-                    var (vector, _) = SampleCell(image, srcX, srcY, cellWidth, cellHeight);
+                    var (vector, _) = SampleCellFromBuffer(pixelData, imgWidth, imgHeight,
+                        srcX, srcY, cellWidth, cellHeight);
                     internalVectors[y, x] = vector;
 
                     if (_options.DirectionalContrastStrength > 0)
-                        SampleExternalCircles(image, srcX, srcY, cellWidth, cellHeight,
-                            externalVectors, y, x);
+                        SampleExternalCirclesFromBuffer(pixelData, imgWidth, imgHeight,
+                            srcX, srcY, cellWidth, cellHeight, externalVectors, y, x);
                 }
             });
 
@@ -208,9 +239,9 @@ public class AsciiRenderer : IDisposable
             // Second pass: find characters
             Parallel.For(0, height, y =>
             {
-                ProcessRowWithContrast(image, characters, colors, internalVectors,
-                    externalVectors, width, height, cellWidth, cellHeight, y, shouldInvert,
-                    edgeMagnitudes, edgeAngles, _options.EnableDithering);
+                ProcessRowWithContrastFromBuffer(pixelData, imgWidth, imgHeight, characters, colors,
+                    internalVectors, externalVectors, width, height, cellWidth, cellHeight, y,
+                    shouldInvert, edgeMagnitudes, edgeAngles, _options.EnableDithering);
             });
         }
         else
@@ -222,12 +253,13 @@ public class AsciiRenderer : IDisposable
                 var srcX = x * cellWidth;
                 var srcY = y * cellHeight;
 
-                var (vector, _) = SampleCell(image, srcX, srcY, cellWidth, cellHeight);
+                var (vector, _) = SampleCellFromBuffer(pixelData, imgWidth, imgHeight,
+                    srcX, srcY, cellWidth, cellHeight);
                 internalVectors[y, x] = vector;
 
                 if (_options.DirectionalContrastStrength > 0)
-                    SampleExternalCircles(image, srcX, srcY, cellWidth, cellHeight,
-                        externalVectors, y, x);
+                    SampleExternalCirclesFromBuffer(pixelData, imgWidth, imgHeight,
+                        srcX, srcY, cellWidth, cellHeight, externalVectors, y, x);
             }
 
             // Apply dithering if enabled
@@ -239,9 +271,9 @@ public class AsciiRenderer : IDisposable
             }
 
             for (var y = 0; y < height; y++)
-                ProcessRowWithContrast(image, characters, colors, internalVectors,
-                    externalVectors, width, height, cellWidth, cellHeight, y, shouldInvert,
-                    edgeMagnitudes, edgeAngles, _options.EnableDithering);
+                ProcessRowWithContrastFromBuffer(pixelData, imgWidth, imgHeight, characters, colors,
+                    internalVectors, externalVectors, width, height, cellWidth, cellHeight, y,
+                    shouldInvert, edgeMagnitudes, edgeAngles, _options.EnableDithering);
         }
 
         return new AsciiFrame(characters, colors, delayMs);
@@ -780,5 +812,261 @@ public class AsciiRenderer : IDisposable
 
         var invertedIndex = charSet.Length - 1 - index;
         return charSet[invertedIndex];
+    }
+
+    // ===== Buffer-based optimized methods (avoid image[x,y] overhead) =====
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private (ShapeVector vector, Rgb24 color) SampleCellFromBuffer(Rgba32[] pixels, int imgWidth, int imgHeight,
+        int cellX, int cellY, int cellWidth, int cellHeight)
+    {
+        Span<float> values = stackalloc float[6];
+        var radius = SamplingRadius * MathF.Min(cellWidth, cellHeight);
+
+        int totalR = 0, totalG = 0, totalB = 0, colorSamples = 0;
+
+        for (var i = 0; i < 6; i++)
+        {
+            var centerX = cellX + InternalSamplingPositions[i].X * cellWidth;
+            var centerY = cellY + InternalSamplingPositions[i].Y * cellHeight;
+
+            var (coverage, r, g, b, samples) = SampleCircleFromBuffer(pixels, imgWidth, imgHeight,
+                centerX, centerY, radius);
+            values[i] = coverage;
+            totalR += r;
+            totalG += g;
+            totalB += b;
+            colorSamples += samples;
+        }
+
+        var avgColor = colorSamples > 0
+            ? new Rgb24((byte)(totalR / colorSamples), (byte)(totalG / colorSamples),
+                (byte)(totalB / colorSamples))
+            : new Rgb24(128, 128, 128);
+
+        return (new ShapeVector(values), avgColor);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (float coverage, int r, int g, int b, int samples) SampleCircleFromBuffer(
+        Rgba32[] pixels, int imgWidth, int imgHeight, float centerX, float centerY, float radius)
+    {
+        float totalCoverage = 0;
+        int totalR = 0, totalG = 0, totalB = 0;
+        var samples = 0;
+
+        // Inline sampling for performance
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void AddSample(float x, float y)
+        {
+            var ix = (int)x;
+            var iy = (int)y;
+
+            if ((uint)ix < (uint)imgWidth && (uint)iy < (uint)imgHeight)
+            {
+                var pixel = pixels[iy * imgWidth + ix];
+                var lightness = (pixel.R * 0.299f + pixel.G * 0.587f + pixel.B * 0.114f) * (1f / 255f);
+                totalCoverage += 1f - lightness;
+                totalR += pixel.R;
+                totalG += pixel.G;
+                totalB += pixel.B;
+                samples++;
+            }
+        }
+
+        // Center
+        AddSample(centerX, centerY);
+
+        // Inner ring (6 points)
+        var innerR = radius * 0.4f;
+        for (var i = 0; i < 6; i++)
+        {
+            var (cos, sin) = InnerRingAngles[i];
+            AddSample(centerX + cos * innerR, centerY + sin * innerR);
+        }
+
+        // Middle ring (12 points)
+        var midR = radius * 0.7f;
+        for (var i = 0; i < 12; i++)
+        {
+            var (cos, sin) = MiddleRingAngles[i];
+            AddSample(centerX + cos * midR, centerY + sin * midR);
+        }
+
+        // Outer ring (18 points)
+        for (var i = 0; i < 18; i++)
+        {
+            var (cos, sin) = OuterRingAngles[i];
+            AddSample(centerX + cos * radius, centerY + sin * radius);
+        }
+
+        var avgCoverage = samples > 0 ? totalCoverage / samples : 0;
+        return (avgCoverage, totalR, totalG, totalB, samples);
+    }
+
+    private void SampleExternalCirclesFromBuffer(Rgba32[] pixels, int imgWidth, int imgHeight,
+        int cellX, int cellY, int cellWidth, int cellHeight,
+        float[,,] externalVectors, int y, int x)
+    {
+        var radius = SamplingRadius * MathF.Min(cellWidth, cellHeight);
+
+        for (var i = 0; i < 10; i++)
+        {
+            var sampleX = cellX + ExternalSamplingPositions[i].X * cellWidth;
+            var sampleY = cellY + ExternalSamplingPositions[i].Y * cellHeight;
+
+            externalVectors[y, x, i] = 1f - SampleCircleLightnessFromBuffer(pixels, imgWidth, imgHeight,
+                sampleX, sampleY, radius);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float SampleCircleLightnessFromBuffer(Rgba32[] pixels, int imgWidth, int imgHeight,
+        float centerX, float centerY, float radius)
+    {
+        float total = 0;
+        var samples = 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        bool TrySample(float x, float y, out float val)
+        {
+            var ix = (int)x;
+            var iy = (int)y;
+            if ((uint)ix < (uint)imgWidth && (uint)iy < (uint)imgHeight)
+            {
+                var pixel = pixels[iy * imgWidth + ix];
+                val = (pixel.R * 0.299f + pixel.G * 0.587f + pixel.B * 0.114f) / 255f;
+                return true;
+            }
+            val = 1f;
+            return false;
+        }
+
+        // Center
+        if (TrySample(centerX, centerY, out var val))
+        {
+            total += val;
+            samples++;
+        }
+
+        // Inner ring (6 points)
+        var innerR = radius * 0.5f;
+        for (var i = 0; i < 6; i++)
+        {
+            var (cos, sin) = InnerRingAngles[i];
+            if (TrySample(centerX + cos * innerR, centerY + sin * innerR, out val))
+            {
+                total += val;
+                samples++;
+            }
+        }
+
+        // Outer ring (12 points)
+        for (var i = 0; i < 12; i++)
+        {
+            var (cos, sin) = OuterRing12Angles[i];
+            if (TrySample(centerX + cos * radius, centerY + sin * radius, out val))
+            {
+                total += val;
+                samples++;
+            }
+        }
+
+        return samples > 0 ? total / samples : 0;
+    }
+
+    private void ProcessRowWithContrastFromBuffer(Rgba32[] pixels, int imgWidth, int imgHeight,
+        char[,] characters, Rgb24[,]? colors,
+        ShapeVector[,] internalVectors, float[,,] externalVectors,
+        int width, int height, int cellWidth, int cellHeight, int y,
+        bool shouldInvert, float[,]? edgeMagnitudes = null,
+        float[,]? edgeAngles = null, bool skipContrast = false)
+    {
+        for (var x = 0; x < width; x++)
+        {
+            var vector = internalVectors[y, x];
+
+            if (!skipContrast)
+            {
+                if (_options.DirectionalContrastStrength > 0)
+                    vector = ApplyDirectionalContrastFrom10Circles(vector, externalVectors, x, y,
+                        width, height, _options.ContrastPower);
+                else if (_options.ContrastPower > 1.0f)
+                    vector = vector.ApplyContrast(_options.ContrastPower);
+            }
+
+            var c = _characterMap.FindBestMatch(vector);
+
+            if (edgeMagnitudes != null && edgeAngles != null)
+                c = EdgeDirection.BlendCharacter(c, edgeAngles[y, x], edgeMagnitudes[y, x]);
+
+            if (shouldInvert) c = InvertCharacter(c);
+
+            characters[y, x] = c;
+
+            if (colors != null)
+            {
+                var srcX = x * cellWidth;
+                var srcY = y * cellHeight;
+                var color = SampleCellColorFromBuffer(pixels, imgWidth, imgHeight,
+                    srcX, srcY, cellWidth, cellHeight);
+
+                if (_options.Gamma != 1.0f)
+                    color = new Rgb24(
+                        (byte)Math.Clamp(MathF.Pow(color.R / 255f, _options.Gamma) * 255f, 0, 255),
+                        (byte)Math.Clamp(MathF.Pow(color.G / 255f, _options.Gamma) * 255f, 0, 255),
+                        (byte)Math.Clamp(MathF.Pow(color.B / 255f, _options.Gamma) * 255f, 0, 255));
+
+                var colorCount = _options.ColorCount;
+                if (colorCount.HasValue && colorCount.Value > 0)
+                {
+                    var quantStep = Math.Max(1, 256 / colorCount.Value);
+                    color = new Rgb24(
+                        (byte)(color.R / quantStep * quantStep),
+                        (byte)(color.G / quantStep * quantStep),
+                        (byte)(color.B / quantStep * quantStep));
+                }
+                else if (_options.EnableTemporalStability)
+                {
+                    var quantStep = Math.Max(1, _options.ColorStabilityThreshold / 2);
+                    color = new Rgb24(
+                        (byte)(color.R / quantStep * quantStep),
+                        (byte)(color.G / quantStep * quantStep),
+                        (byte)(color.B / quantStep * quantStep));
+                }
+
+                colors[y, x] = color;
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Rgb24 SampleCellColorFromBuffer(Rgba32[] pixels, int imgWidth, int imgHeight,
+        int cellX, int cellY, int cellWidth, int cellHeight)
+    {
+        int totalR = 0, totalG = 0, totalB = 0, samples = 0;
+
+        var stepX = Math.Max(1, cellWidth / 3);
+        var stepY = Math.Max(1, cellHeight / 3);
+
+        for (var dy = stepY / 2; dy < cellHeight; dy += stepY)
+        for (var dx = stepX / 2; dx < cellWidth; dx += stepX)
+        {
+            var x = cellX + dx;
+            var y = cellY + dy;
+
+            if ((uint)x < (uint)imgWidth && (uint)y < (uint)imgHeight)
+            {
+                var pixel = pixels[y * imgWidth + x];
+                totalR += pixel.R;
+                totalG += pixel.G;
+                totalB += pixel.B;
+                samples++;
+            }
+        }
+
+        return samples > 0
+            ? new Rgb24((byte)(totalR / samples), (byte)(totalG / samples), (byte)(totalB / samples))
+            : new Rgb24(128, 128, 128);
     }
 }

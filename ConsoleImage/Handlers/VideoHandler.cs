@@ -886,6 +886,9 @@ public static class VideoHandler
         var effectiveDuration = effectiveEnd - effectiveStart;
         var estimatedTotalFrames = (int)(effectiveDuration * jsonTargetFps / opts.FrameStepValue);
 
+        // Create renderer once - reuse across all frames for efficiency
+        var (brailleRenderer, blockRenderer, asciiRenderer) = CreateStreamingRenderers(jsonRenderOptions, opts);
+
         try
         {
             // Stream frames to temp NDJSON (no memory buildup)
@@ -911,8 +914,8 @@ public static class VideoHandler
                     var currentSeconds = effectiveStart + renderedCount * opts.FrameStepValue / jsonTargetFps;
                     var currentTime = TimeSpan.FromSeconds(currentSeconds);
 
-                    // Render frame content - NO subtitles embedded (stored separately)
-                    var content = RenderFrameContent(frameImage, jsonRenderOptions, opts);
+                    // Render frame content using reusable renderer (much faster for streaming)
+                    var content = RenderFrameContentWithRenderer(frameImage, brailleRenderer, blockRenderer, asciiRenderer);
                     // Only add status line if requested - subtitles are stored separately
                     content = AppendOverlays(content, null, statusRenderer, opts,
                         inputPath, videoInfo, charWidth, charHeight, renderModeName,
@@ -931,18 +934,22 @@ public static class VideoHandler
             Console.Write("\rCompressing document...                         ");
             var doc = await StreamingDocumentReader.LoadAsync(tempPath, ct);
 
-            // Store subtitles separately in document metadata (not in frame content)
-            // This allows playback to toggle subtitles on/off and avoids compression issues
-            if (opts.Subtitles != null)
-            {
-                doc.Subtitles = SubtitleTrackData.FromTrack(opts.Subtitles);
-            }
-
             // Apply settings from render options
             doc.Settings.EnableTemporalStability = opts.Dejitter;
             doc.Settings.ColorStabilityThreshold = opts.ColorThreshold ?? 15;
 
-            await CompressedDocumentArchive.SaveAsync(doc, opts.JsonOutputPath!, 30, ct);
+            // Record subtitle metadata in document settings
+            if (opts.Subtitles != null)
+            {
+                doc.Settings.SubtitlesEnabled = true;
+                doc.Settings.SubtitleLanguage = opts.Subtitles.Language;
+                doc.Settings.SubtitleSource = opts.Subtitles.SourceFile != null ? "file" : "auto";
+            }
+
+            // Save as CIDZ with bundled subtitles (Brotli compressed)
+            await CompressedDocumentArchive.SaveAsync(doc, opts.JsonOutputPath!, 30, opts.Subtitles, ct);
+            if (opts.Subtitles != null)
+                Console.Error.WriteLine($"Bundled {opts.Subtitles.Count} subtitles in archive");
 
             Console.WriteLine($"\rSaved {renderedCount} frames to {opts.JsonOutputPath}              ");
         }
@@ -952,6 +959,11 @@ public static class VideoHandler
         }
         finally
         {
+            // Dispose renderers (returns ArrayPool buffers)
+            brailleRenderer?.Dispose();
+            blockRenderer?.Dispose();
+            asciiRenderer?.Dispose();
+
             // Cleanup temp file
             if (File.Exists(tempPath))
             {
@@ -975,11 +987,17 @@ public static class VideoHandler
             jsonRenderOptions,
             inputPath);
 
-        // Store subtitles separately in document metadata (not embedded in frames)
-        // This avoids delta compression issues and allows subtitles to be toggled during playback
+        // Record subtitle metadata in header settings (sidecar .vtt saved after finalization)
         if (opts.Subtitles != null)
         {
-            docWriter.SetSubtitles(SubtitleTrackData.FromTrack(opts.Subtitles));
+            var outputDir = Path.GetDirectoryName(opts.JsonOutputPath!) ?? ".";
+            var baseName = Path.GetFileNameWithoutExtension(opts.JsonOutputPath!);
+            var vttFileName = baseName + ".vtt";
+
+            docWriter.SetSubtitleMetadata(
+                subtitleFile: vttFileName,
+                language: opts.Subtitles.Language,
+                source: opts.Subtitles.SourceFile != null ? "file" : "auto");
         }
 
         await docWriter.WriteHeaderAsync(ct);
@@ -998,6 +1016,9 @@ public static class VideoHandler
         var effectiveDuration = effectiveEnd - effectiveStart;
         var estimatedTotalFrames = (int)(effectiveDuration * jsonTargetFps / opts.FrameStepValue);
 
+        // Create renderer once - reuse across all frames for efficiency
+        var (brailleRenderer, blockRenderer, asciiRenderer) = CreateStreamingRenderers(jsonRenderOptions, opts);
+
         try
         {
             await foreach (var frameImage in ffmpeg.StreamFramesAsync(
@@ -1015,8 +1036,8 @@ public static class VideoHandler
                 var currentSeconds = effectiveStart + streamRenderedCount * opts.FrameStepValue / jsonTargetFps;
                 var currentTime = TimeSpan.FromSeconds(currentSeconds);
 
-                // Render frame content - subtitles NOT embedded (stored in document metadata)
-                var content = RenderFrameContent(frameImage, jsonRenderOptions, opts);
+                // Render frame content using reusable renderer (much faster for streaming)
+                var content = RenderFrameContentWithRenderer(frameImage, brailleRenderer, blockRenderer, asciiRenderer);
                 content = AppendOverlays(content, null, statusRenderer, opts,
                     inputPath, videoInfo, charWidth, charHeight, renderModeName,
                     streamRenderedCount + 1, estimatedTotalFrames, currentTime, effectiveDuration, jsonTargetFps);
@@ -1031,9 +1052,29 @@ public static class VideoHandler
         {
             Console.WriteLine($"\rRendering frames to JSON: stopped at frame {streamRenderedCount}");
         }
+        finally
+        {
+            // Dispose renderers (returns ArrayPool buffers)
+            brailleRenderer?.Dispose();
+            blockRenderer?.Dispose();
+            asciiRenderer?.Dispose();
+        }
 
         Console.Write("\rFinalizing JSON document...                    ");
         await docWriter.FinalizeAsync(!ct.IsCancellationRequested, ct);
+
+        // Save subtitles as sidecar .vtt file
+        if (opts.Subtitles != null)
+        {
+            var outputDir = Path.GetDirectoryName(opts.JsonOutputPath!) ?? ".";
+            var baseName = Path.GetFileNameWithoutExtension(opts.JsonOutputPath!);
+            var vttFileName = baseName + ".vtt";
+            var vttPath = Path.Combine(outputDir, vttFileName);
+
+            await opts.Subtitles.SaveAsVttAsync(vttPath, ct);
+            Console.Error.WriteLine($"Saved subtitles: {vttFileName}");
+        }
+
         Console.WriteLine($"\rSaved {streamRenderedCount} frames to {opts.JsonOutputPath}              ");
         return 0;
     }
@@ -1179,6 +1220,7 @@ public static class VideoHandler
 
     /// <summary>
     /// Render a frame to string content based on render mode.
+    /// Creates a new renderer per call - use the overload with pre-created renderer for streaming.
     /// </summary>
     private static string RenderFrameContent(
         Image<Rgba32> frameImage, RenderOptions renderOptions, VideoHandlerOptions opts)
@@ -1198,6 +1240,47 @@ public static class VideoHandler
         using var asciiRenderer = new AsciiRenderer(renderOptions);
         var frame = asciiRenderer.RenderImage(frameImage);
         return frame.ToAnsiString();
+    }
+
+    /// <summary>
+    /// Render a frame using pre-created renderers (for streaming - reuses buffers).
+    /// Pass the appropriate renderer based on mode.
+    /// </summary>
+    private static string RenderFrameContentWithRenderer(
+        Image<Rgba32> frameImage,
+        BrailleRenderer? brailleRenderer,
+        ColorBlockRenderer? blockRenderer,
+        AsciiRenderer? asciiRenderer)
+    {
+        if (brailleRenderer != null)
+            return brailleRenderer.RenderImage(frameImage);
+
+        if (blockRenderer != null)
+            return blockRenderer.RenderImage(frameImage);
+
+        if (asciiRenderer != null)
+        {
+            var frame = asciiRenderer.RenderImage(frameImage);
+            return frame.ToAnsiString();
+        }
+
+        throw new InvalidOperationException("No renderer provided");
+    }
+
+    /// <summary>
+    /// Create appropriate renderers for video streaming.
+    /// Returns disposable tuple - caller must dispose all non-null renderers.
+    /// </summary>
+    private static (BrailleRenderer? braille, ColorBlockRenderer? block, AsciiRenderer? ascii)
+        CreateStreamingRenderers(RenderOptions renderOptions, VideoHandlerOptions opts)
+    {
+        if (opts.UseBraille)
+            return (new BrailleRenderer(renderOptions), null, null);
+
+        if (opts.UseBlocks)
+            return (null, new ColorBlockRenderer(renderOptions), null);
+
+        return (null, null, new AsciiRenderer(renderOptions));
     }
 
     /// <summary>

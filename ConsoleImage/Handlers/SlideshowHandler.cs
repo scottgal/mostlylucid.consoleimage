@@ -945,7 +945,37 @@ public static class SlideshowHandler
     private static async Task DisplayDocumentAsync(string file, bool loop, CancellationToken ct)
     {
         var doc = await ConsoleImageDocument.LoadAsync(file, ct);
-        using var player = new DocumentPlayer(doc, loopCount: loop ? 0 : 1);
+
+        // Auto-detect sidecar subtitle file
+        SubtitleTrack? subtitles = null;
+        if (doc.Settings.SubtitlesEnabled || !string.IsNullOrEmpty(doc.Settings.SubtitleFile))
+        {
+            var dir = Path.GetDirectoryName(file) ?? ".";
+            var baseName = Path.GetFileNameWithoutExtension(file);
+            if (baseName.EndsWith(".cid", StringComparison.OrdinalIgnoreCase))
+                baseName = baseName[..^4];
+
+            // Check explicit sidecar filename from metadata
+            if (!string.IsNullOrEmpty(doc.Settings.SubtitleFile))
+            {
+                var explicitPath = Path.Combine(dir, doc.Settings.SubtitleFile);
+                if (File.Exists(explicitPath))
+                    subtitles = await SubtitleParser.ParseAsync(explicitPath, ct);
+            }
+
+            // Fall back to same-name .vtt/.srt
+            if (subtitles == null)
+            {
+                var vttPath = Path.Combine(dir, baseName + ".vtt");
+                var srtPath = Path.Combine(dir, baseName + ".srt");
+                if (File.Exists(vttPath))
+                    subtitles = await SubtitleParser.ParseAsync(vttPath, ct);
+                else if (File.Exists(srtPath))
+                    subtitles = await SubtitleParser.ParseAsync(srtPath, ct);
+            }
+        }
+
+        using var player = new DocumentPlayer(doc, loopCount: loop ? 0 : 1, subtitles: subtitles);
         await player.PlayAsync(ct);
     }
 

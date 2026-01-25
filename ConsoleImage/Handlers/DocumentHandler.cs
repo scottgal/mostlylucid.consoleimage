@@ -1,6 +1,7 @@
 // Document file handling for consoleimage CLI
 
 using ConsoleImage.Core;
+using ConsoleImage.Core.Subtitles;
 
 namespace ConsoleImage.Cli.Handlers;
 
@@ -42,8 +43,15 @@ public static class DocumentHandler
                     gifFontSize, gifScale, gifColors, ct);
             }
 
+            // Auto-detect sidecar subtitle file for playback
+            SubtitleTrack? subtitles = null;
+            if (doc.Settings.SubtitlesEnabled || !string.IsNullOrEmpty(doc.Settings.SubtitleFile))
+            {
+                subtitles = await FindSidecarSubtitles(path, doc.Settings, ct);
+            }
+
             // Play the document
-            using var player = new DocumentPlayer(doc, effectiveSpeed, effectiveLoop);
+            using var player = new DocumentPlayer(doc, effectiveSpeed, effectiveLoop, subtitles);
 
             if (doc.IsAnimated)
             {
@@ -68,6 +76,50 @@ public static class DocumentHandler
             Console.Error.WriteLine($"Error loading document: {ex.Message}");
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Find sidecar subtitle file (.vtt/.srt) alongside a document file.
+    /// Checks: 1) Explicit SubtitleFile from settings, 2) Same-name .vtt, 3) Same-name .srt
+    /// </summary>
+    private static async Task<SubtitleTrack?> FindSidecarSubtitles(
+        string documentPath, DocumentRenderSettings settings, CancellationToken ct)
+    {
+        var dir = Path.GetDirectoryName(documentPath) ?? ".";
+        var baseName = Path.GetFileNameWithoutExtension(documentPath);
+
+        // Strip double extensions like .cid from .cid.7z
+        if (baseName.EndsWith(".cid", StringComparison.OrdinalIgnoreCase))
+            baseName = baseName[..^4];
+
+        // 1) Check explicit subtitle filename from document metadata
+        if (!string.IsNullOrEmpty(settings.SubtitleFile))
+        {
+            var explicitPath = Path.Combine(dir, settings.SubtitleFile);
+            if (File.Exists(explicitPath))
+            {
+                Console.Error.WriteLine($"Loading subtitles: {settings.SubtitleFile}");
+                return await SubtitleParser.ParseAsync(explicitPath, ct);
+            }
+        }
+
+        // 2) Check for same-name .vtt
+        var vttPath = Path.Combine(dir, baseName + ".vtt");
+        if (File.Exists(vttPath))
+        {
+            Console.Error.WriteLine($"Found sidecar subtitles: {Path.GetFileName(vttPath)}");
+            return await SubtitleParser.ParseAsync(vttPath, ct);
+        }
+
+        // 3) Check for same-name .srt
+        var srtPath = Path.Combine(dir, baseName + ".srt");
+        if (File.Exists(srtPath))
+        {
+            Console.Error.WriteLine($"Found sidecar subtitles: {Path.GetFileName(srtPath)}");
+            return await SubtitleParser.ParseAsync(srtPath, ct);
+        }
+
+        return null;
     }
 
     private static async Task<int> ConvertToGif(

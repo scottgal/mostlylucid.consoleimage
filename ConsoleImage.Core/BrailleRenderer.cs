@@ -1,6 +1,10 @@
 // Braille character renderer - 2x4 dots per cell for high resolution output
 // Each braille character represents an 8-dot grid (2 wide x 4 tall)
 
+using System.Buffers;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -31,6 +35,24 @@ public class BrailleRenderer : IDisposable
     private readonly RenderOptions _options;
     private bool _disposed;
 
+    // Reusable buffers to reduce GC pressure during video playback
+    private float[]? _brightnessBuffer;
+    private Rgba32[]? _colorsBuffer;
+    private float[]? _ditheringBuffer;
+    private int _lastBufferSize;
+
+    // Pre-computed ANSI escape sequences for common greyscale values (0-255)
+    // Saves string allocations for repeated colors
+    private static readonly string[] GreyscaleEscapes = InitGreyscaleEscapes();
+
+    private static string[] InitGreyscaleEscapes()
+    {
+        var escapes = new string[256];
+        for (var i = 0; i < 256; i++)
+            escapes[i] = $"\x1b[38;2;{i};{i};{i}m";
+        return escapes;
+    }
+
     public BrailleRenderer(RenderOptions? options = null)
     {
         _options = options ?? new RenderOptions();
@@ -40,6 +62,24 @@ public class BrailleRenderer : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Return pooled buffers
+        if (_brightnessBuffer != null)
+        {
+            ArrayPool<float>.Shared.Return(_brightnessBuffer);
+            _brightnessBuffer = null;
+        }
+        if (_colorsBuffer != null)
+        {
+            ArrayPool<Rgba32>.Shared.Return(_colorsBuffer);
+            _colorsBuffer = null;
+        }
+        if (_ditheringBuffer != null)
+        {
+            ArrayPool<float>.Shared.Return(_ditheringBuffer);
+            _ditheringBuffer = null;
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -175,43 +215,77 @@ public class BrailleRenderer : IDisposable
         }
 
         // Delta render - only output changed cells
-        var sb = new System.Text.StringBuilder();
-        SixLabors.ImageSharp.PixelFormats.Rgba32? lastColor = null;
+        // Optimized: batch consecutive changed cells on same row with same color
+        var sb = new StringBuilder(256);
+        byte lastR = 0, lastG = 0, lastB = 0;
+        var hasColor = false;
         var changedCount = 0;
 
         for (var y = 0; y < height; y++)
         {
-            for (var x = 0; x < width; x++)
+            var x = 0;
+            while (x < width)
             {
                 var current = cells[y, x];
                 var previous = previousCells[y, x];
 
                 // Skip if cell hasn't changed (with threshold tolerance)
                 if (current.IsSimilar(previous, colorThreshold))
+                {
+                    x++;
                     continue;
+                }
 
                 changedCount++;
 
                 // Position cursor at this cell (1-indexed)
-                sb.Append($"\x1b[{y + 1};{x + 1}H");
+                sb.Append("\x1b[");
+                sb.Append(y + 1);
+                sb.Append(';');
+                sb.Append(x + 1);
+                sb.Append('H');
 
                 // Output color if needed
                 if (_options.UseColor)
                 {
-                    var newColor = new SixLabors.ImageSharp.PixelFormats.Rgba32(current.R, current.G, current.B, 255);
-                    if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, newColor))
+                    if (!hasColor || current.R != lastR || current.G != lastG || current.B != lastB)
                     {
-                        sb.Append($"\x1b[38;2;{current.R};{current.G};{current.B}m");
-                        lastColor = newColor;
+                        AppendColorCode(sb, current.R, current.G, current.B);
+                        lastR = current.R;
+                        lastG = current.G;
+                        lastB = current.B;
+                        hasColor = true;
+                    }
+
+                    // Batch consecutive changed cells with same color on this row
+                    sb.Append(current.Character);
+                    x++;
+
+                    while (x < width)
+                    {
+                        var nextCurrent = cells[y, x];
+                        var nextPrevious = previousCells[y, x];
+
+                        // Stop if cell unchanged or different color
+                        if (nextCurrent.IsSimilar(nextPrevious, colorThreshold) ||
+                            nextCurrent.R != lastR || nextCurrent.G != lastG || nextCurrent.B != lastB)
+                            break;
+
+                        sb.Append(nextCurrent.Character);
+                        changedCount++;
+                        x++;
                     }
                 }
-
-                sb.Append(current.Character);
+                else
+                {
+                    sb.Append(current.Character);
+                    x++;
+                }
             }
         }
 
         // Reset color at end
-        if (lastColor != null)
+        if (hasColor)
             sb.Append("\x1b[0m");
 
         return (sb.ToString(), cells);
@@ -219,45 +293,78 @@ public class BrailleRenderer : IDisposable
 
     /// <summary>
     ///     Convert cell array to full ANSI string (for first frame or full redraw).
+    ///     Uses run-length encoding for consecutive same-color cells.
     /// </summary>
     private string RenderCellsToString(CellData[,] cells)
     {
         var height = cells.GetLength(0);
         var width = cells.GetLength(1);
-        var sb = new System.Text.StringBuilder(width * height * 25);
+        var sb = new StringBuilder(width * height * 15); // Reduced estimate due to RLE
 
         sb.Append("\x1b[H"); // Home cursor
 
-        SixLabors.ImageSharp.PixelFormats.Rgba32? lastColor = null;
-
         for (var y = 0; y < height; y++)
         {
-            for (var x = 0; x < width; x++)
+            var x = 0;
+            while (x < width)
             {
                 var cell = cells[y, x];
 
                 if (_options.UseColor)
                 {
-                    var newColor = new SixLabors.ImageSharp.PixelFormats.Rgba32(cell.R, cell.G, cell.B, 255);
-                    if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, newColor))
+                    // Append color code
+                    AppendColorCode(sb, cell.R, cell.G, cell.B);
+
+                    // Run-length encode: collect consecutive cells with same color
+                    var runStart = x;
+                    while (x < width &&
+                           cells[y, x].R == cell.R &&
+                           cells[y, x].G == cell.G &&
+                           cells[y, x].B == cell.B)
                     {
-                        sb.Append($"\x1b[38;2;{cell.R};{cell.G};{cell.B}m");
-                        lastColor = newColor;
+                        sb.Append(cells[y, x].Character);
+                        x++;
                     }
                 }
-
-                sb.Append(cell.Character);
+                else
+                {
+                    sb.Append(cell.Character);
+                    x++;
+                }
             }
 
             if (y < height - 1)
             {
                 sb.Append("\x1b[0m\n");
-                lastColor = null;
             }
         }
 
         sb.Append("\x1b[0m");
         return sb.ToString();
+    }
+
+    /// <summary>
+    ///     Append ANSI color code efficiently, using pre-computed greyscale when possible.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void AppendColorCode(StringBuilder sb, byte r, byte g, byte b)
+    {
+        // Use pre-computed escape for greyscale colors
+        if (r == g && g == b)
+        {
+            sb.Append(GreyscaleEscapes[r]);
+        }
+        else
+        {
+            // Manual append is faster than string interpolation
+            sb.Append("\x1b[38;2;");
+            sb.Append(r);
+            sb.Append(';');
+            sb.Append(g);
+            sb.Append(';');
+            sb.Append(b);
+            sb.Append('m');
+        }
     }
 
     /// <summary>
@@ -608,14 +715,31 @@ public class BrailleRenderer : IDisposable
     ///     Pre-compute brightness and color data for all pixels.
     ///     This is faster than individual pixel access during rendering.
     ///     Applies color quantization if ColorCount is set.
+    ///     Uses ArrayPool for buffer reuse to reduce GC pressure during video playback.
     /// </summary>
     private (float[] brightness, Rgba32[] colors) PrecomputePixelData(Image<Rgba32> image)
     {
         var width = image.Width;
         var height = image.Height;
         var totalPixels = width * height;
-        var brightness = new float[totalPixels];
-        var colors = new Rgba32[totalPixels];
+
+        // Reuse or allocate buffers from ArrayPool
+        if (_brightnessBuffer == null || _lastBufferSize < totalPixels)
+        {
+            // Return old buffers if they exist
+            if (_brightnessBuffer != null)
+                ArrayPool<float>.Shared.Return(_brightnessBuffer);
+            if (_colorsBuffer != null)
+                ArrayPool<Rgba32>.Shared.Return(_colorsBuffer);
+
+            _brightnessBuffer = ArrayPool<float>.Shared.Rent(totalPixels);
+            _colorsBuffer = ArrayPool<Rgba32>.Shared.Rent(totalPixels);
+            _lastBufferSize = totalPixels;
+        }
+
+        // These are guaranteed non-null after the if block above
+        var brightness = _brightnessBuffer!;
+        var colors = _colorsBuffer!;
 
         // Color quantization settings
         var colorCount = _options.ColorCount;
@@ -667,15 +791,97 @@ public class BrailleRenderer : IDisposable
 
     /// <summary>
     ///     Get min/max brightness from pre-computed buffer.
+    ///     Uses Span for bounds-check elimination.
     /// </summary>
-    private (float min, float max) GetBrightnessRangeFromBuffer(float[] brightness)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (float min, float max) GetBrightnessRangeFromBuffer(float[] brightness)
     {
-        var min = 1f;
-        var max = 0f;
-        for (var i = 0; i < brightness.Length; i++)
+        return GetBrightnessRangeFromSpan(brightness.AsSpan());
+    }
+
+    /// <summary>
+    ///     Get min/max brightness from span - SIMD optimized when available.
+    /// </summary>
+    private static (float min, float max) GetBrightnessRangeFromSpan(ReadOnlySpan<float> brightness)
+    {
+        if (brightness.IsEmpty)
+            return (0f, 1f);
+
+        var len = brightness.Length;
+
+        // Use SIMD if available and buffer is large enough
+        if (Vector.IsHardwareAccelerated && len >= Vector<float>.Count * 2)
         {
-            if (brightness[i] < min) min = brightness[i];
-            if (brightness[i] > max) max = brightness[i];
+            return GetBrightnessRangeSimd(brightness);
+        }
+
+        // Fallback: unrolled scalar loop
+        var min = brightness[0];
+        var max = brightness[0];
+        var i = 1;
+
+        // Unrolled loop - process 4 elements at a time
+        for (; i + 3 < len; i += 4)
+        {
+            var v0 = brightness[i];
+            var v1 = brightness[i + 1];
+            var v2 = brightness[i + 2];
+            var v3 = brightness[i + 3];
+
+            var localMin = MathF.Min(MathF.Min(v0, v1), MathF.Min(v2, v3));
+            var localMax = MathF.Max(MathF.Max(v0, v1), MathF.Max(v2, v3));
+
+            if (localMin < min) min = localMin;
+            if (localMax > max) max = localMax;
+        }
+
+        for (; i < len; i++)
+        {
+            var v = brightness[i];
+            if (v < min) min = v;
+            if (v > max) max = v;
+        }
+
+        return min >= max ? (0f, 1f) : (min, max);
+    }
+
+    /// <summary>
+    ///     SIMD-accelerated min/max calculation using Vector&lt;float&gt;.
+    /// </summary>
+    private static (float min, float max) GetBrightnessRangeSimd(ReadOnlySpan<float> brightness)
+    {
+        var vectorSize = Vector<float>.Count;
+        var len = brightness.Length;
+        var vectorizedLength = len - (len % vectorSize);
+
+        // Initialize with first vector
+        var minVec = new Vector<float>(brightness);
+        var maxVec = minVec;
+
+        // Process vectors
+        for (var i = vectorSize; i < vectorizedLength; i += vectorSize)
+        {
+            var vec = new Vector<float>(brightness.Slice(i));
+            minVec = Vector.Min(minVec, vec);
+            maxVec = Vector.Max(maxVec, vec);
+        }
+
+        // Reduce vectors to scalars
+        var min = float.MaxValue;
+        var max = float.MinValue;
+
+        for (var i = 0; i < vectorSize; i++)
+        {
+            if (minVec[i] < min) min = minVec[i];
+            if (maxVec[i] > max) max = maxVec[i];
+        }
+
+        // Handle remaining elements
+        for (var i = vectorizedLength; i < len; i++)
+        {
+            var v = brightness[i];
+            if (v < min) min = v;
+            if (v > max) max = v;
         }
 
         return min >= max ? (0f, 1f) : (min, max);
@@ -734,11 +940,13 @@ public class BrailleRenderer : IDisposable
     /// <summary>
     ///     Calculate optimal threshold using Otsu's method.
     ///     Maximizes between-class variance for best foreground/background separation.
+    ///     Uses stackalloc for zero-allocation histogram.
     /// </summary>
-    private float CalculateOtsuThreshold(float[] brightness)
+    private static float CalculateOtsuThreshold(ReadOnlySpan<float> brightness)
     {
         const int histogramSize = 256;
-        var histogram = new int[histogramSize];
+        Span<int> histogram = stackalloc int[histogramSize];
+        histogram.Clear(); // stackalloc doesn't zero-initialize
         var totalPixels = brightness.Length;
 
         // Build histogram
@@ -789,18 +997,31 @@ public class BrailleRenderer : IDisposable
     ///     Apply Atkinson dithering - best for braille due to high contrast and reduced speckling.
     ///     Only propagates 6/8 of error (not full), producing cleaner binary output.
     ///     Developed by Bill Atkinson at Apple for MacPaint.
+    ///     Uses ArrayPool for buffer reuse during video playback.
     /// </summary>
     private float[] ApplyAtkinsonDithering(float[] brightness, int width, int height, float threshold)
     {
+        var bufferLength = brightness.Length;
+
         // Normalize brightness values to 0-1 range based on min/max
-        var (min, max) = GetBrightnessRangeFromBuffer(brightness);
+        var (min, max) = GetBrightnessRangeFromSpan(brightness.AsSpan());
         var range = max - min;
         if (range < 0.01f) range = 1f;
+        var invRange = 1f / range; // Multiply is faster than divide in inner loop
 
-        // Work with a copy
-        var result = new float[brightness.Length];
-        for (var i = 0; i < brightness.Length; i++)
-            result[i] = (brightness[i] - min) / range;
+        // Reuse dithering buffer from ArrayPool
+        if (_ditheringBuffer == null || _ditheringBuffer.Length < bufferLength)
+        {
+            if (_ditheringBuffer != null)
+                ArrayPool<float>.Shared.Return(_ditheringBuffer);
+            _ditheringBuffer = ArrayPool<float>.Shared.Rent(bufferLength);
+        }
+
+        var result = _ditheringBuffer;
+
+        // Copy and normalize in one pass
+        for (var i = 0; i < bufferLength; i++)
+            result[i] = (brightness[i] - min) * invRange;
 
         // Atkinson error diffusion pattern:
         //       X   1   1
@@ -808,30 +1029,40 @@ public class BrailleRenderer : IDisposable
         //       1
         // Divisor: 8 (but only distributes 6/8, rest is discarded)
         // This creates higher contrast by not fully propagating error
-        for (var y = 0; y < height; y++)
-        for (var x = 0; x < width; x++)
-        {
-            var idx = y * width + x;
-            var oldVal = result[idx];
-            var newVal = oldVal > threshold ? 1f : 0f;
-            result[idx] = newVal;
-            var error = (oldVal - newVal) / 8f;
+        var nextRowOffset = width;
+        var nextNextRowOffset = width * 2;
 
-            // Distribute to 6 neighbors (only 6/8 of error propagated)
-            if (x + 1 < width)
-                result[idx + 1] += error;
-            if (x + 2 < width)
-                result[idx + 2] += error;
-            if (y + 1 < height)
+        for (var y = 0; y < height; y++)
+        {
+            var rowOffset = y * width;
+            var hasNextRow = y + 1 < height;
+            var hasNextNextRow = y + 2 < height;
+
+            for (var x = 0; x < width; x++)
             {
-                if (x > 0)
-                    result[(y + 1) * width + (x - 1)] += error;
-                result[(y + 1) * width + x] += error;
+                var idx = rowOffset + x;
+                var oldVal = result[idx];
+                var newVal = oldVal > threshold ? 1f : 0f;
+                result[idx] = newVal;
+                var error = (oldVal - newVal) * 0.125f; // 1/8
+
+                // Distribute to 6 neighbors (only 6/8 of error propagated)
                 if (x + 1 < width)
-                    result[(y + 1) * width + (x + 1)] += error;
+                    result[idx + 1] += error;
+                if (x + 2 < width)
+                    result[idx + 2] += error;
+                if (hasNextRow)
+                {
+                    var nextRowIdx = idx + nextRowOffset;
+                    if (x > 0)
+                        result[nextRowIdx - 1] += error;
+                    result[nextRowIdx] += error;
+                    if (x + 1 < width)
+                        result[nextRowIdx + 1] += error;
+                }
+                if (hasNextNextRow)
+                    result[idx + nextNextRowOffset] += error;
             }
-            if (y + 2 < height)
-                result[(y + 2) * width + x] += error;
         }
 
         return result;
@@ -880,19 +1111,26 @@ public class BrailleRenderer : IDisposable
     /// <summary>
     ///     Calculate the actual brightness range of an image for autocontrast.
     ///     Inspired by img2braille's autocontrast approach.
+    ///     Uses ProcessPixelRows for optimal performance.
     /// </summary>
-    private (float min, float max) CalculateBrightnessRange(Image<Rgba32> image)
+    private static (float min, float max) CalculateBrightnessRange(Image<Rgba32> image)
     {
         var min = 1f;
         var max = 0f;
 
-        for (var y = 0; y < image.Height; y++)
-        for (var x = 0; x < image.Width; x++)
+        image.ProcessPixelRows(accessor =>
         {
-            var brightness = BrightnessHelper.GetBrightness(image[x, y]);
-            if (brightness < min) min = brightness;
-            if (brightness > max) max = brightness;
-        }
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                var row = accessor.GetRowSpan(y);
+                for (var x = 0; x < row.Length; x++)
+                {
+                    var brightness = BrightnessHelper.GetBrightness(row[x]);
+                    if (brightness < min) min = brightness;
+                    if (brightness > max) max = brightness;
+                }
+            }
+        });
 
         // Ensure valid range
         if (min >= max)

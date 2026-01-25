@@ -335,6 +335,32 @@ public class DocumentRenderSettings
     public int? ColorCount { get; set; }
 
     /// <summary>
+    ///     Indicates subtitles were enabled during recording.
+    ///     When true, a sidecar .vtt file may exist alongside the document.
+    /// </summary>
+    public bool SubtitlesEnabled { get; set; }
+
+    /// <summary>
+    ///     Subtitle source type: "auto" (whisper/yt-dlp extracted), "file" (external .srt/.vtt), or null.
+    /// </summary>
+    public string? SubtitleSource { get; set; }
+
+    /// <summary>
+    ///     Subtitle language code (e.g., "en", "es").
+    /// </summary>
+    public string? SubtitleLanguage { get; set; }
+
+    /// <summary>
+    ///     Sidecar subtitle filename (e.g., "movie.vtt") for easy discovery on playback.
+    /// </summary>
+    public string? SubtitleFile { get; set; }
+
+    /// <summary>
+    ///     Create a shallow copy of these settings.
+    /// </summary>
+    public DocumentRenderSettings Clone() => (DocumentRenderSettings)MemberwiseClone();
+
+    /// <summary>
     ///     Create settings from RenderOptions
     /// </summary>
     public static DocumentRenderSettings FromRenderOptions(RenderOptions options)

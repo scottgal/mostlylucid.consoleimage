@@ -129,6 +129,19 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
         _header.Subtitles = subtitles;
     }
 
+    /// <summary>
+    ///     Set subtitle metadata for sidecar file discovery (must be called before WriteHeader).
+    /// </summary>
+    public void SetSubtitleMetadata(string subtitleFile, string? language = null, string? source = null)
+    {
+        if (_headerWritten)
+            throw new InvalidOperationException("Cannot set subtitle metadata after header has been written");
+        _header.Settings.SubtitlesEnabled = true;
+        _header.Settings.SubtitleFile = subtitleFile;
+        _header.Settings.SubtitleLanguage = language;
+        _header.Settings.SubtitleSource = source;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;

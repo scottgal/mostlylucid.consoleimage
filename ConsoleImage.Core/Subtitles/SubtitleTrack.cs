@@ -1,7 +1,11 @@
+using System.Runtime.CompilerServices;
+using System.Text;
+
 namespace ConsoleImage.Core.Subtitles;
 
 /// <summary>
 /// Represents a complete subtitle track with multiple entries.
+/// Optimized for sequential playback with cached last-lookup index.
 /// </summary>
 public class SubtitleTrack
 {
@@ -30,14 +34,68 @@ public class SubtitleTrack
     /// </summary>
     public bool HasEntries => Entries.Count > 0;
 
+    // Sequential playback optimization: cache the last found index.
+    // During sequential playback, the next subtitle is almost always at
+    // the same or next index, so checking nearby entries first avoids
+    // a full binary search on every frame.
+    private int _lastFoundIndex = -1;
+
     /// <summary>
     /// Get the subtitle active at the given timestamp.
+    /// Optimized for sequential playback: checks cached position first (O(1)),
+    /// then falls back to binary search (O(log n)).
     /// </summary>
     /// <param name="timestamp">The timestamp to check.</param>
     /// <returns>The active subtitle entry, or null if none.</returns>
     public SubtitleEntry? GetActiveAt(TimeSpan timestamp)
     {
-        // Binary search for efficiency with large subtitle files
+        if (Entries.Count == 0) return null;
+
+        // Fast path: check last found index first (common during sequential playback)
+        if (_lastFoundIndex >= 0 && _lastFoundIndex < Entries.Count)
+        {
+            var cached = Entries[_lastFoundIndex];
+            if (cached.IsActiveAt(timestamp))
+                return cached;
+
+            // Check next entry (most common during sequential playback)
+            var next = _lastFoundIndex + 1;
+            if (next < Entries.Count)
+            {
+                var nextEntry = Entries[next];
+                if (nextEntry.IsActiveAt(timestamp))
+                {
+                    _lastFoundIndex = next;
+                    return nextEntry;
+                }
+
+                // If timestamp is between cached end and next start, no subtitle active
+                if (timestamp >= cached.EndTime && timestamp < nextEntry.StartTime)
+                    return null;
+            }
+            else if (timestamp >= cached.EndTime)
+            {
+                // Past last subtitle
+                return null;
+            }
+        }
+
+        // Fall back to binary search
+        var result = BinarySearchActive(timestamp);
+        if (result != null)
+        {
+            // Update cache for next sequential lookup
+            _lastFoundIndex = Entries.IndexOf(result);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Binary search for the active subtitle at a timestamp.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private SubtitleEntry? BinarySearchActive(TimeSpan timestamp)
+    {
         var low = 0;
         var high = Entries.Count - 1;
 
@@ -230,5 +288,36 @@ public class SubtitleTrack
         var start = Entries.Min(e => e.StartTime);
         var end = Entries.Max(e => e.EndTime);
         return end - start;
+    }
+
+    /// <summary>
+    /// Save the subtitle track as a WebVTT (.vtt) sidecar file.
+    /// </summary>
+    public async Task SaveAsVttAsync(string path, CancellationToken ct = default)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("WEBVTT");
+        sb.AppendLine();
+
+        for (var i = 0; i < Entries.Count; i++)
+        {
+            var entry = Entries[i];
+            sb.AppendLine((i + 1).ToString());
+            sb.Append(FormatVttTimestamp(entry.StartTime));
+            sb.Append(" --> ");
+            sb.AppendLine(FormatVttTimestamp(entry.EndTime));
+            sb.AppendLine(entry.Text);
+            sb.AppendLine();
+        }
+
+        await File.WriteAllTextAsync(path, sb.ToString(), ct);
+    }
+
+    /// <summary>
+    /// Format a TimeSpan as VTT timestamp (HH:MM:SS.mmm).
+    /// </summary>
+    private static string FormatVttTimestamp(TimeSpan ts)
+    {
+        return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}.{ts.Milliseconds:D3}";
     }
 }

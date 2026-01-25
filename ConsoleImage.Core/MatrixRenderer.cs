@@ -2,6 +2,7 @@
 // Creates the iconic "Matrix" falling code effect, optionally overlaying source image data
 // Based on the visual effect from The Matrix films
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using SixLabors.ImageSharp;
@@ -215,6 +216,12 @@ public class MatrixRenderer : IDisposable
     private readonly MatrixRainState _state;
     private bool _disposed;
 
+    // Reusable buffers to reduce GC pressure during video playback
+    private float[]? _brightnessBuffer;
+    private Rgba32[]? _colorsBuffer;
+    private float[]? _edgesBuffer;
+    private int _lastBufferSize;
+
     public MatrixRenderer(RenderOptions? options = null, MatrixOptions? matrixOptions = null, int? seed = null)
     {
         _options = options ?? new RenderOptions();
@@ -234,6 +241,24 @@ public class MatrixRenderer : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Return pooled buffers
+        if (_brightnessBuffer != null)
+        {
+            ArrayPool<float>.Shared.Return(_brightnessBuffer);
+            _brightnessBuffer = null;
+        }
+        if (_colorsBuffer != null)
+        {
+            ArrayPool<Rgba32>.Shared.Return(_colorsBuffer);
+            _colorsBuffer = null;
+        }
+        if (_edgesBuffer != null)
+        {
+            ArrayPool<float>.Shared.Return(_edgesBuffer);
+            _edgesBuffer = null;
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -511,9 +536,30 @@ public class MatrixRenderer : IDisposable
     {
         var width = image.Width;
         var height = image.Height;
-        var brightness = new float[width * height];
-        var colors = new Rgba32[width * height];
-        var edges = new float[width * height];
+        var totalPixels = width * height;
+
+        // Reuse buffers from ArrayPool
+        if (_brightnessBuffer == null || _lastBufferSize < totalPixels)
+        {
+            if (_brightnessBuffer != null)
+                ArrayPool<float>.Shared.Return(_brightnessBuffer);
+            if (_colorsBuffer != null)
+                ArrayPool<Rgba32>.Shared.Return(_colorsBuffer);
+            if (_edgesBuffer != null)
+                ArrayPool<float>.Shared.Return(_edgesBuffer);
+
+            _brightnessBuffer = ArrayPool<float>.Shared.Rent(totalPixels);
+            _colorsBuffer = ArrayPool<Rgba32>.Shared.Rent(totalPixels);
+            _edgesBuffer = ArrayPool<float>.Shared.Rent(totalPixels);
+            _lastBufferSize = totalPixels;
+        }
+
+        var brightness = _brightnessBuffer!;
+        var colors = _colorsBuffer!;
+        var edges = _edgesBuffer!;
+
+        // Clear edges buffer (brightness and colors will be overwritten)
+        Array.Clear(edges, 0, totalPixels);
 
         // First pass: sample brightness and colors
         image.ProcessPixelRows(accessor =>

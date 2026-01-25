@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ConsoleImage.Core.Subtitles;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 
@@ -21,6 +22,9 @@ namespace ConsoleImage.Core;
 [JsonSerializable(typeof(OptimizedFrame))]
 [JsonSerializable(typeof(List<OptimizedFrame>))]
 [JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(SubtitleTrackData))]
+[JsonSerializable(typeof(SubtitleEntryData))]
+[JsonSerializable(typeof(List<SubtitleEntryData>))]
 public partial class CompressedDocumentJsonContext : JsonSerializerContext
 {
 }
@@ -321,6 +325,8 @@ public class OptimizedDocument
     /// <summary>
     /// Convert back to standard ConsoleImageDocument for playback.
     /// Reconstructs full frames from keyframes and deltas.
+    /// Optimized for low allocation: pre-caches palette ANSI strings,
+    /// reuses buffers across delta frames.
     /// </summary>
     public ConsoleImageDocument ToDocument(int? loopCountOverride = null)
     {
@@ -338,10 +344,20 @@ public class OptimizedDocument
             doc.Settings.LoopCount = loopCountOverride.Value;
         }
 
-        // Reconstruct frames
-        string? currentChars = null;
-        List<int>? currentIndices = null;
-        var reconstructedContent = new List<string>(); // Store for RefFrame lookups
+        if (Frames.Count == 0) return doc;
+
+        // Pre-build palette ANSI escape strings once (avoids hex parsing + string interpolation per frame)
+        var paletteAnsi = BuildPaletteAnsiStrings(Palette);
+
+        // Reusable buffers for delta application (avoids per-frame allocations)
+        char[]? charBuffer = null;
+        int[]? indexBuffer = null;
+        int bufferLen = 0;
+
+        // Reusable StringBuilder for ANSI content building
+        var rebuildSb = new StringBuilder(4096);
+
+        var reconstructedContent = new List<string>(Frames.Count); // Store for RefFrame lookups
 
         for (int f = 0; f < Frames.Count; f++)
         {
@@ -355,16 +371,26 @@ public class OptimizedDocument
             }
             else if (frame.IsKeyframe)
             {
-                // Full keyframe
-                currentChars = frame.Characters;
-                currentIndices = DecompressColorIndices(frame.ColorIndices);
-                content = RebuildAnsiContent(currentChars ?? string.Empty, currentIndices, Palette);
+                // Full keyframe - decompress directly into reusable buffers
+                var chars = frame.Characters ?? string.Empty;
+                bufferLen = chars.Length;
+
+                // Ensure buffers are large enough
+                if (charBuffer == null || charBuffer.Length < bufferLen)
+                {
+                    charBuffer = new char[bufferLen];
+                    indexBuffer = new int[bufferLen];
+                }
+                chars.CopyTo(0, charBuffer, 0, bufferLen);
+
+                DecompressColorIndicesInto(frame.ColorIndices, indexBuffer!, bufferLen);
+                content = RebuildAnsiContentFast(charBuffer, indexBuffer!, bufferLen, paletteAnsi, rebuildSb);
             }
-            else if (currentChars != null && currentIndices != null)
+            else if (charBuffer != null && indexBuffer != null)
             {
-                // Apply delta to previous frame
-                (currentChars, currentIndices) = ApplyDelta(currentChars, currentIndices, frame.Delta ?? "");
-                content = RebuildAnsiContent(currentChars, currentIndices, Palette);
+                // Apply delta to previous frame (mutates buffers in place)
+                ApplyDeltaInPlace(charBuffer, indexBuffer, ref bufferLen, frame.Delta ?? "");
+                content = RebuildAnsiContentFast(charBuffer, indexBuffer, bufferLen, paletteAnsi, rebuildSb);
             }
             else
             {
@@ -384,6 +410,53 @@ public class OptimizedDocument
         }
 
         return doc;
+    }
+
+    /// <summary>
+    /// Pre-build ANSI escape strings for each palette color.
+    /// Index 0 = reset, others = foreground color code.
+    /// Called once at load time; eliminates hex parsing and string interpolation per frame.
+    /// </summary>
+    private static string[] BuildPaletteAnsiStrings(string[] palette)
+    {
+        var result = new string[palette.Length];
+        result[0] = "\x1b[0m"; // Index 0 = reset/no color
+
+        for (int i = 1; i < palette.Length; i++)
+        {
+            var hex = palette[i];
+            if (hex.Length >= 6)
+            {
+                var r = ParseHexByte(hex, 0);
+                var g = ParseHexByte(hex, 2);
+                var b = ParseHexByte(hex, 4);
+                result[i] = $"\x1b[38;2;{r};{g};{b}m";
+            }
+            else
+            {
+                result[i] = "\x1b[0m";
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Parse two hex characters to a byte value without Substring allocation.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static int ParseHexByte(string hex, int offset)
+    {
+        return (HexVal(hex[offset]) << 4) | HexVal(hex[offset + 1]);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static int HexVal(char c)
+    {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        return 0;
     }
 
     /// <summary>
@@ -519,6 +592,7 @@ public class OptimizedDocument
 
     /// <summary>
     /// Apply delta to reconstruct current frame from previous.
+    /// Legacy version kept for compatibility - used by save path.
     /// </summary>
     private static (string chars, List<int> indices) ApplyDelta(string prevChars, List<int> prevIndices, string delta)
     {
@@ -555,6 +629,150 @@ public class OptimizedDocument
         }
 
         return (new string(chars), indices);
+    }
+
+    /// <summary>
+    /// Apply delta in-place to char/index buffers without allocations.
+    /// Parses delta string using spans to avoid Split/Substring allocations.
+    /// </summary>
+    private static void ApplyDeltaInPlace(char[] chars, int[] indices, ref int bufferLen, string delta)
+    {
+        if (string.IsNullOrEmpty(delta)) return;
+
+        var span = delta.AsSpan();
+        int start = 0;
+
+        while (start < span.Length)
+        {
+            // Find end of this change entry (next ';' or end of string)
+            var entryEnd = span.Slice(start).IndexOf(';');
+            ReadOnlySpan<char> entry;
+            if (entryEnd < 0)
+            {
+                entry = span.Slice(start);
+                start = span.Length;
+            }
+            else
+            {
+                entry = span.Slice(start, entryEnd);
+                start += entryEnd + 1;
+            }
+
+            if (entry.IsEmpty) continue;
+
+            // Find colon separator (pos:rest)
+            var colonIdx = entry.IndexOf(':');
+            if (colonIdx < 0) continue;
+
+            var pos = ParseInt(entry.Slice(0, colonIdx));
+
+            // Parse rest: chars,colorIdx[,count]
+            var rest = entry.Slice(colonIdx + 1);
+
+            // Find first comma (separates chars from colorIdx)
+            var firstComma = FindUnescapedComma(rest);
+            if (firstComma < 0) continue;
+
+            var charsPart = rest.Slice(0, firstComma);
+            var afterChars = rest.Slice(firstComma + 1);
+
+            // Find second comma (optional count)
+            var secondComma = afterChars.IndexOf(',');
+            int colorIdx, count;
+
+            if (secondComma >= 0)
+            {
+                colorIdx = ParseInt(afterChars.Slice(0, secondComma));
+                count = ParseInt(afterChars.Slice(secondComma + 1));
+            }
+            else
+            {
+                colorIdx = ParseInt(afterChars);
+                count = 1;
+            }
+
+            // Unescape and apply characters
+            var unescapedIdx = 0;
+            for (int ci = 0; ci < charsPart.Length && unescapedIdx < count; ci++)
+            {
+                char ch;
+                if (charsPart[ci] == '\\' && ci + 1 < charsPart.Length)
+                {
+                    ch = charsPart[ci + 1] switch
+                    {
+                        'c' => ':',
+                        'm' => ',',
+                        's' => ';',
+                        'n' => '\n',
+                        'r' => '\r',
+                        _ => charsPart[ci + 1]
+                    };
+                    ci++; // Skip escaped char
+                }
+                else
+                {
+                    ch = charsPart[ci];
+                }
+
+                if (pos + unescapedIdx < bufferLen)
+                {
+                    chars[pos + unescapedIdx] = ch;
+                    indices[pos + unescapedIdx] = colorIdx;
+                }
+                unescapedIdx++;
+            }
+
+            // Fill remaining count with spaces (for RLE runs longer than char data)
+            for (int i = unescapedIdx; i < count && pos + i < bufferLen; i++)
+            {
+                chars[pos + i] = ' ';
+                indices[pos + i] = colorIdx;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Find first unescaped comma in span (skips escaped sequences like \m).
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static int FindUnescapedComma(ReadOnlySpan<char> span)
+    {
+        for (int i = 0; i < span.Length; i++)
+        {
+            if (span[i] == '\\' && i + 1 < span.Length)
+            {
+                i++; // Skip escaped char
+                continue;
+            }
+            if (span[i] == ',') return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Parse integer from span without allocation.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static int ParseInt(ReadOnlySpan<char> span)
+    {
+        int result = 0;
+        bool negative = false;
+        int i = 0;
+
+        if (span.Length > 0 && span[0] == '-')
+        {
+            negative = true;
+            i = 1;
+        }
+
+        for (; i < span.Length; i++)
+        {
+            var c = span[i];
+            if (c >= '0' && c <= '9')
+                result = result * 10 + (c - '0');
+        }
+
+        return negative ? -result : result;
     }
 
     private static string EscapeDeltaChar(char c)
@@ -660,10 +878,13 @@ public class OptimizedDocument
 
     /// <summary>
     /// Rebuild ANSI content from characters and color indices.
+    /// Original version used by save path (FromDocument).
     /// </summary>
     private static string RebuildAnsiContent(string chars, List<int> indices, string[] palette)
     {
-        var sb = new StringBuilder();
+        // Build palette strings for the legacy path
+        var paletteAnsi = BuildPaletteAnsiStrings(palette);
+        var sb = new StringBuilder(chars.Length * 2);
         var lastColorIdx = -1;
 
         for (int i = 0; i < chars.Length; i++)
@@ -672,38 +893,66 @@ public class OptimizedDocument
 
             if (colorIdx != lastColorIdx)
             {
-                if (colorIdx == 0 || colorIdx >= palette.Length || string.IsNullOrEmpty(palette[colorIdx]))
-                {
+                if (colorIdx == 0 || colorIdx >= paletteAnsi.Length)
                     sb.Append("\x1b[0m");
-                }
                 else
-                {
-                    var hex = palette[colorIdx];
-                    if (hex.Length >= 6)
-                    {
-                        var r = Convert.ToInt32(hex.Substring(0, 2), 16);
-                        var g = Convert.ToInt32(hex.Substring(2, 2), 16);
-                        var b = Convert.ToInt32(hex.Substring(4, 2), 16);
-                        sb.Append($"\x1b[38;2;{r};{g};{b}m");
-                    }
-                }
+                    sb.Append(paletteAnsi[colorIdx]);
                 lastColorIdx = colorIdx;
             }
 
-            sb.Append(chars[i]);
-
-            // Reset at end of line to prevent color bleeding
+            // Reset before newline to prevent color bleeding (not after)
             if (chars[i] == '\n' && lastColorIdx != 0)
             {
-                sb.Insert(sb.Length - 1, "\x1b[0m");
+                sb.Append("\x1b[0m");
                 lastColorIdx = 0;
             }
+
+            sb.Append(chars[i]);
         }
 
         if (lastColorIdx != 0)
-        {
             sb.Append("\x1b[0m");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Rebuild ANSI content from char/index buffers using pre-cached palette strings.
+    /// Zero-allocation hot path (reuses provided StringBuilder).
+    /// </summary>
+    private static string RebuildAnsiContentFast(char[] chars, int[] indices, int length,
+        string[] paletteAnsi, StringBuilder sb)
+    {
+        sb.Clear();
+        sb.EnsureCapacity(length * 2); // Reasonable estimate
+
+        var lastColorIdx = -1;
+
+        for (int i = 0; i < length; i++)
+        {
+            var colorIdx = indices[i];
+
+            if (colorIdx != lastColorIdx)
+            {
+                if (colorIdx == 0 || colorIdx >= paletteAnsi.Length)
+                    sb.Append("\x1b[0m");
+                else
+                    sb.Append(paletteAnsi[colorIdx]);
+                lastColorIdx = colorIdx;
+            }
+
+            // Reset before newline to prevent color bleeding
+            if (chars[i] == '\n' && lastColorIdx != 0)
+            {
+                sb.Append("\x1b[0m");
+                lastColorIdx = 0;
+            }
+
+            sb.Append(chars[i]);
         }
+
+        if (lastColorIdx != 0)
+            sb.Append("\x1b[0m");
 
         return sb.ToString();
     }
@@ -747,7 +996,7 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Decompress RLE color indices.
+    /// Decompress RLE color indices (legacy version for save path).
     /// </summary>
     private static List<int> DecompressColorIndices(string? compressed)
     {
@@ -765,6 +1014,62 @@ public class OptimizedDocument
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Decompress RLE color indices directly into a pre-allocated buffer.
+    /// Zero-allocation: parses using spans, writes directly to int[].
+    /// </summary>
+    private static void DecompressColorIndicesInto(string? compressed, int[] buffer, int bufferLen)
+    {
+        // Clear buffer first
+        Array.Clear(buffer, 0, Math.Min(buffer.Length, bufferLen));
+
+        if (string.IsNullOrEmpty(compressed)) return;
+
+        var span = compressed.AsSpan();
+        int writePos = 0;
+        int start = 0;
+
+        while (start < span.Length && writePos < bufferLen)
+        {
+            // Find end of this run (next ';' or end)
+            var runEnd = span.Slice(start).IndexOf(';');
+            ReadOnlySpan<char> run;
+            if (runEnd < 0)
+            {
+                run = span.Slice(start);
+                start = span.Length;
+            }
+            else
+            {
+                run = span.Slice(start, runEnd);
+                start += runEnd + 1;
+            }
+
+            if (run.IsEmpty) continue;
+
+            // Find comma (idx,count) or just idx
+            var commaIdx = run.IndexOf(',');
+            int idx, count;
+
+            if (commaIdx >= 0)
+            {
+                idx = ParseInt(run.Slice(0, commaIdx));
+                count = ParseInt(run.Slice(commaIdx + 1));
+            }
+            else
+            {
+                idx = ParseInt(run);
+                count = 1;
+            }
+
+            // Write run to buffer
+            var end = Math.Min(writePos + count, bufferLen);
+            for (int i = writePos; i < end; i++)
+                buffer[i] = idx;
+            writePos = end;
+        }
     }
 }
 
@@ -790,7 +1095,10 @@ public static class DocumentRenderSettingsExtensions
             AnimationSpeedMultiplier = src.AnimationSpeedMultiplier,
             LoopCount = src.LoopCount,
             EnableTemporalStability = src.EnableTemporalStability,
-            ColorStabilityThreshold = src.ColorStabilityThreshold
+            ColorStabilityThreshold = src.ColorStabilityThreshold,
+            SubtitlesEnabled = src.SubtitlesEnabled,
+            SubtitleSource = src.SubtitleSource,
+            SubtitleLanguage = src.SubtitleLanguage
         };
     }
 }
@@ -859,6 +1167,11 @@ public static class CompressedDocumentArchive
         return SupportedExtensions.Any(ext => lower.EndsWith(ext));
     }
 
+    // CIDZ v2 binary format magic
+    private static readonly byte[] CidzMagic = "CIDZ"u8.ToArray();
+    private const byte CidzVersion = 2;
+    private const byte CidzFlagHasSubtitles = 0x01;
+
     /// <summary>
     /// Save a document to a compressed archive with maximum compression.
     /// Applies delta encoding for motion compression.
@@ -867,43 +1180,99 @@ public static class CompressedDocumentArchive
     public static async Task SaveAsync(ConsoleImageDocument doc, string path,
         int keyframeInterval = 30, CancellationToken ct = default)
     {
+        await SaveAsync(doc, path, keyframeInterval, subtitles: null, ct: ct);
+    }
+
+    /// <summary>
+    /// Save a document with optional subtitle track bundled inside the archive.
+    /// Uses CIDZ v2 format: 6-byte header + Brotli-compressed payload.
+    /// Streams JSON directly to Brotli - no full JSON string buffered in memory.
+    /// Brotli achieves ~20-30% better compression than Deflate/GZip on text data.
+    /// Format: [CIDZ magic 4B][version 1B][flags 1B][Brotli(JSON + \0 + VTT)]
+    /// </summary>
+    public static async Task SaveAsync(ConsoleImageDocument doc, string path,
+        int keyframeInterval, SubtitleTrack? subtitles, CancellationToken ct = default)
+    {
         // Convert to optimized format with delta compression and optional stability
         var enableStability = doc.Settings.EnableTemporalStability;
         var colorThreshold = doc.Settings.ColorStabilityThreshold;
         var optimized = OptimizedDocument.FromDocument(doc, keyframeInterval, enableStability, colorThreshold);
 
-        // Serialize to JSON
-        var json = JsonSerializer.Serialize(optimized, CompressedDocumentJsonContext.Default.OptimizedDocument);
-        var jsonBytes = Encoding.UTF8.GetBytes(json);
+        var hasSubtitles = subtitles != null && subtitles.HasEntries;
 
-        // Write with GZip compression (cross-platform, AOT compatible)
+        // Write CIDZ v2 header (6 bytes)
         await using var fileStream = File.Create(path);
-        await using var compressStream = new GZipStream(fileStream, CompressionLevel.SmallestSize);
-        await compressStream.WriteAsync(jsonBytes, ct);
+        await fileStream.WriteAsync(CidzMagic, ct);
+        fileStream.WriteByte(CidzVersion);
+        fileStream.WriteByte(hasSubtitles ? CidzFlagHasSubtitles : (byte)0);
+
+        // Stream JSON directly to Brotli - no buffering the full JSON string
+        await using var brotli = new BrotliStream(fileStream, CompressionLevel.SmallestSize);
+        await JsonSerializer.SerializeAsync(brotli, optimized,
+            CompressedDocumentJsonContext.Default.OptimizedDocument, ct);
+
+        // Null separator + VTT content (if subtitles present)
+        if (hasSubtitles)
+        {
+            brotli.WriteByte(0x00); // Null separator (never appears in valid JSON)
+            var vttContent = BuildVttContent(subtitles!);
+            var vttBytes = Encoding.UTF8.GetBytes(vttContent);
+            await brotli.WriteAsync(vttBytes, ct);
+        }
+    }
+
+    /// <summary>
+    /// Build VTT content from a subtitle track without writing to disk.
+    /// </summary>
+    private static string BuildVttContent(SubtitleTrack track)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("WEBVTT");
+        sb.AppendLine();
+
+        for (var i = 0; i < track.Entries.Count; i++)
+        {
+            var entry = track.Entries[i];
+            sb.AppendLine((i + 1).ToString());
+            sb.Append(FormatVttTimestamp(entry.StartTime));
+            sb.Append(" --> ");
+            sb.AppendLine(FormatVttTimestamp(entry.EndTime));
+            sb.AppendLine(entry.Text);
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    private static string FormatVttTimestamp(TimeSpan ts)
+    {
+        return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}.{ts.Milliseconds:D3}";
     }
 
     /// <summary>
     /// Load a document from a compressed archive.
+    /// Auto-detects format: CIDZ v2 (Brotli), GZip (v1), 7z (legacy).
+    /// CIDZ v2 archives may contain bundled subtitles.
     /// </summary>
-    /// <param name="path">Path to compressed document</param>
-    /// <param name="loopCountOverride">Override stored loop count (null = use stored)</param>
-    /// <param name="ct">Cancellation token</param>
     public static async Task<ConsoleImageDocument> LoadAsync(string path,
         int? loopCountOverride = null, CancellationToken ct = default)
     {
         await using var fileStream = File.OpenRead(path);
 
-        // Try to detect format from magic bytes
+        // Detect format from magic bytes
         var magic = new byte[6];
         var read = await fileStream.ReadAsync(magic, ct);
         fileStream.Position = 0;
 
-        Stream decompressStream;
+        // CIDZ v2 magic: "CIDZ" (0x43 0x49 0x44 0x5A)
+        if (read >= 4 && magic[0] == 0x43 && magic[1] == 0x49 && magic[2] == 0x44 && magic[3] == 0x5A)
+        {
+            return await LoadCidzV2Async(fileStream, loopCountOverride, ct);
+        }
 
-        // Check for 7z magic: "7z\xBC\xAF\x27\x1C"
+        // 7z magic: "7z\xBC\xAF\x27\x1C" - legacy format
         if (read >= 6 && magic[0] == 0x37 && magic[1] == 0x7A && magic[2] == 0xBC)
         {
-            // 7z archive - use SharpCompress reader
             using var archive = SevenZipArchive.Open(fileStream);
             var entry = archive.Entries.FirstOrDefault(e => !e.IsDirectory);
             if (entry == null)
@@ -917,8 +1286,10 @@ public static class CompressedDocumentArchive
             var json = Encoding.UTF8.GetString(ms.ToArray());
             return ParseOptimizedJson(json, loopCountOverride);
         }
-        // Check for gzip magic: 0x1F 0x8B
-        else if (read >= 2 && magic[0] == 0x1F && magic[1] == 0x8B)
+
+        // GZip magic: 0x1F 0x8B - v1 single-JSON format
+        Stream decompressStream;
+        if (read >= 2 && magic[0] == 0x1F && magic[1] == 0x8B)
         {
             decompressStream = new GZipStream(fileStream, CompressionMode.Decompress, leaveOpen: true);
         }
@@ -934,6 +1305,65 @@ public static class CompressedDocumentArchive
             var json = await reader.ReadToEndAsync(ct);
             return ParseOptimizedJson(json, loopCountOverride);
         }
+    }
+
+    /// <summary>
+    /// Load CIDZ v2 format: 6-byte header + Brotli payload (JSON + \0 + VTT).
+    /// </summary>
+    private static async Task<ConsoleImageDocument> LoadCidzV2Async(
+        Stream fileStream, int? loopCountOverride, CancellationToken ct)
+    {
+        // Read header: magic (4) + version (1) + flags (1) = 6 bytes
+        var header = new byte[6];
+        await fileStream.ReadExactlyAsync(header, ct);
+
+        var version = header[4];
+        var flags = header[5];
+        var hasSubtitles = (flags & CidzFlagHasSubtitles) != 0;
+
+        // Decompress entire Brotli payload into memory
+        await using var brotli = new BrotliStream(fileStream, CompressionMode.Decompress, leaveOpen: true);
+        using var ms = new MemoryStream();
+        await brotli.CopyToAsync(ms, ct);
+        var payload = ms.GetBuffer();
+        var payloadLen = (int)ms.Length;
+
+        // Find null separator between JSON and VTT
+        int jsonLen = payloadLen;
+        int vttStart = payloadLen;
+
+        if (hasSubtitles)
+        {
+            // Scan backwards from end for the null byte (more efficient since VTT is small)
+            // But JSON could also end near the end, so scan forward from the end of JSON
+            // JSON always ends with '}', so find the last '}' then the null byte after it
+            for (int i = payloadLen - 1; i >= 0; i--)
+            {
+                if (payload[i] == 0x00)
+                {
+                    jsonLen = i;
+                    vttStart = i + 1;
+                    break;
+                }
+            }
+        }
+
+        // Parse JSON portion
+        var json = Encoding.UTF8.GetString(payload, 0, jsonLen);
+        var doc = ParseOptimizedJson(json, loopCountOverride);
+
+        // Parse VTT portion if present
+        if (hasSubtitles && vttStart < payloadLen)
+        {
+            var vttContent = Encoding.UTF8.GetString(payload, vttStart, payloadLen - vttStart);
+            var track = SubtitleParser.Parse(vttContent, "subtitles.vtt");
+            if (track.HasEntries)
+            {
+                doc.Subtitles = SubtitleTrackData.FromTrack(track);
+            }
+        }
+
+        return doc;
     }
 
     /// <summary>

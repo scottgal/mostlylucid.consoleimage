@@ -23,6 +23,9 @@ public class AsciiAnimationPlayer : IDisposable
     private const string CursorHome = "\x1b[H";
     private const string CursorHide = "\x1b[?25l";
     private const string CursorShow = "\x1b[?25h";
+    // Pre-cached cursor move escape sequences
+    private static readonly string[] CursorMoveCache = BuildCursorMoveCache(300);
+
     private readonly float? _darkThreshold;
     private readonly IReadOnlyList<AsciiFrame> _frames;
     private readonly float? _lightThreshold;
@@ -105,35 +108,76 @@ public class AsciiAnimationPlayer : IDisposable
         var frameBuffers = new string[_frames.Count];
         var maxHeight = 0;
 
-        // First pass: determine max height
-        var frameLines = new string[_frames.Count][];
+        // First pass: render all frames and determine max height (no LINQ allocation)
+        var frameStrings = new string[_frames.Count];
+        var frameLineCounts = new int[_frames.Count];
         for (var i = 0; i < _frames.Count; i++)
         {
-            var frameStr = _useColor ? _frames[i].ToAnsiString(_darkThreshold, _lightThreshold) : _frames[i].ToString();
-            frameLines[i] = frameStr.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
-            if (frameLines[i].Length > maxHeight)
-                maxHeight = frameLines[i].Length;
+            frameStrings[i] = _useColor ? _frames[i].ToAnsiString(_darkThreshold, _lightThreshold) : _frames[i].ToString();
+            var lineCount = 1;
+            foreach (var c in frameStrings[i])
+                if (c == '\n') lineCount++;
+            frameLineCounts[i] = lineCount;
+            if (lineCount > maxHeight)
+                maxHeight = lineCount;
         }
 
-        // Second pass: build atomic frame buffers
+        // Second pass: build atomic frame buffers with diff-based rendering
+        var sb = new StringBuilder(8192);
         for (var i = 0; i < _frames.Count; i++)
         {
-            var sb = new StringBuilder();
+            sb.Clear();
             sb.Append(SyncStart); // Begin synchronized output
-            sb.Append(CursorHome); // Home cursor
 
-            var lines = frameLines[i];
-            for (var lineIdx = 0; lineIdx < maxHeight; lineIdx++)
+            if (i == 0 || !_useDiffRendering)
             {
-                sb.Append("\x1b[2K"); // Clear entire line
-                if (lineIdx < lines.Length)
-                    sb.Append(lines[lineIdx]);
-                sb.Append("\x1b[0m"); // Reset colors at end of each line
-                if (lineIdx < maxHeight - 1)
-                    sb.Append('\n');
+                // First frame or diff disabled: full redraw
+                sb.Append(CursorHome);
+                AppendWithLineClearing(sb, frameStrings[i], maxHeight);
+            }
+            else
+            {
+                // Diff against previous frame - only update changed lines
+                var curr = frameStrings[i];
+                var prev = frameStrings[i - 1];
+                var currLines = frameLineCounts[i];
+                var prevLines = frameLineCounts[i - 1];
+                var lineCount = Math.Max(currLines, prevLines);
+
+                // Count changes to decide diff vs full redraw
+                var changes = 0;
+                for (int line = 0; line < lineCount; line++)
+                {
+                    if (!GetLineSpan(curr, line).SequenceEqual(GetLineSpan(prev, line)))
+                        changes++;
+                }
+
+                if (changes > lineCount * 0.6)
+                {
+                    // >60% changed: full redraw is more efficient
+                    sb.Append(CursorHome);
+                    AppendWithLineClearing(sb, curr, maxHeight);
+                }
+                else
+                {
+                    // Diff rendering: only update changed lines
+                    for (int line = 0; line < lineCount; line++)
+                    {
+                        var currLine = GetLineSpan(curr, line);
+                        var prevLine = GetLineSpan(prev, line);
+
+                        if (!currLine.SequenceEqual(prevLine))
+                        {
+                            sb.Append(line < CursorMoveCache.Length ? CursorMoveCache[line] : $"\x1b[{line + 1};1H");
+                            sb.Append("\x1b[2K"); // Clear line
+                            sb.Append(currLine);
+                            sb.Append("\x1b[0m");
+                        }
+                    }
+                }
             }
 
-            sb.Append(SyncEnd); // End synchronized output
+            sb.Append(SyncEnd);
             frameBuffers[i] = sb.ToString();
         }
 
@@ -256,6 +300,85 @@ public class AsciiAnimationPlayer : IDisposable
             throw new ArgumentOutOfRangeException(nameof(frameIndex));
 
         return _frames[frameIndex];
+    }
+
+    /// <summary>
+    ///     Append frame content with line clearing for full redraws.
+    /// </summary>
+    private static void AppendWithLineClearing(StringBuilder sb, string content, int maxHeight)
+    {
+        var lineIdx = 0;
+        var lineStart = 0;
+
+        for (var i = 0; i <= content.Length; i++)
+        {
+            if (i == content.Length || content[i] == '\n')
+            {
+                sb.Append("\x1b[2K"); // Clear line
+                var end = i;
+                if (end > lineStart && content[end - 1] == '\r') end--;
+                if (end > lineStart)
+                    sb.Append(content.AsSpan(lineStart, end - lineStart));
+                sb.Append("\x1b[0m");
+                lineIdx++;
+
+                if (i < content.Length && lineIdx < maxHeight)
+                    sb.Append('\n');
+
+                lineStart = i + 1;
+            }
+        }
+
+        // Pad remaining lines with clears
+        while (lineIdx < maxHeight)
+        {
+            sb.Append('\n');
+            sb.Append("\x1b[2K");
+            lineIdx++;
+        }
+    }
+
+    /// <summary>
+    ///     Get a line from content by index as a span (zero-allocation).
+    /// </summary>
+    private static ReadOnlySpan<char> GetLineSpan(string content, int lineIndex)
+    {
+        if (string.IsNullOrEmpty(content)) return ReadOnlySpan<char>.Empty;
+
+        var currentLine = 0;
+        var lineStart = 0;
+
+        for (var i = 0; i < content.Length; i++)
+        {
+            if (content[i] == '\n')
+            {
+                if (currentLine == lineIndex)
+                {
+                    var end = i;
+                    if (end > lineStart && content[end - 1] == '\r') end--;
+                    return content.AsSpan(lineStart, end - lineStart);
+                }
+                currentLine++;
+                lineStart = i + 1;
+            }
+        }
+
+        if (currentLine == lineIndex && lineStart < content.Length)
+        {
+            var end = content.Length;
+            if (end > lineStart && content[end - 1] == '\r') end--;
+            return content.AsSpan(lineStart, end - lineStart);
+        }
+
+        return ReadOnlySpan<char>.Empty;
+    }
+
+    private static string[] BuildCursorMoveCache(int maxLines)
+    {
+        var cache = new string[maxLines];
+        for (var i = 0; i < maxLines; i++)
+            cache[i] = $"\x1b[{i + 1};1H";
+        return cache;
     }
 }
 

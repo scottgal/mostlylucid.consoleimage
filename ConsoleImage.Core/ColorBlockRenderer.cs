@@ -2,6 +2,8 @@
 // Original article: https://alexharri.com/blog/ascii-rendering
 // Color block renderer for high-fidelity colored terminal output
 
+using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -24,6 +26,10 @@ public class ColorBlockRenderer : IDisposable
     private readonly RenderOptions _options;
     private bool _disposed;
 
+    // Reusable buffer to reduce GC pressure during video playback
+    private Rgba32[]? _pixelBuffer;
+    private int _lastBufferSize;
+
     public ColorBlockRenderer(RenderOptions? options = null)
     {
         _options = options ?? RenderOptions.Default;
@@ -33,6 +39,14 @@ public class ColorBlockRenderer : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Return pooled buffer
+        if (_pixelBuffer != null)
+        {
+            ArrayPool<Rgba32>.Shared.Return(_pixelBuffer);
+            _pixelBuffer = null;
+        }
+
         GC.SuppressFinalize(this);
     }
 
@@ -99,6 +113,7 @@ public class ColorBlockRenderer : IDisposable
     {
         var charRows = image.Height / 2;
         var width = image.Width;
+        var totalPixels = width * image.Height;
 
         // Get brightness thresholds based on terminal mode
         var darkThreshold = _options.Invert ? _options.DarkTerminalBrightnessThreshold : null;
@@ -111,28 +126,21 @@ public class ColorBlockRenderer : IDisposable
         // Color mode - when disabled, output greyscale
         var useColor = _options.UseColor;
 
-        // Color quantization - explicit color count takes priority
-        var colorCount = _options.ColorCount;
-        var quantStep = 1;
-        var quantize = false;
+        // Color quantization using shared helper
+        var quantStep = ColorHelper.GetQuantizationStep(_options);
+        var quantize = quantStep > 1;
 
-        if (colorCount.HasValue && colorCount.Value > 0)
+        // Reuse pixel buffer from ArrayPool
+        if (_pixelBuffer == null || _lastBufferSize < totalPixels)
         {
-            // Calculate step size for color reduction
-            // e.g., 4 colors = 64 step (256/4), 16 colors = 16 step
-            quantStep = Math.Max(1, 256 / colorCount.Value);
-            quantize = true;
-        }
-        else if (_options.EnableTemporalStability)
-        {
-            // Fallback to temporal stability quantization
-            quantStep = Math.Max(1, _options.ColorStabilityThreshold / 2);
-            quantize = true;
+            if (_pixelBuffer != null)
+                ArrayPool<Rgba32>.Shared.Return(_pixelBuffer);
+            _pixelBuffer = ArrayPool<Rgba32>.Shared.Rent(totalPixels);
+            _lastBufferSize = totalPixels;
         }
 
-        // Pre-extract all pixel data for faster access
-        var pixelData = new Rgba32[width * image.Height];
-        image.CopyPixelDataTo(pixelData);
+        var pixelData = _pixelBuffer;
+        image.CopyPixelDataTo(pixelData.AsSpan(0, totalPixels));
 
         // Parallel row rendering for performance
         if (_options.UseParallelProcessing && charRows > 4)
@@ -155,22 +163,22 @@ public class ColorBlockRenderer : IDisposable
                     // Apply gamma correction
                     if (applyGamma)
                     {
-                        upper = ApplyGamma(upper, gamma);
-                        lower = ApplyGamma(lower, gamma);
+                        upper = ColorHelper.ApplyGamma(upper, gamma);
+                        lower = ColorHelper.ApplyGamma(lower, gamma);
                     }
 
                     // Convert to greyscale if color disabled
                     if (!useColor)
                     {
-                        upper = ToGreyscale(upper);
-                        lower = ToGreyscale(lower);
+                        upper = ColorHelper.ToGreyscale(upper);
+                        lower = ColorHelper.ToGreyscale(lower);
                     }
 
                     // Quantize colors for palette reduction or temporal stability
                     if (quantize)
                     {
-                        upper = QuantizeColor(upper, quantStep);
-                        lower = QuantizeColor(lower, quantStep);
+                        upper = ColorHelper.QuantizeColor(upper, quantStep);
+                        lower = ColorHelper.QuantizeColor(lower, quantStep);
                     }
 
                     AppendColoredBlock(rowSb, upper, lower, darkThreshold, lightThreshold);
@@ -200,22 +208,22 @@ public class ColorBlockRenderer : IDisposable
                 // Apply gamma correction
                 if (applyGamma)
                 {
-                    upper = ApplyGamma(upper, gamma);
-                    lower = ApplyGamma(lower, gamma);
+                    upper = ColorHelper.ApplyGamma(upper, gamma);
+                    lower = ColorHelper.ApplyGamma(lower, gamma);
                 }
 
                 // Convert to greyscale if color disabled
                 if (!useColor)
                 {
-                    upper = ToGreyscale(upper);
-                    lower = ToGreyscale(lower);
+                    upper = ColorHelper.ToGreyscale(upper);
+                    lower = ColorHelper.ToGreyscale(lower);
                 }
 
                 // Quantize colors for palette reduction or temporal stability
                 if (quantize)
                 {
-                    upper = QuantizeColor(upper, quantStep);
-                    lower = QuantizeColor(lower, quantStep);
+                    upper = ColorHelper.QuantizeColor(upper, quantStep);
+                    lower = ColorHelper.QuantizeColor(lower, quantStep);
                 }
 
                 AppendColoredBlock(sb, upper, lower, darkThreshold, lightThreshold);
@@ -227,41 +235,6 @@ public class ColorBlockRenderer : IDisposable
         }
 
         return sb.ToString();
-    }
-
-    /// <summary>
-    /// Convert a color to greyscale using luminance formula.
-    /// </summary>
-    private static Rgba32 ToGreyscale(Rgba32 pixel)
-    {
-        // Use ITU-R BT.709 luminance formula
-        var grey = (byte)(0.2126f * pixel.R + 0.7152f * pixel.G + 0.0722f * pixel.B);
-        return new Rgba32(grey, grey, grey, pixel.A);
-    }
-
-    private static Rgba32 ApplyGamma(Rgba32 pixel, float gamma)
-    {
-        return new Rgba32(
-            (byte)Math.Clamp(MathF.Pow(pixel.R / 255f, gamma) * 255f, 0, 255),
-            (byte)Math.Clamp(MathF.Pow(pixel.G / 255f, gamma) * 255f, 0, 255),
-            (byte)Math.Clamp(MathF.Pow(pixel.B / 255f, gamma) * 255f, 0, 255),
-            pixel.A
-        );
-    }
-
-    /// <summary>
-    /// Quantize color to reduce noise and improve temporal stability.
-    /// Rounds each channel to the nearest multiple of step.
-    /// </summary>
-    private static Rgba32 QuantizeColor(Rgba32 pixel, int step)
-    {
-        if (step <= 1) return pixel;
-        return new Rgba32(
-            (byte)(pixel.R / step * step),
-            (byte)(pixel.G / step * step),
-            (byte)(pixel.B / step * step),
-            pixel.A
-        );
     }
 
     private static void AppendColoredBlock(StringBuilder sb, Rgba32 upper, Rgba32 lower, float? darkThreshold,
