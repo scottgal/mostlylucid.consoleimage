@@ -921,9 +921,9 @@ public class BrailleRenderer : IDisposable
     }
 
     /// <summary>
-    ///     Boost saturation and brightness for braille colors.
-    ///     Braille dots are sparse, so colors appear less vibrant than solid blocks.
-    ///     This compensates by increasing saturation ~20% and brightness ~10%.
+    ///     Apply gamma correction for braille colors.
+    ///     Minimal boost to keep colors true to source while compensating
+    ///     slightly for braille dot sparsity.
     /// </summary>
     private static (byte r, byte g, byte b) BoostBrailleColor(byte r, byte g, byte b, float gamma)
     {
@@ -932,7 +932,7 @@ public class BrailleRenderer : IDisposable
         var gf = g / 255f;
         var bf = b / 255f;
 
-        // Apply gamma correction first
+        // Apply gamma correction
         if (gamma != 1.0f)
         {
             rf = MathF.Pow(rf, gamma);
@@ -940,27 +940,19 @@ public class BrailleRenderer : IDisposable
             bf = MathF.Pow(bf, gamma);
         }
 
-        // Boost saturation by ~20% and brightness by ~10%
-        // Convert RGB to HSL-ish, boost, convert back
+        // Gentle saturation boost to compensate for sparse dot coverage
         var maxC = MathF.Max(rf, MathF.Max(gf, bf));
         var minC = MathF.Min(rf, MathF.Min(gf, bf));
         var delta = maxC - minC;
 
         if (delta > 0.01f)
         {
-            // Increase saturation: push colors away from gray
             var mid = (maxC + minC) / 2f;
-            const float satBoost = 1.2f; // 20% more saturated (reduced from 1.25)
+            const float satBoost = 1.08f; // 8% saturation boost (gentle)
             rf = mid + (rf - mid) * satBoost;
             gf = mid + (gf - mid) * satBoost;
             bf = mid + (bf - mid) * satBoost;
         }
-
-        // Brightness boost: ~10% (reduced from 15% to prevent solarization)
-        const float brightBoost = 1.1f;
-        rf *= brightBoost;
-        gf *= brightBoost;
-        bf *= brightBoost;
 
         // Clamp and convert back
         return (

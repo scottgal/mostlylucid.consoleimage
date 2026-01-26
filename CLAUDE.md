@@ -513,8 +513,9 @@ Values may vary by font. Run `--calibrate` to find your ideal value.
 - `--save` - Save calibration to calibration.json
 - `--no-color` - Disable color output (greyscale for blocks/braille)
 - `--no-animate` - Show first frame only
-- `--md, --markdown` - Output markdown file with rendered ASCII art
-- `--md-format` - Markdown format: plain (default), html, svg, ansi
+- `--md, --markdown` - Export to markdown/SVG (auto-names from input, or specify path)
+- `--md-format` - Export format: svg (default), plain, html, ansi
+- `--no-enhance` - Disable FFmpeg audio preprocessing for Whisper transcription
 
 ### Subtitle Options (Unified)
 

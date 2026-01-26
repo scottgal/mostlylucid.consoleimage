@@ -398,6 +398,9 @@ jobs:
           - os: windows-latest
             rid: win-x64
             ext: .exe
+          - os: windows-latest
+            rid: win-arm64
+            ext: .exe
           - os: ubuntu-latest
             rid: linux-x64
             ext: ''
@@ -426,15 +429,16 @@ jobs:
 
       - name: Restore with NuGet packages
         run: |
-          dotnet restore ConsoleImage/ConsoleImage.csproj -p:UseNuGetDependency=true -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
+          dotnet restore ConsoleImage/ConsoleImage.csproj -p:UseNuGetDependency=true -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} -p:BundleWhisperRuntime=true
           dotnet restore ConsoleImage.Mcp/ConsoleImage.Mcp.csproj -p:UseNuGetDependency=true -p:CorePackageVersion=${{ needs.publish-core.outputs.version }}
 
-      - name: Publish AOT - consoleimage
+      - name: Publish AOT - consoleimage (with Whisper runtime)
         shell: bash
         run: |
           dotnet publish ConsoleImage/ConsoleImage.csproj \
             -c Release -r ${{ matrix.rid }} --self-contained true \
             -p:PublishAot=true -p:UseNuGetDependency=true \
+            -p:BundleWhisperRuntime=true \
             -p:CorePackageVersion=${{ needs.publish-core.outputs.version }} \
             -o ./publish/consoleimage-${{ matrix.rid }}
 
@@ -450,7 +454,7 @@ jobs:
       - name: Prepare archives
         shell: bash
         run: |
-          # consoleimage (unified CLI for images, GIFs, videos, documents)
+          # === ConsoleImage CLI (default - without Whisper native libs) ===
           mkdir -p ./archive/consoleimage-${{ matrix.rid }}
           if [ "${{ matrix.ext }}" == ".exe" ]; then
             cp ./publish/consoleimage-${{ matrix.rid }}/consoleimage.exe ./archive/consoleimage-${{ matrix.rid }}/
@@ -461,7 +465,24 @@ jobs:
           cp README.md ./archive/consoleimage-${{ matrix.rid }}/
           cp ConsoleImage/calibration.json ./archive/consoleimage-${{ matrix.rid }}/ || true
 
-          # consoleimage-mcp
+          # === ConsoleImage CLI + Whisper (with native libs for transcription) ===
+          mkdir -p ./archive/consoleimage-${{ matrix.rid }}-whisper
+          if [ "${{ matrix.ext }}" == ".exe" ]; then
+            cp ./publish/consoleimage-${{ matrix.rid }}/consoleimage.exe ./archive/consoleimage-${{ matrix.rid }}-whisper/
+            # Copy Whisper native DLLs (whisper.dll, ggml-*.dll)
+            cp ./publish/consoleimage-${{ matrix.rid }}/*.dll ./archive/consoleimage-${{ matrix.rid }}-whisper/ 2>/dev/null || true
+          else
+            cp ./publish/consoleimage-${{ matrix.rid }}/consoleimage ./archive/consoleimage-${{ matrix.rid }}-whisper/
+            chmod +x ./archive/consoleimage-${{ matrix.rid }}-whisper/consoleimage
+            # Copy Whisper native libraries (.so on Linux, .dylib on macOS)
+            cp ./publish/consoleimage-${{ matrix.rid }}/*.so ./archive/consoleimage-${{ matrix.rid }}-whisper/ 2>/dev/null || true
+            cp ./publish/consoleimage-${{ matrix.rid }}/*.dylib ./archive/consoleimage-${{ matrix.rid }}-whisper/ 2>/dev/null || true
+            cp ./publish/consoleimage-${{ matrix.rid }}/*.metal ./archive/consoleimage-${{ matrix.rid }}-whisper/ 2>/dev/null || true
+          fi
+          cp README.md ./archive/consoleimage-${{ matrix.rid }}-whisper/
+          cp ConsoleImage/calibration.json ./archive/consoleimage-${{ matrix.rid }}-whisper/ || true
+
+          # === ConsoleImage MCP Server ===
           mkdir -p ./archive/consoleimage-mcp-${{ matrix.rid }}
           if [ "${{ matrix.ext }}" == ".exe" ]; then
             cp ./publish/consoleimage-mcp-${{ matrix.rid }}/consoleimage-mcp.exe ./archive/consoleimage-mcp-${{ matrix.rid }}/
@@ -477,12 +498,14 @@ jobs:
         run: |
           cd archive
           Compress-Archive -Path consoleimage-${{ matrix.rid }}/* -DestinationPath consoleimage-${{ matrix.rid }}.zip
+          Compress-Archive -Path consoleimage-${{ matrix.rid }}-whisper/* -DestinationPath consoleimage-${{ matrix.rid }}-whisper.zip
           Compress-Archive -Path consoleimage-mcp-${{ matrix.rid }}/* -DestinationPath consoleimage-mcp-${{ matrix.rid }}.zip
 
       - name: Archive (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
           cd archive/consoleimage-${{ matrix.rid }} && tar -czvf ../consoleimage-${{ matrix.rid }}.tar.gz * && cd ..
+          cd consoleimage-${{ matrix.rid }}-whisper && tar -czvf ../consoleimage-${{ matrix.rid }}-whisper.tar.gz * && cd ..
           cd consoleimage-mcp-${{ matrix.rid }} && tar -czvf ../consoleimage-mcp-${{ matrix.rid }}.tar.gz *
 
       - name: Upload artifacts
@@ -524,12 +547,19 @@ jobs:
 
             ### CLI Downloads
 
-            | Platform | consoleimage | consoleimage-mcp |
-            |----------|--------------|------------------|
-            | Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-mcp-win-x64.zip` |
-            | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-mcp-linux-x64.tar.gz` |
-            | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-mcp-linux-arm64.tar.gz` |
-            | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-mcp-osx-arm64.tar.gz` |
+            Two variants available:
+            - **consoleimage** — Core CLI for images, GIFs, videos, documents (smaller download)
+            - **consoleimage + whisper** — Same binary + Whisper native libraries for AI-powered transcription
+
+            | Platform | consoleimage | + whisper | consoleimage-mcp |
+            |----------|--------------|----------|------------------|
+            | Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-win-x64-whisper.zip` | `consoleimage-mcp-win-x64.zip` |
+            | Windows ARM64 | `consoleimage-win-arm64.zip` | `consoleimage-win-arm64-whisper.zip` | `consoleimage-mcp-win-arm64.zip` |
+            | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-linux-x64-whisper.tar.gz` | `consoleimage-mcp-linux-x64.tar.gz` |
+            | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-whisper.tar.gz` | `consoleimage-mcp-linux-arm64.tar.gz` |
+            | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-osx-arm64-whisper.tar.gz` | `consoleimage-mcp-osx-arm64.tar.gz` |
+
+            > **Which one do I need?** The default `consoleimage` handles images, GIFs, videos, subtitles from files/embedded/YouTube, and document playback. Download the `whisper` variant if you want to generate subtitles from speech using local AI transcription (`--subs whisper`).
 
             ---
 
@@ -549,6 +579,13 @@ jobs:
             consoleimage movie.mp4
             consoleimage movie.mp4 --blocks -w 120
             consoleimage movie.mp4 --ss 60 -t 30    # Start at 60s, play 30s
+
+            # Subtitles (embedded, external, or YouTube - no Whisper needed)
+            consoleimage movie.mkv --subs auto
+            consoleimage movie.mp4 --subs movie.srt
+
+            # AI Transcription (requires whisper variant)
+            consoleimage movie.mp4 --subs whisper
 
             # Save to compressed document (.cidz)
             consoleimage animation.gif -o output.cidz
@@ -616,6 +653,7 @@ jobs:
             - **Animated playback**: GIFs and videos with flicker-free DECSET 2026 sync
             - **Auto-fits to terminal**: Output defaults to your console size
             - **AOT compiled**: Fast startup, no .NET runtime required
+            - **Whisper variant**: Optional AI transcription with bundled native libraries
             - **Cross-platform**: Windows, Linux, macOS (x64 and ARM64)
 
           files: |
@@ -650,7 +688,8 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| CLI | Platforms |" >> $GITHUB_STEP_SUMMARY
         echo "|-----|-----------|" >> $GITHUB_STEP_SUMMARY
-        echo "| consoleimage | win-x64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
-        echo "| consoleimage-mcp | win-x64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
+        echo "| consoleimage | win-x64, win-arm64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
+        echo "| consoleimage + whisper | win-x64, win-arm64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
+        echo "| consoleimage-mcp | win-x64, win-arm64, linux-x64, linux-arm64, osx-arm64 |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "[View Release](https://github.com/${{ github.repository }}/releases/tag/consoleimage-v${VERSION})" >> $GITHUB_STEP_SUMMARY

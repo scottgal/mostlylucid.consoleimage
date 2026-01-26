@@ -133,7 +133,18 @@
       "Bash(powershell.exe -Command \"Get-ChildItem -Recurse ''C:\\\\Users\\\\scott\\\\AppData\\\\Local\\\\consoleimage\\\\whisper\\\\runtimes'' | Select-Object FullName, Length | Format-Table -AutoSize\")",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(comm -23:*)",
-      "mcp__plugin_playwright_playwright__browser_navigate"
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "Bash(git reset:*)",
+      "Bash(test:*)",
+      "Bash(for file in \"CHANGELOG.md\" \"docs/BRAILLE-RENDERING.md\" \"docs/CLI-GUIDE.md\" \"docs/HOW-IT-WORKS.md\" \"docs/JSON-FORMAT.md\" \"docs/LIBRARY-API.md\" \"ConsoleImage.Core/README.md\" \"ConsoleImage.Mcp/README.md\" \"ConsoleImage.Player/README.md\" \"ConsoleImage.Spectre/README.md\" \"ConsoleImage.Video.Core/README.md\" \"ConsoleImage/README.md\")",
+      "Bash(do)",
+      "Bash(if:*)",
+      "Bash(then)",
+      "Bash(echo:*)",
+      "Bash(else)",
+      "Bash(fi)",
+      "Bash(git log:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
