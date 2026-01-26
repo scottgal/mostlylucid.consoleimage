@@ -103,9 +103,14 @@ jobs:
           mkdir -p ./archive/${{ matrix.artifact }}
           if [ "${{ matrix.ext }}" == ".exe" ]; then
             cp ./publish/${{ matrix.artifact }}/consoleimage.exe ./archive/${{ matrix.artifact }}/
+            # Copy Whisper native DLLs (whisper.dll, ggml-*.dll)
+            cp ./publish/${{ matrix.artifact }}/*.dll ./archive/${{ matrix.artifact }}/ 2>/dev/null || true
           else
             cp ./publish/${{ matrix.artifact }}/consoleimage ./archive/${{ matrix.artifact }}/
             chmod +x ./archive/${{ matrix.artifact }}/consoleimage
+            # Copy Whisper native libraries (.so on Linux, .dylib on macOS)
+            cp ./publish/${{ matrix.artifact }}/*.so ./archive/${{ matrix.artifact }}/ 2>/dev/null || true
+            cp ./publish/${{ matrix.artifact }}/*.dylib ./archive/${{ matrix.artifact }}/ 2>/dev/null || true
           fi
           cp README.md ./archive/${{ matrix.artifact }}/
           cp ConsoleImage/calibration.json ./archive/${{ matrix.artifact }}/ || true

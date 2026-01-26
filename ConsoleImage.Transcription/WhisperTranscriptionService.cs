@@ -87,7 +87,10 @@ public sealed class WhisperTranscriptionService : IDisposable
         {
             if (Factory != null) return;
 
-            // Step 1: Ensure native runtime is available (downloads if needed)
+            // Step 1: Configure runtime search path early (adds library dirs to PATH)
+            WhisperRuntimeDownloader.ConfigureRuntimePath();
+
+            // Step 2: Ensure native runtime is available and loadable
             if (!WhisperRuntimeDownloader.IsRuntimeAvailable())
             {
                 var (rid, sizeMB) = WhisperRuntimeDownloader.GetRuntimeInfo();
@@ -96,11 +99,24 @@ public sealed class WhisperTranscriptionService : IDisposable
                 var runtimeSuccess = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
                 if (!runtimeSuccess)
                     throw new InvalidOperationException(
-                        $"Failed to download Whisper runtime. {WhisperRuntimeDownloader.GetManualInstallInstructions(rid)}");
+                        $"Failed to obtain Whisper runtime.\n{WhisperRuntimeDownloader.GetManualInstallInstructions(rid)}");
+
+                // Re-configure after download to pick up new location
+                WhisperRuntimeDownloader.ConfigureRuntimePath();
             }
 
-            // Step 2: Configure runtime path so Whisper.NET can find native libs
-            WhisperRuntimeDownloader.ConfigureRuntimePath();
+            // Verify the runtime can actually load (catches corrupted/wrong-arch files)
+            if (!WhisperRuntimeDownloader.CanLoadRuntime(out var loadError))
+            {
+                progress?.Report((0, 0, $"Runtime load check failed: {loadError}"));
+                // Still proceed — WhisperFactory might use different loading logic
+            }
+            else
+            {
+                var runtimePath = WhisperRuntimeDownloader.GetAvailableRuntimePath();
+                if (runtimePath != null)
+                    progress?.Report((0, 0, $"Runtime: {runtimePath}"));
+            }
 
             // Step 3: Download model if needed
             var modelPath = await WhisperModelDownloader.EnsureModelAsync(
@@ -122,12 +138,18 @@ public sealed class WhisperTranscriptionService : IDisposable
             {
                 // Provide helpful error message with runtime location info
                 var rid = WhisperRuntimeDownloader.GetRuntimeIdentifier();
-                var runtimeDir = WhisperRuntimeDownloader.RuntimesDirectory;
+                var libName = WhisperRuntimeDownloader.GetNativeLibraryName();
+                var foundPath = WhisperRuntimeDownloader.GetAvailableRuntimePath();
+                var searchedPaths = string.Join("\n  ",
+                    WhisperRuntimeDownloader.GetSearchPaths().Select(p => $"{p} {(File.Exists(p) ? "[EXISTS]" : "")}"));
+
                 throw new InvalidOperationException(
                     $"Failed to load Whisper model from {modelPath}: {ex.GetType().Name} - {ex.Message}\n" +
-                    $"Runtime directory: {runtimeDir}\n" +
                     $"Platform: {rid}\n" +
-                    $"Ensure whisper.dll/libwhisper.so exists in the runtime directory.", ex);
+                    $"Native library: {libName}\n" +
+                    $"Found at: {foundPath ?? "(NOT FOUND)"}\n" +
+                    $"Searched:\n  {searchedPaths}\n" +
+                    $"Ensure {libName} and its dependencies (ggml-*.dll) are next to the executable.", ex);
             }
 
             progress?.Report((0, 0, "Whisper ready"));

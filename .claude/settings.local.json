@@ -124,7 +124,8 @@
       "Bash(magick:*)",
       "Bash(cmd.exe /c \"dir F:\\\\gifs\\\\*.gif /b\")",
       "Bash(cmd.exe /c:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(Select-Object FullName, Length)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -44,9 +44,32 @@
 
     <!-- Bundle Whisper native runtime for AOT builds -->
     <!-- Whisper.net.Runtime contains CPU binaries for all platforms -->
+    <PropertyGroup>
+        <WhisperRuntimeVersion>1.9.0</WhisperRuntimeVersion>
+    </PropertyGroup>
     <ItemGroup Condition="'$(PublishAot)' == 'true'">
-        <PackageReference Include="Whisper.net.Runtime" Version="1.9.0"/>
+        <PackageReference Include="Whisper.net.Runtime" Version="$(WhisperRuntimeVersion)"/>
     </ItemGroup>
+
+    <!-- Copy Whisper native DLLs to publish output (they only copy to build output by default) -->
+    <Target Name="PublishWhisperRuntime" AfterTargets="Publish"
+            Condition="'$(RuntimeIdentifier)' != ''">
+        <PropertyGroup>
+            <!-- Map .NET RID to Whisper.net.Runtime folder name (macOS uses 'macos' not 'osx') -->
+            <_WhisperRid>$(RuntimeIdentifier)</_WhisperRid>
+            <_WhisperRid Condition="$(RuntimeIdentifier.StartsWith('osx'))">$(RuntimeIdentifier.Replace('osx','macos'))</_WhisperRid>
+        </PropertyGroup>
+        <ItemGroup>
+            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\build\$(_WhisperRid)\*" />
+        </ItemGroup>
+        <Message Importance="high"
+                 Text="Publishing Whisper native runtime ($(_WhisperRid)): @(_WhisperNativeFiles->'%(Filename)%(Extension)', ', ')"
+                 Condition="'@(_WhisperNativeFiles)' != ''" />
+        <Copy SourceFiles="@(_WhisperNativeFiles)"
+              DestinationFolder="$(PublishDir)"
+              SkipUnchangedFiles="true"
+              Condition="'@(_WhisperNativeFiles)' != ''" />
+    </Target>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.2"/>
