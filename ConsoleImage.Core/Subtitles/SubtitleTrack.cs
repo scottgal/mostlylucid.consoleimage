@@ -41,6 +41,15 @@ public class SubtitleTrack
     private int _lastFoundIndex = -1;
 
     /// <summary>
+    /// Reset the sequential playback cache. Call this after seeking to avoid
+    /// stale cache hits that return incorrect subtitles for the new position.
+    /// </summary>
+    public void ResetCache()
+    {
+        _lastFoundIndex = -1;
+    }
+
+    /// <summary>
     /// Get the subtitle active at the given timestamp.
     /// Optimized for sequential playback: checks cached position first (O(1)),
     /// then falls back to binary search (O(log n)).

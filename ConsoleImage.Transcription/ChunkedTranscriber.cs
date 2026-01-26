@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using ConsoleImage.Core.Subtitles;
+using static ConsoleImage.Core.Subtitles.SubtitleSplitter;
 
 namespace ConsoleImage.Transcription;
 
@@ -15,6 +16,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     private readonly double _chunkDurationSeconds;
     private readonly double _bufferAheadSeconds;
     private readonly double _startTimeOffset;
+    private readonly bool _enhanceAudio;
 
     private readonly SubtitleTrack _track = new();
     private readonly SemaphoreSlim _transcribeLock = new(1, 1);
@@ -25,6 +27,10 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     private int _entryIndex;
     private bool _isComplete;
     private string? _tempAudioDir;
+    private string? _lastChunkPrompt;
+
+    // Overlap between chunks to prevent cutting words at boundaries
+    private const double OverlapSeconds = 2.0;
 
     /// <summary>
     /// Event raised when transcription progress changes (for UI feedback).
@@ -60,18 +66,21 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     /// <param name="chunkDurationSeconds">Duration of each audio chunk (default: 30s).</param>
     /// <param name="bufferAheadSeconds">How far ahead to transcribe (default: 60s).</param>
     /// <param name="startTimeOffset">Start transcription from this time (default: 0 = from beginning).</param>
+    /// <param name="enhanceAudio">Apply FFmpeg audio preprocessing filters for better speech recognition.</param>
     public ChunkedTranscriber(
         string inputPath,
         string modelSize = "base",
         string language = "en",
         double chunkDurationSeconds = 30.0,
         double bufferAheadSeconds = 60.0,
-        double startTimeOffset = 0.0)
+        double startTimeOffset = 0.0,
+        bool enhanceAudio = true)
     {
         _inputPath = inputPath;
         _chunkDurationSeconds = chunkDurationSeconds;
         _bufferAheadSeconds = bufferAheadSeconds;
         _startTimeOffset = startTimeOffset;
+        _enhanceAudio = enhanceAudio;
         _lastTranscribedEndTime = startTimeOffset; // Start from the offset position
 
         _whisper = new WhisperTranscriptionService()
@@ -253,13 +262,19 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         // Report progress - extracting audio
         OnProgress?.Invoke(startTime, $"Extracting audio at {FormatTime(startTime)}...");
 
+        // Overlapping chunks: extract 2s earlier to avoid cutting words at boundaries.
+        // First chunk has no overlap. Segments from the overlap zone are discarded below.
+        var isFirstChunk = startTime <= _startTimeOffset;
+        var extractStart = isFirstChunk ? startTime : startTime - OverlapSeconds;
+        var extractDuration = isFirstChunk ? _chunkDurationSeconds : _chunkDurationSeconds + OverlapSeconds;
+
         // Extract audio chunk
         var chunkPath = Path.Combine(_tempAudioDir!, $"chunk_{startTime:F0}_{endTime:F0}.wav");
 
         try
         {
             var (success, actualDuration) = await ExtractAudioChunkAsync(
-                _inputPath, chunkPath, startTime, _chunkDurationSeconds, ct);
+                _inputPath, chunkPath, extractStart, extractDuration, _enhanceAudio, ct);
 
             if (!success || actualDuration <= 0)
             {
@@ -297,6 +312,15 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                 return;
             }
 
+            // Energy-based silence detection: skip chunks with no speech energy
+            // Saves significant CPU by avoiding Whisper processing on silent sections
+            if (!HasSpeechEnergy(chunkPath))
+            {
+                OnProgress?.Invoke(startTime, $"Skipping silent chunk at {FormatTime(startTime)}");
+                _lastTranscribedEndTime = startTime + actualDuration - (isFirstChunk ? 0 : OverlapSeconds);
+                return;
+            }
+
             // Report progress - transcribing
             OnProgress?.Invoke(startTime, $"Transcribing {FormatTime(startTime)} - {FormatTime(startTime + actualDuration)}...");
 
@@ -309,27 +333,76 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                     return;
                 }
 
-                // Transcribe the chunk
-                var result = await _whisper.TranscribeFileAsync(chunkPath, null, ct);
+                // Transcribe with context from previous chunk for continuity
+                var result = await _whisper.TranscribeFileAsync(chunkPath, null, ct, _lastChunkPrompt);
 
-                // Convert segments to subtitle entries with time offset
+                // Filter hallucinations and convert segments to subtitle entries
+                var chunkTexts = new List<string>();
+                string? lastEmittedText = null;
+                int consecutiveRepeats = 0;
+
                 foreach (var segment in result.Segments)
                 {
                     // Skip empty or whitespace-only segments
                     if (string.IsNullOrWhiteSpace(segment.Text))
                         continue;
 
-                    var entry = new SubtitleEntry
+                    var text = segment.Text.Trim();
+
+                    // Calculate absolute timestamp from extraction start
+                    var absStart = extractStart + segment.StartSeconds;
+                    var absEnd = extractStart + segment.EndSeconds;
+
+                    // Discard segments from the overlap zone (already covered by previous chunk)
+                    if (!isFirstChunk && absEnd <= startTime)
+                        continue;
+
+                    // --- Repetition hallucination filter ---
+                    // Detect consecutive identical segments (e.g., "[INDISTINCT CHATTER]" x50)
+                    if (string.Equals(text, lastEmittedText, StringComparison.OrdinalIgnoreCase))
                     {
-                        Index = ++_entryIndex,
-                        StartTime = TimeSpan.FromSeconds(startTime + segment.StartSeconds),
-                        EndTime = TimeSpan.FromSeconds(startTime + segment.EndSeconds),
-                        Text = segment.Text.Trim(),
-                        SpeakerId = segment.SpeakerId  // Pass through speaker ID for diarization
+                        consecutiveRepeats++;
+                        if (consecutiveRepeats >= 2) // Allow 1 repeat, filter 3+
+                            continue;
+                    }
+                    else
+                    {
+                        consecutiveRepeats = 0;
+                    }
+
+                    // Detect internal repetition loops (e.g., same phrase repeated within segment)
+                    if (IsRepetitiveText(text))
+                        continue;
+
+                    lastEmittedText = text;
+                    chunkTexts.Add(text);
+
+                    var rawEntry = new SubtitleEntry
+                    {
+                        StartTime = TimeSpan.FromSeconds(absStart),
+                        EndTime = TimeSpan.FromSeconds(absEnd),
+                        Text = text,
+                        SpeakerId = segment.SpeakerId
                     };
 
-                    _track.AddEntry(entry);
-                    OnSubtitleReady?.Invoke(entry);
+                    // Split long segments into readable subtitle entries.
+                    // Whisper sometimes produces 200+ char segments spanning 20-30s;
+                    // this splits at sentence boundaries with proportional timing.
+                    var splitEntries = Split(rawEntry, ref _entryIndex);
+                    foreach (var splitEntry in splitEntries)
+                    {
+                        _track.AddEntry(splitEntry);
+                        OnSubtitleReady?.Invoke(splitEntry);
+                    }
+                }
+
+                // Update prompt for next chunk: last ~200 chars of transcribed text
+                if (chunkTexts.Count > 0)
+                {
+                    var combined = string.Join(" ", chunkTexts);
+                    _lastChunkPrompt = combined.Length > 200
+                        ? combined[^200..]
+                        : combined;
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -339,12 +412,12 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                 OnProgress?.Invoke(startTime, $"Chunk error: {ex.Message[..Math.Min(30, ex.Message.Length)]}");
             }
 
-            _lastTranscribedEndTime = startTime + actualDuration;
+            // Advance past the actual new content (not the overlap)
+            var newContentDuration = actualDuration - (isFirstChunk ? 0 : OverlapSeconds);
+            _lastTranscribedEndTime = startTime + Math.Max(newContentDuration, _chunkDurationSeconds * 0.3);
 
             // Only mark complete if we got a very short chunk (likely at end of media)
-            // A chunk that's half the requested duration or less indicates end of content
-            // Be more lenient - short chunks can happen due to buffering with streams
-            if (actualDuration < _chunkDurationSeconds * 0.3)
+            if (newContentDuration < _chunkDurationSeconds * 0.3)
             {
                 _isComplete = true;
                 OnProgress?.Invoke(_lastTranscribedEndTime, "Transcription complete");
@@ -360,11 +433,49 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Detect text with repetitive hallucination patterns.
+    /// Returns true if the text contains the same short phrase repeated 3+ times.
+    /// </summary>
+    private static bool IsRepetitiveText(string text)
+    {
+        if (text.Length < 10) return false;
+
+        // Split into words and check for repeating n-gram patterns
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length < 6) return false;
+
+        // Check for repeating sequences of 1-4 words
+        for (int gramSize = 1; gramSize <= Math.Min(4, words.Length / 3); gramSize++)
+        {
+            int repeatCount = 1;
+            for (int i = gramSize; i + gramSize <= words.Length; i += gramSize)
+            {
+                bool match = true;
+                for (int j = 0; j < gramSize; j++)
+                {
+                    if (!string.Equals(words[i + j], words[i + j - gramSize], StringComparison.OrdinalIgnoreCase))
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) repeatCount++;
+                else repeatCount = 1;
+
+                if (repeatCount >= 3) return true;
+            }
+        }
+
+        return false;
+    }
+
     private static async Task<(bool success, double duration)> ExtractAudioChunkAsync(
         string inputPath,
         string outputPath,
         double startTime,
         double duration,
+        bool enhanceAudio,
         CancellationToken ct)
     {
         var ffmpegPath = FindFFmpeg();
@@ -382,10 +493,19 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
             ? $"-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
             : "";
 
+        // Speech-optimized audio filters for better Whisper recognition:
+        // highpass=f=200    - Remove low-freq rumble/hum below 200Hz
+        // lowpass=f=3000    - Remove high-freq noise above 3kHz (speech is 300-3000Hz)
+        // NOTE: loudnorm and afftdn removed — loudnorm requires two-pass (slow),
+        // afftdn distorts clean audio. These simple filters are fast and safe.
+        var audioFilter = enhanceAudio
+            ? "-af \"highpass=f=200,lowpass=f=3000\" "
+            : "";
+
         // -ss before -i for fast seeking (input seeking)
         // -t for duration limit
         // -vn to skip video, -ar 16000 -ac 1 for Whisper format
-        var args = $"{inputArgs} -ss {startTime:F3} -i \"{inputPath}\" -t {duration:F3} -vn -ar 16000 -ac 1 -acodec pcm_s16le -y \"{outputPath}\"";
+        var args = $"{inputArgs} -ss {startTime:F3} -i \"{inputPath}\" -t {duration:F3} -vn {audioFilter}-ar 16000 -ac 1 -acodec pcm_s16le -y \"{outputPath}\"";
 
         var psi = new System.Diagnostics.ProcessStartInfo
         {
@@ -478,6 +598,43 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Check if a WAV file contains enough audio energy to be worth transcribing.
+    /// Reads PCM samples and calculates RMS energy. Skips silent chunks to save CPU.
+    /// </summary>
+    private static bool HasSpeechEnergy(string wavPath, float rmsThreshold = 0.01f)
+    {
+        var fileInfo = new FileInfo(wavPath);
+        if (fileInfo.Length < 1000) return false; // Too small to contain speech
+
+        try
+        {
+            using var reader = new BinaryReader(File.OpenRead(wavPath));
+            reader.BaseStream.Seek(44, SeekOrigin.Begin); // Skip WAV header
+
+            long sumSquares = 0;
+            int sampleCount = 0;
+
+            while (reader.BaseStream.Position + 1 < reader.BaseStream.Length)
+            {
+                short sample = reader.ReadInt16();
+                sumSquares += (long)sample * sample;
+                sampleCount++;
+            }
+
+            if (sampleCount == 0) return false;
+
+            // RMS normalized to 0-1 range (Int16 max = 32767)
+            var rms = Math.Sqrt((double)sumSquares / sampleCount) / 32767.0;
+            return rms > rmsThreshold;
+        }
+        catch
+        {
+            // If we can't read the file, assume it has speech (don't skip)
+            return true;
+        }
     }
 
     /// <summary>

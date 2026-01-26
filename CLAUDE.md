@@ -242,6 +242,28 @@ consoleimage video.mp4 -ss 60 -t 30
 consoleimage video.mp4 --status
 ```
 
+### Video Playback Controls
+
+During video playback, the following keyboard controls are available:
+
+| Key | Action |
+|-----|--------|
+| `Space` | Pause/resume playback |
+| `Left` | Seek backward (default 10s) |
+| `Right` | Seek forward (default 10s) |
+| `+` / `=` | Double seek step (max 60s) |
+| `-` | Halve seek step (min 5s) |
+| `R` | Save raw frame snapshot as PNG (with burned-in subtitles) |
+| `S` | Save ANSI text rendering as PNG snapshot |
+| `Q` / `Escape` | Quit playback |
+| `A` | Show hint for ASCII mode flag |
+| `b` / `B` | Show hint for Blocks/Braille mode flag |
+| `m` / `M` | Show hint for Monochrome/Matrix mode flag |
+
+**Seeking:** Arrow keys seek by 10 seconds by default. Use `+`/`-` to adjust the step size between 5-60 seconds. Seeking clears the screen and resumes from the new position. Subtitles and status bar update correctly after seeking.
+
+**Snapshots:** Press `R` to save the current raw video frame as a PNG file, or `S` to save the current terminal rendering (braille/blocks/ASCII) as a PNG image. Both include burned-in subtitles when active. Snapshots are saved to the video's directory with sequential numbering: `{videoname}_{type}_{HH.mm.ss}_{NNN}.png`
+
 ### Subtitle Generation
 ```bash
 # Auto-detect subtitles (local → embedded → YouTube → Whisper)

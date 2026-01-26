@@ -231,7 +231,7 @@ public class GifWriter : IDisposable
     ///     Burn subtitle and status line text into an image with outline effect.
     ///     Subtitle appears above the status line at the bottom of the image.
     /// </summary>
-    private void BurnOverlaysIntoImage(Image<Rgba32> image, string? subtitle, string? statusLine)
+    public static void BurnOverlaysIntoImage(Image<Rgba32> image, string? subtitle, string? statusLine)
     {
         var subtitleLines = string.IsNullOrEmpty(subtitle)
             ? Array.Empty<string>()
@@ -477,6 +477,61 @@ public class GifWriter : IDisposable
                 for (var px = 0; px < pixelSize; px++)
                     image[x * pixelSize + px, (lineY * 2 + 1) * pixelSize + py] = ToRgba32(bottomColor);
             }
+        }
+
+        return image;
+    }
+
+    /// <summary>
+    ///     Static helper to render ANSI-colored text content to an image.
+    ///     Used for snapshot capture of ASCII mode terminal output.
+    /// </summary>
+    /// <param name="ansiContent">The ANSI-colored text content to render.</param>
+    /// <param name="fontSize">Font size for rendering (default: 10).</param>
+    /// <param name="scale">Scale factor for output (default: 1.0).</param>
+    /// <param name="backgroundColor">Background color (default: black).</param>
+    /// <returns>The rendered image.</returns>
+    public static Image<Rgba32> RenderAnsiTextToImage(string ansiContent, int fontSize = 10, float scale = 1.0f, Color? backgroundColor = null)
+    {
+        var options = new GifWriterOptions
+        {
+            FontSize = fontSize,
+            Scale = scale,
+            BackgroundColor = backgroundColor ?? Color.Black
+        };
+        using var writer = new GifWriter(options);
+        return writer.RenderSingleFrameToImage(ansiContent);
+    }
+
+    /// <summary>
+    ///     Render a single ANSI text frame to an image (instance method for access to options).
+    /// </summary>
+    private Image<Rgba32> RenderSingleFrameToImage(string content)
+    {
+        var lines = content.Split('\n');
+        var maxWidth = lines.Max(l => StripAnsi(l).Length);
+        var lineCount = lines.Length;
+
+        var charWidth = (int)(_options.FontSize * 6 / 10 * _options.Scale);
+        var charHeight = (int)((_options.FontSize + 2) * _options.Scale);
+        var scaledPadding = (int)(_options.Padding * _options.Scale);
+        var imageWidth = Math.Max(1, maxWidth * charWidth + scaledPadding * 2);
+        var imageHeight = Math.Max(1, lineCount * charHeight + scaledPadding * 2);
+
+        var scaledFontSize = (int)(_options.FontSize * _options.Scale);
+        var hasJapanese = ContainsJapaneseCharacters(content);
+        var font = hasJapanese
+            ? GetMatrixFont(Math.Max(6, scaledFontSize))
+            : GetMonospaceFont(Math.Max(6, scaledFontSize));
+
+        var image = new Image<Rgba32>(imageWidth, imageHeight);
+        image.Mutate(ctx => ctx.Fill(_options.BackgroundColor));
+
+        var y = scaledPadding;
+        foreach (var line in lines)
+        {
+            DrawColoredLine(image, line, scaledPadding, y, charWidth, font);
+            y += charHeight;
         }
 
         return image;

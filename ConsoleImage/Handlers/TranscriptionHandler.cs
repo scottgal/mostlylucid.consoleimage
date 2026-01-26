@@ -37,6 +37,12 @@ public static class TranscriptionHandler
         /// Quiet mode - suppress progress messages (only output transcribed text).
         /// </summary>
         public bool Quiet { get; set; } = false;
+
+        /// <summary>
+        /// Apply FFmpeg audio preprocessing filters for better speech recognition.
+        /// Default: true. Disable with --no-enhance for recordings where filtering hurts quality.
+        /// </summary>
+        public bool EnhanceAudio { get; set; } = true;
     }
 
     public static async Task<int> HandleAsync(TranscriptionOptions opts, CancellationToken ct)
@@ -121,7 +127,7 @@ public static class TranscriptionHandler
                 if (!quiet)
                     Console.Error.WriteLine("Extracting audio...");
                 tempAudioPath = Path.Combine(Path.GetTempPath(), $"consoleimage_audio_{Guid.NewGuid():N}.wav");
-                await ExtractAudioAsync(opts.InputPath, tempAudioPath, opts.StartTime, opts.Duration, ct);
+                await ExtractAudioAsync(opts.InputPath, tempAudioPath, opts.StartTime, opts.Duration, opts.EnhanceAudio, ct);
                 audioPath = tempAudioPath;
                 if (!quiet)
                     Console.Error.WriteLine("Audio extracted.");
@@ -221,7 +227,7 @@ public static class TranscriptionHandler
                path.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task ExtractAudioAsync(string inputPath, string audioPath, double? startTime, double? duration, CancellationToken ct)
+    private static async Task ExtractAudioAsync(string inputPath, string audioPath, double? startTime, double? duration, bool enhanceAudio, CancellationToken ct)
     {
         // Use FFmpeg to extract audio
         var ffmpegPath = FindFFmpeg();
@@ -244,8 +250,17 @@ public static class TranscriptionHandler
         if (duration.HasValue)
             timeArgs += $"-t {duration.Value:F2} ";
 
+        // Speech-optimized audio filters for better Whisper recognition:
+        // highpass=f=200    - Remove low-freq rumble/hum below 200Hz
+        // lowpass=f=3000    - Remove high-freq noise above 3kHz (speech is 300-3000Hz)
+        // NOTE: loudnorm and afftdn removed — loudnorm requires two-pass (slow),
+        // afftdn distorts clean audio. These simple filters are fast and safe.
+        var audioFilter = enhanceAudio
+            ? "-af \"highpass=f=200,lowpass=f=3000\" "
+            : "";
+
         // Extract audio: 16kHz mono WAV (required for Whisper)
-        var args = $"{timeArgs}{inputArg} -vn -ar 16000 -ac 1 -acodec pcm_s16le -y \"{audioPath}\"";
+        var args = $"{timeArgs}{inputArg} -vn {audioFilter}-ar 16000 -ac 1 -acodec pcm_s16le -y \"{audioPath}\"";
 
         var psi = new System.Diagnostics.ProcessStartInfo
         {

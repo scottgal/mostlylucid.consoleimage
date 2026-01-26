@@ -129,12 +129,46 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
+    /// Apply quality tuning to a Whisper processor builder.
+    /// These settings reduce hallucinations, skip silent segments, and improve accuracy.
+    /// </summary>
+    private WhisperProcessorBuilder ApplyQualityTuning(WhisperProcessorBuilder builder, string? prompt = null)
+    {
+        builder
+            .WithThreads(_threads)
+            .WithNoSpeechThreshold(0.6f)        // Skip segments with <60% speech probability
+            .WithEntropyThreshold(2.4f)          // Skip high-entropy (garbled/hallucinated) segments
+            .WithLogProbThreshold(-1.0f)         // Skip very low confidence output
+            .WithTemperature(0.0f)               // Deterministic (greedy) decoding first
+            .WithTemperatureInc(0.2f);           // Increase temp on fallback attempts
+
+        if (_language != "auto" && !string.IsNullOrEmpty(_language))
+        {
+            builder.WithLanguage(_language);
+        }
+
+        // Pass previous chunk's text as context for continuity between chunks.
+        // This reduces cold-start hallucinations and improves word accuracy at boundaries.
+        if (!string.IsNullOrWhiteSpace(prompt))
+        {
+            builder.WithPrompt(prompt);
+        }
+
+        // Use greedy sampling (default) — beam search is 2-5x slower and
+        // produces single long segments per chunk, destroying subtitle timing
+        builder.WithGreedySamplingStrategy();
+
+        return builder;
+    }
+
+    /// <summary>
     /// Transcribe an audio file (batch mode - processes entire file).
     /// </summary>
     public async Task<TranscriptionResult> TranscribeFileAsync(
         string audioPath,
         IProgress<(int segments, double seconds, string status)>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? prompt = null)
     {
         await InitializeAsync(null, ct);
 
@@ -148,28 +182,51 @@ public sealed class WhisperTranscriptionService : IDisposable
 
         progress?.Report((0, audioDuration, "Transcribing..."));
 
-        // Create processor
-        var builder = _factory!.CreateBuilder().WithThreads(_threads);
-
-        if (_language != "auto" && !string.IsNullOrEmpty(_language))
-        {
-            builder.WithLanguage(_language);
-        }
+        // Create processor with quality tuning and optional context prompt
+        var builder = ApplyQualityTuning(_factory!.CreateBuilder(), prompt);
 
         using var processor = builder.Build();
 
+        string? lastText = null;
+        int consecutiveRepeats = 0;
+
         await foreach (var result in processor.ProcessAsync(samples, ct))
         {
+            var text = result.Text.Trim();
+
+            // Skip empty segments
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            // --- Repetition hallucination filter ---
+            // Consecutive identical segments (e.g., "[INDISTINCT CHATTER]" x50)
+            if (string.Equals(text, lastText, StringComparison.OrdinalIgnoreCase))
+            {
+                consecutiveRepeats++;
+                if (consecutiveRepeats >= 2) // Allow 1 repeat, filter 3rd+
+                    continue;
+            }
+            else
+            {
+                consecutiveRepeats = 0;
+            }
+
+            // Internal repetition loops (same phrase repeated within a single segment)
+            if (IsRepetitiveText(text))
+                continue;
+
+            lastText = text;
+
             var segment = new TranscriptSegment
             {
                 StartSeconds = result.Start.TotalSeconds,
                 EndSeconds = result.End.TotalSeconds,
-                Text = result.Text.Trim(),
+                Text = text,
                 Confidence = result.Probability
             };
 
             segments.Add(segment);
-            progress?.Report((segments.Count, result.End.TotalSeconds, result.Text.Trim()));
+            progress?.Report((segments.Count, result.End.TotalSeconds, text));
         }
 
         sw.Stop();
@@ -194,11 +251,7 @@ public sealed class WhisperTranscriptionService : IDisposable
     {
         await InitializeAsync(null, ct);
 
-        var builder = _factory!.CreateBuilder().WithThreads(_threads);
-        if (_language != "auto" && !string.IsNullOrEmpty(_language))
-        {
-            builder.WithLanguage(_language);
-        }
+        var builder = ApplyQualityTuning(_factory!.CreateBuilder());
 
         using var processor = builder.Build();
 
@@ -247,6 +300,42 @@ public sealed class WhisperTranscriptionService : IDisposable
                 };
             }
         }
+    }
+
+    /// <summary>
+    /// Detect text with repetitive hallucination patterns.
+    /// Returns true if the text contains the same short phrase repeated 3+ times.
+    /// </summary>
+    private static bool IsRepetitiveText(string text)
+    {
+        if (text.Length < 10) return false;
+
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length < 6) return false;
+
+        // Check for repeating sequences of 1-4 words
+        for (int gramSize = 1; gramSize <= Math.Min(4, words.Length / 3); gramSize++)
+        {
+            int repeatCount = 1;
+            for (int i = gramSize; i + gramSize <= words.Length; i += gramSize)
+            {
+                bool match = true;
+                for (int j = 0; j < gramSize; j++)
+                {
+                    if (!string.Equals(words[i + j], words[i + j - gramSize], StringComparison.OrdinalIgnoreCase))
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) repeatCount++;
+                else repeatCount = 1;
+
+                if (repeatCount >= 3) return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

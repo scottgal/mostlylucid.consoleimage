@@ -93,6 +93,7 @@ public class CliOptions
     public Option<bool> ForceSubs { get; }
     public Option<string?> SaveSubs { get; }
     public Option<bool> NoSubCache { get; }
+    public Option<bool> NoEnhance { get; }
 
     // Output
     public Option<string?> Output { get; }
@@ -342,6 +343,7 @@ public class CliOptions
 
         SaveSubs = new Option<string?>("--save-subs") { Description = "Save generated subtitles to specified path (VTT format)" };
         NoSubCache = new Option<bool>("--no-sub-cache") { Description = "Don't cache subtitles (always re-transcribe)" };
+        NoEnhance = new Option<bool>("--no-enhance") { Description = "Disable FFmpeg audio preprocessing filters for Whisper transcription" };
 
         // Output
         Output = new Option<string?>("--output") { Description = "Output file (.gif, .cidz, .json)" };
@@ -555,6 +557,7 @@ public class CliOptions
         command.Options.Add(WhisperThreads);
         command.Options.Add(Transcript);
         command.Options.Add(ForceSubs);
+        command.Options.Add(NoEnhance);
 
         command.Options.Add(Output);
         command.Options.Add(Info);

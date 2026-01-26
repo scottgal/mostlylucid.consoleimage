@@ -204,6 +204,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var whisperThreads = parseResult.GetValue(cliOptions.WhisperThreads);
     var transcriptOnly = parseResult.GetValue(cliOptions.Transcript);
     var forceSubs = parseResult.GetValue(cliOptions.ForceSubs);
+    var noEnhance = parseResult.GetValue(cliOptions.NoEnhance);
+    var enhanceAudio = !noEnhance;
 
     // --force-subs without --subs implies --subs auto
     if (forceSubs && string.IsNullOrEmpty(subsValue))
@@ -722,7 +724,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             Diarize = subsValue?.Contains("diarize", StringComparison.OrdinalIgnoreCase) ?? false,
             Threads = whisperThreads,
             StreamToStdout = true, // Stream results to stdout
-            Quiet = false // Show progress on stderr
+            Quiet = false, // Show progress on stderr
+            EnhanceAudio = enhanceAudio,
+            StartTime = start,
+            Duration = duration
         };
 
         return await TranscriptionHandler.HandleAsync(transcriptOpts, cancellationToken);
@@ -867,7 +872,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         language: subtitleLang ?? "en",
                         chunkDurationSeconds: 15.0,  // Smaller chunks for faster initial results
                         bufferAheadSeconds: 30.0,    // Buffer 30s ahead of playback
-                        startTimeOffset: effectiveStart);  // Start from --ss position
+                        startTimeOffset: effectiveStart,  // Start from --ss position
+                        enhanceAudio: enhanceAudio);  // FFmpeg audio preprocessing filters
 
                     // Hook up progress events for visual feedback (only during initial setup)
                     var showProgress = true;
@@ -918,7 +924,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             // For file sources or output mode (not already loaded), use full batch transcription
             subtitles = await LoadSubtitlesAsync(
                 subtitleSource, subtitleFilePath, inputFullPath, subtitleLang ?? "en",
-                whisperModel ?? "base", whisperThreads, diarize, start, duration, autoConfirmDownload, cancellationToken);
+                whisperModel ?? "base", whisperThreads, diarize, start, duration, autoConfirmDownload, enhanceAudio, cancellationToken);
         }
     }
 
@@ -1345,6 +1351,7 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
     double? startTime,
     double? duration,
     bool autoConfirm,
+    bool enhanceAudio,
     CancellationToken ct)
 {
     try
@@ -1362,7 +1369,7 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                 return null;
 
             case "whisper":
-                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, ct);
+                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, enhanceAudio, ct);
 
             case "auto":
                 // Auto mode priority:
@@ -1398,7 +1405,7 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                 if (WhisperTranscriptionService.IsAvailable())
                 {
                     Console.Error.WriteLine("No subtitles found, using Whisper transcription...");
-                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, ct);
+                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, enhanceAudio, ct);
                 }
                 Console.Error.WriteLine("Note: No subtitles found and Whisper not available. Run: consoleimage transcribe --help");
                 return null;
@@ -1500,6 +1507,7 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
     double? startTime,
     double? duration,
     bool autoConfirm,
+    bool enhanceAudio,
     CancellationToken ct)
 {
     // Check model availability and prompt if needed
@@ -1522,7 +1530,8 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
             Diarize = diarize,
             Threads = threads,
             StartTime = startTime,
-            Duration = duration
+            Duration = duration,
+            EnhanceAudio = enhanceAudio
         };
 
         var result = await TranscriptionHandler.HandleAsync(opts, ct);

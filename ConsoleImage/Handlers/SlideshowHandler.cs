@@ -20,9 +20,9 @@ public record SlideshowOptions
     public bool Recursive { get; init; }
     public string SortBy { get; init; } = "date";  // Default: newest first
     public bool SortDesc { get; init; } = true;    // Default: descending (newest first)
-    public float VideoPreview { get; init; } = 30.0f;
+    public float VideoPreview { get; init; }          // 0 = play full video (default)
     public bool GifLoop { get; init; }
-    public bool HideStatus { get; init; }          // Hide the [1/10] filename header
+    public bool HideStatus { get; init; }          // Hide the status line below content
 
     // Output options
     public string? OutputPath { get; init; }       // Output to GIF file
@@ -381,48 +381,72 @@ public static class SlideshowHandler
                 var fileName = Path.GetFileName(file);
                 var ext = Path.GetExtension(file);
 
-                // Show header with synchronized output (unless hidden)
+                // Clear screen for new slide
                 Console.Write("\x1b[?2026h"); // Begin sync
                 Console.Write("\x1b[H");      // Home position
                 Console.Write("\x1b[2J");     // Clear screen
-                if (!options.HideStatus)
-                {
-                    Console.Error.WriteLine($"[{currentIndex + 1}/{fileCount}] {fileName}");
-                    if (paused) Console.Error.WriteLine("[PAUSED]");
-                    Console.Error.WriteLine();
-                }
                 Console.Write("\x1b[?2026l"); // End sync
+
+                // Content starts at line 1 (no header - status is at the bottom)
+                var contentStartLine = 1;
 
                 // Check cache first for instant display
                 CachedSlide? cached = null;
                 cache.TryGetValue(currentIndex, out cached);
 
+                // Track rendered content for status line positioning
+                string? renderedContent = null;
+                int contentLines = 0;
+                int contentWidth = 0;
+
                 // Display the slide
                 using var displayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 Task displayTask;
 
-                // Determine content start line (below header if showing status)
-                var contentStartLine = options.HideStatus ? 1 : 4;
-
                 if (cached?.RenderedContent != null && !cached.IsAnimated && !cached.IsVideo && !cached.IsDocument)
                 {
                     // Use cached static image - instant display!
+                    renderedContent = cached.RenderedContent;
+                    contentLines = CountLines(renderedContent);
+                    contentWidth = GetMaxVisibleWidth(renderedContent);
                     Console.Write("\x1b[?2026h"); // Begin sync
                     Console.Write($"\x1b[{contentStartLine};1H");
-                    Console.Write(cached.RenderedContent);
+                    Console.Write(renderedContent);
                     Console.Write("\x1b[?2026l"); // End sync
                     displayTask = Task.CompletedTask;
                 }
                 else if (cached?.AnimationFrames != null && cached.IsAnimated)
                 {
                     // Use cached GIF frames - play in-place without alt screen
+                    if (cached.AnimationFrames.Count > 0)
+                    {
+                        contentLines = CountLines(cached.AnimationFrames[0].Content);
+                        contentWidth = GetMaxVisibleWidth(cached.AnimationFrames[0].Content);
+                    }
                     var loopCount = options.GifLoop ? 0 : 1;
                     displayTask = PlayFramesInPlaceAsync(cached.AnimationFrames, loopCount, 1.0f, contentStartLine, displayCts.Token);
                 }
                 else
                 {
+                    // Not cached - estimate content size from render options
+                    contentLines = renderOptions.MaxHeight;
+                    contentWidth = renderOptions.MaxWidth;
                     // Not cached - render now (wrap in try-catch to continue on errors)
                     displayTask = SafeDisplayFileAsync(file, ext, options, renderOptions, contentStartLine, displayCts.Token);
+                }
+
+                // Calculate status line position and width
+                var statusLineRow = contentStartLine + contentLines + 1;
+                var statusWidth = Math.Max(contentWidth, 40);
+
+                // Show initial status line (unless hidden)
+                if (!options.HideStatus)
+                {
+                    var statusText = FormatSlideshowStatus(
+                        fileName, currentIndex + 1, fileCount, paused, 0, delayMs, statusWidth);
+                    Console.Write($"\x1b[{statusLineRow};1H");
+                    Console.Write(statusText);
+                    Console.Out.Flush();
                 }
 
                 // Start pre-rendering upcoming slides in background
@@ -451,8 +475,6 @@ public static class SlideshowHandler
 
                             case ConsoleKey.Spacebar:
                                 paused = !paused;
-                                Console.Write("\x1b[2;1H"); // Move to line 2
-                                Console.Error.WriteLine(paused ? "[PAUSED] " : "[PLAYING]");
                                 break;
 
                             // Up/Down arrows for navigation (Up=prev, Down=next)
@@ -506,6 +528,16 @@ public static class SlideshowHandler
                     catch (OperationCanceledException)
                     {
                         break;
+                    }
+
+                    // Update status line with progress
+                    if (!options.HideStatus)
+                    {
+                        var statusText = FormatSlideshowStatus(
+                            fileName, currentIndex + 1, fileCount, paused, elapsed, delayMs, statusWidth);
+                        Console.Write($"\x1b[{statusLineRow};1H");
+                        Console.Write(statusText);
+                        Console.Out.Flush();
                     }
 
                     // Check if we should auto-advance (only if delayMs > 0)
@@ -993,6 +1025,139 @@ public static class SlideshowHandler
             Gamma = options.Gamma,
             LoopCount = 1
         };
+    }
+
+    /// <summary>
+    /// Format the slideshow status line with filename, index, and progress bar.
+    /// Format: "filename.jpg  [1/10] ████░░░░ 2.0s"
+    /// </summary>
+    private static string FormatSlideshowStatus(
+        string fileName, int current, int total, bool paused,
+        int elapsedMs, int totalDelayMs, int maxWidth)
+    {
+        var sb = new System.Text.StringBuilder(maxWidth + 16);
+
+        // Use dim color
+        sb.Append("\x1b[2m");
+
+        // Right side: [1/10] + progress + time
+        var indexStr = $"[{current}/{total}]";
+        var elapsedSec = elapsedMs / 1000.0;
+
+        string rightPart;
+        if (paused)
+        {
+            rightPart = $"{indexStr} [PAUSED]";
+        }
+        else if (totalDelayMs > 0)
+        {
+            var totalSec = totalDelayMs / 1000.0;
+            var progress = Math.Clamp((double)elapsedMs / totalDelayMs, 0, 1);
+            var barWidth = Math.Max(6, Math.Min(15, maxWidth / 4));
+            var filled = (int)(progress * barWidth);
+            var empty = barWidth - filled;
+            var bar = new string('█', filled) + new string('░', empty);
+            rightPart = $"{indexStr} {bar} {elapsedSec:F0}s/{totalSec:F0}s";
+        }
+        else
+        {
+            rightPart = indexStr;
+        }
+
+        // Left side: filename (gets remaining space)
+        var separator = "  ";
+        var availableForName = maxWidth - rightPart.Length - separator.Length;
+
+        if (availableForName > 8)
+        {
+            if (fileName.Length > availableForName)
+            {
+                // Truncate with ellipsis but keep extension visible
+                var ext = Path.GetExtension(fileName);
+                var nameOnly = Path.GetFileNameWithoutExtension(fileName);
+                var maxNameLen = availableForName - ext.Length - 3; // 3 for "..."
+                if (maxNameLen > 3)
+                {
+                    sb.Append(nameOnly.AsSpan(0, maxNameLen));
+                    sb.Append("...");
+                    sb.Append(ext);
+                }
+                else
+                {
+                    sb.Append(fileName.AsSpan(0, Math.Max(1, availableForName - 3)));
+                    sb.Append("...");
+                }
+            }
+            else
+            {
+                sb.Append(fileName);
+            }
+
+            // Pad to fill space
+            var currentLen = sb.Length - 4; // subtract ANSI prefix length
+            var padNeeded = availableForName - Math.Min(fileName.Length, availableForName);
+            if (padNeeded > 0) sb.Append(' ', padNeeded);
+            sb.Append(separator);
+        }
+
+        sb.Append(rightPart);
+
+        // Pad to full width to clear previous content
+        var visibleLen = sb.Length - 4 - 4; // minus ANSI prefix and reset
+        var totalPad = maxWidth - visibleLen;
+        if (totalPad > 0 && totalPad < 50) sb.Append(' ', totalPad);
+
+        sb.Append("\x1b[0m");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Count newlines in content.
+    /// </summary>
+    private static int CountLines(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return 0;
+        var count = 1;
+        foreach (var c in content)
+            if (c == '\n') count++;
+        return count;
+    }
+
+    /// <summary>
+    /// Get the maximum visible width (excluding ANSI codes) across all lines.
+    /// </summary>
+    private static int GetMaxVisibleWidth(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return 0;
+        var maxWidth = 0;
+        var lineStart = 0;
+
+        for (var i = 0; i <= content.Length; i++)
+        {
+            if (i == content.Length || content[i] == '\n')
+            {
+                var lineLen = GetVisibleLength(content.AsSpan(lineStart, i - lineStart));
+                if (lineLen > maxWidth) maxWidth = lineLen;
+                lineStart = i + 1;
+            }
+        }
+        return maxWidth;
+    }
+
+    /// <summary>
+    /// Get visible character count excluding ANSI escape sequences.
+    /// </summary>
+    private static int GetVisibleLength(ReadOnlySpan<char> line)
+    {
+        int len = 0;
+        bool inEscape = false;
+        foreach (char c in line)
+        {
+            if (c == '\x1b') inEscape = true;
+            else if (inEscape) { if (c == 'm') inEscape = false; }
+            else len++;
+        }
+        return len;
     }
 
     /// <summary>

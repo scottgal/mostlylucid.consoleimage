@@ -8,6 +8,7 @@
 
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using Whisper.net.LibraryLoader;
 
 namespace ConsoleImage.Transcription;
 
@@ -414,10 +415,22 @@ public static class WhisperRuntimeDownloader
     }
 
     /// <summary>
-    /// Configure runtime path (adds to PATH environment variable).
+    /// Configure runtime path (adds to PATH environment variable and sets Whisper.net RuntimeOptions).
+    /// Must be called before any WhisperFactory is created.
     /// </summary>
     public static void ConfigureRuntimePath()
     {
+        // Set Whisper.net RuntimeOptions.LibraryPath to the known native library location.
+        // This is critical for AOT/single-file builds where Assembly.Location returns empty,
+        // causing Whisper.net's internal NativeLibraryLoader to fail (IL3000).
+        // RuntimeOptions.LibraryPath is checked first in Whisper.net's search path array,
+        // bypassing the broken Assembly.Location lookup entirely.
+        var nativeLibPath = GetAvailableRuntimePath();
+        if (nativeLibPath != null)
+        {
+            RuntimeOptions.LibraryPath = nativeLibPath;
+        }
+
         var rid = GetRuntimeIdentifier();
         var cacheDir = Path.Combine(RuntimesDirectory, rid, "native");
 

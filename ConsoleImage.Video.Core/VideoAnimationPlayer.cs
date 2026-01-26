@@ -45,6 +45,13 @@ public class VideoAnimationPlayer : IDisposable
     private double? _seekRequest; // Requested seek position in seconds (null = no seek)
     private double _currentPosition; // Current playback position in seconds
 
+    // Snapshot support ('r' = raw frame, 's' = ANSI text as image)
+    private readonly object _rawFrameLock = new();
+    private Image<Rgba32>? _lastRawFrame;
+    private string? _lastFrameContent;
+    private string? _lastSubtitlePlainText;
+    private int _snapshotCounter;
+
     // Pre-allocated strings to avoid allocations in render loop
     private static readonly string BlankLine120 = new(' ', 120);
     private static readonly string[] CursorMoveCache = BuildCursorMoveCache(200);
@@ -142,6 +149,10 @@ public class VideoAnimationPlayer : IDisposable
                     effectiveStartTime = Math.Clamp(_seekRequest.Value, 0, _videoInfo.Duration - 1);
                     _seekRequest = null;
                     _smartSampler?.Reset(); // Clear stale cached frames from old position
+                    _previousBrailleCells = null; // Clear stale delta rendering data
+                    _lastSubtitleContent = null; // Clear cached subtitle to force redraw
+                    _options.Subtitles?.ResetCache(); // Reset subtitle lookup cache for new position
+                    _options.LiveSubtitleProvider?.Track.ResetCache(); // Reset live subtitle cache too
                     Console.Write("\x1b[2J\x1b[H"); // Clear screen for new position
                     Console.Out.Flush();
                 }
@@ -151,6 +162,7 @@ public class VideoAnimationPlayer : IDisposable
                 {
                     Console.Write("\x1b[2J\x1b[H");
                     Console.Out.Flush();
+                    _previousBrailleCells = null; // Reset delta state for new dimensions
                     // Re-create subtitle renderer with new dimensions
                     UpdateSubtitleRenderer();
                 }
@@ -184,6 +196,7 @@ public class VideoAnimationPlayer : IDisposable
     {
         // Create renderer based on mode
         using var renderer = CreateRenderer();
+        _previousBrailleCells = null; // Reset delta state for fresh stream
 
         // Linked CTS allows cancelling the render task independently (for seek/resize)
         // without cancelling the main token (which is Ctrl+C)
@@ -225,6 +238,14 @@ public class VideoAnimationPlayer : IDisposable
                         {
                             // Standard rendering
                             frameContent = RenderFrame(renderer, image);
+                        }
+
+                        // Store raw frame clone for snapshot feature ('r' key)
+                        var cloned = image.Clone();
+                        lock (_rawFrameLock)
+                        {
+                            _lastRawFrame?.Dispose();
+                            _lastRawFrame = cloned;
                         }
 
                         // Wait if buffer is full
@@ -289,7 +310,8 @@ public class VideoAnimationPlayer : IDisposable
                 _currentFrame = frameIndex;
 
                 // Calculate absolute video time (includes seek position)
-                var absoluteTime = startTime + (frameIndex / effectiveFps);
+                // frameIndex is 1-based after increment; frame 1 represents time 0
+                var absoluteTime = startTime + ((frameIndex - 1) / effectiveFps);
                 _currentPosition = absoluteTime; // Track for seeking
 
                 // Adaptive frame skipping: drop display when behind schedule
@@ -332,38 +354,47 @@ public class VideoAnimationPlayer : IDisposable
                 }
 
                 // Render subtitle if available (live transcription or static subtitles)
+                // Uses absoluteTime for consistent timing with status bar and seek position
                 string? subtitleContent = null;
-                // Calculate current video time (frameIndex is 1-based after increment, so use frameIndex-1 for 0-based time)
-                var currentTime = _options.StartTime ?? 0;
-                currentTime += (frameIndex - 1) / effectiveFps;
+                SubtitleEntry? activeSubEntry = null;
 
                 // Use live subtitle provider if available (takes precedence)
                 if (_subtitleRenderer != null && _options.LiveSubtitleProvider != null)
                 {
                     // Wait for transcription to catch up if needed - prevents subtitle desync
-                    if (!_options.LiveSubtitleProvider.HasSubtitlesReadyFor(currentTime))
+                    if (!_options.LiveSubtitleProvider.HasSubtitlesReadyFor(absoluteTime))
                     {
                         // Show "Transcribing..." indicator while waiting
-                        subtitleContent = _subtitleRenderer.RenderText("⏳ Transcribing...");
+                        subtitleContent = _subtitleRenderer.RenderText("\u23F3 Transcribing...");
                         var waitingBuffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent, subtitleContent, _lastSubtitleContent);
                         Console.Write(waitingBuffer);
                         Console.Out.Flush();
 
                         var waitResult = await _options.LiveSubtitleProvider.WaitForTranscriptionAsync(
-                            currentTime, timeoutMs: 15000, ct);
+                            absoluteTime, timeoutMs: 15000, ct);
 
                         // Kick off transcription for upcoming frames
-                        _ = _options.LiveSubtitleProvider.EnsureTranscribedUpToAsync(currentTime + 30, ct);
+                        _ = _options.LiveSubtitleProvider.EnsureTranscribedUpToAsync(absoluteTime + 30, ct);
                     }
 
-                    var entry = _options.LiveSubtitleProvider.Track.GetActiveAt(currentTime);
-                    subtitleContent = _subtitleRenderer.RenderEntry(entry);
+                    activeSubEntry = _options.LiveSubtitleProvider.Track.GetActiveAt(absoluteTime);
                 }
                 else if (_subtitleRenderer != null && _options.Subtitles != null)
                 {
-                    var entry = _options.Subtitles.GetActiveAt(currentTime);
-                    subtitleContent = _subtitleRenderer.RenderEntry(entry);
+                    activeSubEntry = _options.Subtitles.GetActiveAt(absoluteTime);
                 }
+
+                // Only render subtitle content when there's an active entry.
+                // RenderEntry(null) returns padded blank lines (non-empty), so we must
+                // check the entry first to allow BuildFrameBuffer's clearing logic to work.
+                if (activeSubEntry != null && _subtitleRenderer != null)
+                {
+                    subtitleContent = _subtitleRenderer.RenderEntry(activeSubEntry);
+                }
+
+                // Store for snapshot features ('r' and 's' keys)
+                _lastFrameContent = frameContent;
+                _lastSubtitlePlainText = activeSubEntry?.Text?.Trim();
 
                 // Build optimized frame buffer with status line and subtitles included
                 var buffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent, subtitleContent, _lastSubtitleContent);
@@ -960,6 +991,17 @@ public class VideoAnimationPlayer : IDisposable
                     ShowIndicator("Monochrome: use --mono flag");
                 break;
 
+            // Snapshot capture
+            case ConsoleKey.R:
+                SaveRawSnapshot();
+                break;
+            case ConsoleKey.S:
+                if (key.Key == ConsoleKey.S && !key.Modifiers.HasFlag(ConsoleModifiers.Control))
+                {
+                    SaveAnsiSnapshot();
+                }
+                break;
+
             // Seek step adjustment
             case ConsoleKey.OemPlus:
             case ConsoleKey.Add:
@@ -1020,8 +1062,116 @@ public class VideoAnimationPlayer : IDisposable
         return line < CursorMoveCache.Length ? CursorMoveCache[line] : $"\x1b[{line + 1};1H";
     }
 
+    /// <summary>
+    /// Save a raw frame snapshot with burned-in subtitles as PNG.
+    /// Triggered by pressing 'r' during playback.
+    /// </summary>
+    private void SaveRawSnapshot()
+    {
+        Image<Rgba32>? snapshot;
+        lock (_rawFrameLock)
+        {
+            snapshot = _lastRawFrame?.Clone();
+        }
+
+        if (snapshot == null)
+        {
+            ShowIndicator("No frame to capture");
+            return;
+        }
+
+        try
+        {
+            // Burn subtitle overlay if available
+            GifWriter.BurnOverlaysIntoImage(snapshot, _lastSubtitlePlainText, null);
+
+            var path = GetSnapshotPath("raw");
+            snapshot.SaveAsPng(path);
+            ShowIndicator($"Saved: {Path.GetFileName(path)}");
+        }
+        catch (Exception ex)
+        {
+            ShowIndicator($"Save failed: {ex.Message[..Math.Min(30, ex.Message.Length)]}");
+        }
+        finally
+        {
+            snapshot.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Save the current ANSI text rendering as a PNG image.
+    /// Triggered by pressing 's' during playback.
+    /// </summary>
+    private void SaveAnsiSnapshot()
+    {
+        var content = _lastFrameContent;
+        if (string.IsNullOrEmpty(content))
+        {
+            ShowIndicator("No frame to capture");
+            return;
+        }
+
+        try
+        {
+            Image<Rgba32> image;
+
+            // Render based on current mode
+            if (_options.RenderMode == VideoRenderMode.Braille)
+            {
+                image = GifWriter.RenderBrailleFrameToImage(
+                    new BrailleFrame(content, 0), scale: 2.0f);
+            }
+            else if (_options.RenderMode == VideoRenderMode.ColorBlocks)
+            {
+                image = GifWriter.RenderColorBlockFrameToImage(
+                    new ColorBlockFrame(content, 0), scale: 2.0f);
+            }
+            else
+            {
+                // ASCII mode - render text to image
+                image = GifWriter.RenderAnsiTextToImage(content, fontSize: 14, scale: 1.5f);
+            }
+
+            try
+            {
+                // Burn subtitle overlay if available
+                GifWriter.BurnOverlaysIntoImage(image, _lastSubtitlePlainText, null);
+
+                var path = GetSnapshotPath("snap");
+                image.SaveAsPng(path);
+                ShowIndicator($"Saved: {Path.GetFileName(path)}");
+            }
+            finally
+            {
+                image.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowIndicator($"Save failed: {ex.Message[..Math.Min(30, ex.Message.Length)]}");
+        }
+    }
+
+    /// <summary>
+    /// Generate a snapshot file path with sequential numbering.
+    /// </summary>
+    private string GetSnapshotPath(string prefix)
+    {
+        _snapshotCounter++;
+        var baseName = Path.GetFileNameWithoutExtension(_options.SourceFileName ?? _videoPath);
+        var timeStr = TimeSpan.FromSeconds(_currentPosition).ToString(@"hh\.mm\.ss");
+        var dir = Path.GetDirectoryName(Path.GetFullPath(_videoPath)) ?? ".";
+        return Path.Combine(dir, $"{baseName}_{prefix}_{timeStr}_{_snapshotCounter:D3}.png");
+    }
+
     public void Dispose()
     {
+        lock (_rawFrameLock)
+        {
+            _lastRawFrame?.Dispose();
+            _lastRawFrame = null;
+        }
         _ffmpeg.Dispose();
     }
 }
