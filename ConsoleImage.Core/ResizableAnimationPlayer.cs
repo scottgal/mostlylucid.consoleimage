@@ -513,8 +513,7 @@ public class ResizableAnimationPlayer
             }
             else if (inEscape)
             {
-                if (c == 'm') // End of SGR sequence
-                    inEscape = false;
+                if (c is >= 'A' and <= 'Z' or >= 'a' and <= 'z') inEscape = false;
             }
             else
             {

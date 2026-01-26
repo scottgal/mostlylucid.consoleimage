@@ -1170,7 +1170,7 @@ public static class SlideshowHandler
             }
             else if (inEscape)
             {
-                if (c == 'm') inEscape = false;
+                if (c is >= 'A' and <= 'Z' or >= 'a' and <= 'z') inEscape = false;
             }
             else
             {

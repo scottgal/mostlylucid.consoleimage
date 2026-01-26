@@ -127,7 +127,7 @@ public static class ImageHandler
         return 0;
     }
 
-    private static async Task RenderAnimatedGifFrames(
+    private static Task RenderAnimatedGifFrames(
         FileInfo input, RenderOptions options, GifWriter gifWriter,
         bool useMatrix, string? matrixColor, bool matrixFullColor,
         float? matrixDensity, float? matrixSpeed, string? matrixAlphabet,
@@ -244,7 +244,7 @@ public static class ImageHandler
             Console.WriteLine();
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private static StatusLine.StatusInfo BuildImageStatusInfo(

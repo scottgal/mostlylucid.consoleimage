@@ -420,7 +420,7 @@ public class GifWriter : IDisposable
         var pixelHeight = charHeight * 4;
 
         var dotSize = Math.Max(1, (int)(scale * 2));
-        var image = new Image<Rgba32>(pixelWidth * dotSize, pixelHeight * dotSize);
+        var image = new Image<Rgba32>(Math.Max(1, pixelWidth * dotSize), Math.Max(1, pixelHeight * dotSize));
         image.Mutate(ctx => ctx.Fill(backgroundColor ?? Color.Black));
 
         for (var lineY = 0; lineY < lines.Length; lineY++)
@@ -463,7 +463,7 @@ public class GifWriter : IDisposable
         var height = lines.Length * 2; // 2 pixels per row
 
         var pixelSize = Math.Max(1, (int)(scale * 4));
-        var image = new Image<Rgba32>(width * pixelSize, height * pixelSize);
+        var image = new Image<Rgba32>(Math.Max(1, width * pixelSize), Math.Max(1, height * pixelSize));
         image.Mutate(ctx => ctx.Fill(backgroundColor ?? Color.Black));
 
         for (var lineY = 0; lineY < lines.Length; lineY++)
@@ -725,8 +725,8 @@ public class GifWriter : IDisposable
         var charPixelHeight = (int)((_options.FontSize + 2) * _options.Scale);
         var scaledPadding = (int)(_options.Padding * _options.Scale);
 
-        var imageWidth = charWidth * charPixelWidth + scaledPadding * 2;
-        var imageHeight = charHeight * charPixelHeight + scaledPadding * 2;
+        var imageWidth = Math.Max(1, charWidth * charPixelWidth + scaledPadding * 2);
+        var imageHeight = Math.Max(1, charHeight * charPixelHeight + scaledPadding * 2);
 
         var image = new Image<Rgba32>(imageWidth, imageHeight);
         image.Mutate(ctx => ctx.Fill(_options.BackgroundColor));
@@ -754,7 +754,7 @@ public class GifWriter : IDisposable
 
         // Matrix uses 1x1 character cells, but we scale them up for visibility
         var pixelSize = Math.Max(1, (int)(_options.Scale * 4));
-        var image = new Image<Rgba32>(charWidth * pixelSize, charHeight * pixelSize);
+        var image = new Image<Rgba32>(Math.Max(1, charWidth * pixelSize), Math.Max(1, charHeight * pixelSize));
         image.Mutate(ctx => ctx.Fill(_options.BackgroundColor));
 
         for (var lineY = 0; lineY < lines.Length; lineY++)
@@ -983,8 +983,8 @@ public class GifWriter : IDisposable
         var charWidth = (int)(_options.FontSize * 6 / 10 * _options.Scale);
         var charHeight = (int)((_options.FontSize + 2) * _options.Scale);
         var scaledPadding = (int)(_options.Padding * _options.Scale);
-        var imageWidth = maxWidth * charWidth + scaledPadding * 2;
-        var imageHeight = lineCount * charHeight + scaledPadding * 2;
+        var imageWidth = Math.Max(1, maxWidth * charWidth + scaledPadding * 2);
+        var imageHeight = Math.Max(1, lineCount * charHeight + scaledPadding * 2);
 
         // Create the GIF
         using var gif = new Image<Rgba32>(imageWidth, imageHeight);
@@ -1361,8 +1361,8 @@ public class GifWriter : IDisposable
         var charWidth = (int)(_options.FontSize * 6 / 10 * _options.Scale);
         var charHeight = (int)((_options.FontSize + 2) * _options.Scale);
         var scaledPadding = (int)(_options.Padding * _options.Scale);
-        var imageWidth = maxWidth * charWidth + scaledPadding * 2;
-        var imageHeight = lineCount * charHeight + scaledPadding * 2;
+        var imageWidth = Math.Max(1, maxWidth * charWidth + scaledPadding * 2);
+        var imageHeight = Math.Max(1, lineCount * charHeight + scaledPadding * 2);
 
         using var gif = new Image<Rgba32>(imageWidth, imageHeight);
         var scaledFontSize = (int)(_options.FontSize * _options.Scale);
