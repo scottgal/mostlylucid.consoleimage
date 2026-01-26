@@ -45,6 +45,12 @@ public class VideoAnimationPlayer : IDisposable
     private bool _requestQuit;
     private double? _seekRequest; // Requested seek position in seconds (null = no seek)
 
+    /// <summary>
+    ///     Navigation direction requested by user (for slideshow integration).
+    ///     -1 = previous, +1 = next, 0 = no navigation (just quit).
+    /// </summary>
+    public int NavigationRequest { get; private set; }
+
     // Smart frame sampling
     private SmartFrameSampler? _smartSampler;
     private int _snapshotCounter;
@@ -979,6 +985,16 @@ public class VideoAnimationPlayer : IDisposable
 
             case ConsoleKey.Q:
             case ConsoleKey.Escape:
+                _requestQuit = true;
+                break;
+
+            // Up/Down arrows: exit video for slideshow navigation
+            case ConsoleKey.UpArrow:
+                NavigationRequest = -1; // Previous
+                _requestQuit = true;
+                break;
+            case ConsoleKey.DownArrow:
+                NavigationRequest = 1; // Next
                 _requestQuit = true;
                 break;
 

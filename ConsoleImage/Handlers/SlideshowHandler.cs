@@ -398,7 +398,7 @@ public static class SlideshowHandler
 
                 // Display the slide
                 using var displayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                Task displayTask;
+                Task<int> displayTask; // Returns navigation direction (0=none, -1=prev, +1=next)
 
                 if (cached?.RenderedContent != null && !cached.IsAnimated && !cached.IsVideo && !cached.IsDocument)
                 {
@@ -410,7 +410,7 @@ public static class SlideshowHandler
                     Console.Write($"\x1b[{contentStartLine};1H");
                     Console.Write(renderedContent);
                     Console.Write("\x1b[?2026l"); // End sync
-                    displayTask = Task.CompletedTask;
+                    displayTask = Task.FromResult(0);
                 }
                 else if (cached?.AnimationFrames != null && cached.IsAnimated)
                 {
@@ -423,7 +423,7 @@ public static class SlideshowHandler
 
                     var loopCount = options.GifLoop ? 0 : 1;
                     displayTask = PlayFramesInPlaceAsync(cached.AnimationFrames, loopCount, 1.0f, contentStartLine,
-                        displayCts.Token);
+                        displayCts.Token).ContinueWith(_ => 0, TaskContinuationOptions.ExecuteSynchronously);
                 }
                 else
                 {
@@ -435,9 +435,9 @@ public static class SlideshowHandler
                         displayCts.Token);
                 }
 
-                // Calculate status line position and width
-                var statusLineRow = contentStartLine + contentLines + 1;
-                var statusWidth = Math.Max(contentWidth, 40);
+                // Calculate status line position — constrain width to content width
+                var statusLineRow = contentStartLine + contentLines;
+                var statusWidth = Math.Max(contentWidth, 30);
 
                 // Show initial status line (unless hidden or display task is still rendering)
                 // Don't write status while video/animation is rendering — concurrent console
@@ -555,14 +555,23 @@ public static class SlideshowHandler
                     }
                 }
 
-                // Ensure display task is finished
+                // Ensure display task is finished and check for navigation from video player
+                var navDirection = 0;
                 try
                 {
-                    await displayTask;
+                    navDirection = await displayTask;
                 }
                 catch (OperationCanceledException)
                 {
                     // Expected when skipping
+                }
+
+                // If video player requested navigation (Up/Down during video), apply it
+                if (navDirection != 0 && currentIndex == previousIndex)
+                {
+                    currentIndex = navDirection > 0
+                        ? (currentIndex + 1) % fileCount
+                        : (currentIndex - 1 + fileCount) % fileCount;
                 }
 
                 // Clean up old cache entries (keep current +/- 2)
@@ -722,7 +731,11 @@ public static class SlideshowHandler
     /// <summary>
     ///     Safe wrapper that catches all errors and continues to next slide.
     /// </summary>
-    private static async Task SafeDisplayFileAsync(
+    /// <summary>
+    ///     Safely display a file, returning navigation direction from video player
+    ///     (0 = none, -1 = previous, +1 = next).
+    /// </summary>
+    private static async Task<int> SafeDisplayFileAsync(
         string file,
         string ext,
         SlideshowOptions options,
@@ -732,7 +745,7 @@ public static class SlideshowHandler
     {
         try
         {
-            await DisplayFileAsync(file, ext, options, renderOptions, contentStartLine, ct);
+            return await DisplayFileAsync(file, ext, options, renderOptions, contentStartLine, ct);
         }
         catch (OperationCanceledException)
         {
@@ -745,10 +758,15 @@ public static class SlideshowHandler
             Console.Write($"\x1b[{contentStartLine};1H");
             Console.Error.WriteLine($"Error loading file: {ex.Message}");
             Console.Write("\x1b[?2026l");
+            return 0;
         }
     }
 
-    private static async Task DisplayFileAsync(
+    /// <summary>
+    ///     Display a file, returning navigation direction from video player
+    ///     (0 = none, -1 = previous, +1 = next).
+    /// </summary>
+    private static async Task<int> DisplayFileAsync(
         string file,
         string ext,
         SlideshowOptions options,
@@ -757,12 +775,24 @@ public static class SlideshowHandler
         CancellationToken ct)
     {
         if (ImageExtensions.Contains(ext))
+        {
             await DisplayImageAsync(file, renderOptions, options, contentStartLine, ct);
-        else if (GifExtensions.Contains(ext))
+            return 0;
+        }
+
+        if (GifExtensions.Contains(ext))
+        {
             await DisplayGifAsync(file, renderOptions, options, contentStartLine, ct);
-        else if (VideoExtensions.Contains(ext))
-            await DisplayVideoAsync(file, options, ct);
-        else if (DocumentExtensions.Contains(ext)) await DisplayDocumentAsync(file, options.GifLoop, ct);
+            return 0;
+        }
+
+        if (VideoExtensions.Contains(ext))
+            return await DisplayVideoAsync(file, options, ct);
+
+        if (DocumentExtensions.Contains(ext))
+            await DisplayDocumentAsync(file, options.GifLoop, ct);
+
+        return 0;
     }
 
     private static async Task DisplayImageAsync(string file, RenderOptions renderOptions, SlideshowOptions options,
@@ -890,12 +920,16 @@ public static class SlideshowHandler
         return frames.ToList();
     }
 
-    private static async Task DisplayVideoAsync(string file, SlideshowOptions options, CancellationToken ct)
+    /// <summary>
+    ///     Display a video file, returning navigation direction from the player
+    ///     (0 = none, -1 = previous, +1 = next).
+    /// </summary>
+    private static async Task<int> DisplayVideoAsync(string file, SlideshowOptions options, CancellationToken ct)
     {
         if (!FFmpegProvider.IsAvailable())
         {
             Console.Error.WriteLine("Video playback requires FFmpeg. Skipping video.");
-            return;
+            return 0;
         }
 
         try
@@ -920,10 +954,12 @@ public static class SlideshowHandler
 
             using var player = new VideoAnimationPlayer(file, videoOptions);
             await player.PlayAsync(ct);
+            return player.NavigationRequest;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Video playback error: {ex.Message}");
+            return 0;
         }
     }
 
@@ -1013,34 +1049,30 @@ public static class SlideshowHandler
 
     /// <summary>
     ///     Format the slideshow status line with filename, index, and progress bar.
-    ///     Format: "filename.jpg  [1/10] ████░░░░ 2.0s"
+    ///     Width is constrained to maxWidth (matching the rendered content width).
+    ///     Format: "filename.ext [1/10] ████░░░░ 2s/3s"
     /// </summary>
     private static string FormatSlideshowStatus(
         string fileName, int current, int total, bool paused,
         int elapsedMs, int totalDelayMs, int maxWidth)
     {
-        var sb = new StringBuilder(maxWidth + 16);
-
-        // Use dim color
-        sb.Append("\x1b[2m");
-
-        // Right side: [1/10] + progress + time
+        // Build the visible text first, then wrap with ANSI codes
         var indexStr = $"[{current}/{total}]";
-        var elapsedSec = elapsedMs / 1000.0;
 
+        // Right side: index + optional progress
         string rightPart;
         if (paused)
         {
-            rightPart = $"{indexStr} [PAUSED]";
+            rightPart = $"{indexStr} ⏸";
         }
         else if (totalDelayMs > 0)
         {
             var totalSec = totalDelayMs / 1000.0;
+            var elapsedSec = elapsedMs / 1000.0;
             var progress = Math.Clamp((double)elapsedMs / totalDelayMs, 0, 1);
-            var barWidth = Math.Max(6, Math.Min(15, maxWidth / 4));
+            var barWidth = Math.Max(4, Math.Min(10, maxWidth / 5));
             var filled = (int)(progress * barWidth);
-            var empty = barWidth - filled;
-            var bar = new string('█', filled) + new string('░', empty);
+            var bar = new string('█', filled) + new string('░', barWidth - filled);
             rightPart = $"{indexStr} {bar} {elapsedSec:F0}s/{totalSec:F0}s";
         }
         else
@@ -1048,50 +1080,46 @@ public static class SlideshowHandler
             rightPart = indexStr;
         }
 
-        // Left side: filename (gets remaining space)
-        var separator = "  ";
-        var availableForName = maxWidth - rightPart.Length - separator.Length;
+        // Left side: filename truncated to fit
+        var availableForName = maxWidth - rightPart.Length - 1; // 1 for space separator
+        string namePart;
 
-        if (availableForName > 8)
+        if (availableForName < 4)
         {
-            if (fileName.Length > availableForName)
-            {
-                // Truncate with ellipsis but keep extension visible
-                var ext = Path.GetExtension(fileName);
-                var nameOnly = Path.GetFileNameWithoutExtension(fileName);
-                var maxNameLen = availableForName - ext.Length - 3; // 3 for "..."
-                if (maxNameLen > 3)
-                {
-                    sb.Append(nameOnly.AsSpan(0, maxNameLen));
-                    sb.Append("...");
-                    sb.Append(ext);
-                }
-                else
-                {
-                    sb.Append(fileName.AsSpan(0, Math.Max(1, availableForName - 3)));
-                    sb.Append("...");
-                }
-            }
+            // Not enough room for filename
+            namePart = "";
+        }
+        else if (fileName.Length <= availableForName)
+        {
+            namePart = fileName;
+        }
+        else
+        {
+            // Truncate: keep extension visible
+            var ext = Path.GetExtension(fileName);
+            var nameOnly = Path.GetFileNameWithoutExtension(fileName);
+            var maxNameLen = availableForName - ext.Length - 1; // 1 for "…"
+            if (maxNameLen > 3)
+                namePart = string.Concat(nameOnly.AsSpan(0, maxNameLen), "…", ext);
             else
-            {
-                sb.Append(fileName);
-            }
-
-            // Pad to fill space
-            var currentLen = sb.Length - 4; // subtract ANSI prefix length
-            var padNeeded = availableForName - Math.Min(fileName.Length, availableForName);
-            if (padNeeded > 0) sb.Append(' ', padNeeded);
-            sb.Append(separator);
+                namePart = string.Concat(fileName.AsSpan(0, Math.Max(1, availableForName - 1)), "…");
         }
 
+        // Compose: "name  [pad]  right" — pad to exact maxWidth
+        var visibleLen = namePart.Length + (namePart.Length > 0 ? 1 : 0) + rightPart.Length;
+        var padding = Math.Max(0, maxWidth - visibleLen);
+
+        var sb = new StringBuilder(maxWidth + 16);
+        sb.Append("\x1b[2m"); // Dim
+        if (namePart.Length > 0)
+        {
+            sb.Append(namePart);
+            sb.Append(' ');
+        }
+
+        if (padding > 0) sb.Append(' ', padding);
         sb.Append(rightPart);
-
-        // Pad to full width to clear previous content
-        var visibleLen = sb.Length - 4 - 4; // minus ANSI prefix and reset
-        var totalPad = maxWidth - visibleLen;
-        if (totalPad > 0 && totalPad < 50) sb.Append(' ', totalPad);
-
-        sb.Append("\x1b[0m");
+        sb.Append("\x1b[0m"); // Reset
         return sb.ToString();
     }
 
