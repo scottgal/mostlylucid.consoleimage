@@ -334,6 +334,8 @@ public class CliOptions
 
         Debug = new Option<bool>("--debug") { Description = "Enable debug output for smart frame sampling" };
 
+        Hash = new Option<bool>("--hash") { Description = "Output perceptual hash of the rendered image (for comparing visual fidelity)" };
+
         // Read-only mode
         NoWrite = new Option<bool>("--no-write")
             { Description = "Disable all caching and downloading (read-only mode for locked environments)" };
@@ -498,6 +500,9 @@ public class CliOptions
     // Debug mode
     public Option<bool> Debug { get; }
 
+    // Perceptual hash output
+    public Option<bool> Hash { get; }
+
     // Read-only mode (no caching or downloading)
     public Option<bool> NoWrite { get; }
 
@@ -650,6 +655,7 @@ public class CliOptions
         command.Options.Add(HideSlideInfo);
         command.Options.Add(EasterEgg);
         command.Options.Add(Debug);
+        command.Options.Add(Hash);
         command.Options.Add(NoWrite);
 
         // Template support

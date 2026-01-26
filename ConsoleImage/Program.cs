@@ -200,6 +200,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var dejitter = parseResult.GetValue(cliOptions.Dejitter) || (template?.Dejitter ?? false);
     var colorThreshold = parseResult.GetValue(cliOptions.ColorThreshold) ?? template?.ColorThreshold;
     var debug = parseResult.GetValue(cliOptions.Debug);
+    var showHash = parseResult.GetValue(cliOptions.Hash);
 
     // Subtitle options - unified: auto|off|<path>|yt|whisper|whisper+diarize
     var subsValue = parseResult.GetValue(cliOptions.Subs) ?? template?.Subs;
@@ -773,6 +774,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     // Image files (jpg, png, gif, etc.) - normal rendering
     else if (IsImageFile(extension))
     {
+        // Compute perceptual hash of source image if requested
+        if (showHash)
+        {
+            try
+            {
+                using var hashImage = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(input.FullName);
+                var (hash, avgBrightness) = FrameHasher.ComputeHashWithBrightness(hashImage);
+                Console.Error.WriteLine($"Hash: 0x{hash:X16}  Brightness: {avgBrightness}  ({input.Name})");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Hash error: {ex.Message}");
+            }
+        }
+
         return await ImageHandler.HandleAsync(
             input, width, height, maxWidth, maxHeight,
             charAspect, savedCalibration,

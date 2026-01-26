@@ -44,7 +44,7 @@ function Generate-Sample {
     }
 
     Write-Host "  $Description" -ForegroundColor White
-    $cmd = "dotnet run --project ConsoleImage -- `"$InputFile`" -o gif:$samplesDir/$OutputFile $ExtraArgs"
+    $cmd = "dotnet run --project ConsoleImage -- `"$InputFile`" -o gif:$samplesDir/$OutputFile --colors 256 $ExtraArgs"
     Invoke-Expression $cmd 2>&1 | Out-Null
 }
 
@@ -120,13 +120,13 @@ Generate-Sample $wiggum "status_braille.gif" "-B -w 80 --status" "Braille with S
 $video = "C:/Users/scott/OneDrive/Videos/Count.Arthur.Strong.S02E03.HDTV.x264-TASTETV.mp4"
 if (Test-Path $video) {
     Write-Host "  Video ASCII with Status" -ForegroundColor White
-    dotnet run --project ConsoleImage -- "$video" -a -o "gif:$samplesDir/video_ascii_status.gif" -w 80 --status --duration 3 2>&1 | Out-Null
+    dotnet run --project ConsoleImage -- "$video" -a -o "gif:$samplesDir/video_ascii_status.gif" -w 80 --colors 256 --status --duration 3 2>&1 | Out-Null
 
     Write-Host "  Video Blocks" -ForegroundColor White
-    dotnet run --project ConsoleImage -- "$video" -b -o "gif:$samplesDir/video_blocks.gif" -w 80 --duration 3 2>&1 | Out-Null
+    dotnet run --project ConsoleImage -- "$video" -b -o "gif:$samplesDir/video_blocks.gif" -w 80 --colors 256 --duration 3 2>&1 | Out-Null
 
     Write-Host "  Video Mono with Status" -ForegroundColor White
-    dotnet run --project ConsoleImage -- "$video" --mono -o "gif:$samplesDir/video_mono_status.gif" -w 80 --status --duration 3 2>&1 | Out-Null
+    dotnet run --project ConsoleImage -- "$video" --mono -o "gif:$samplesDir/video_mono_status.gif" -w 80 --colors 256 --status --duration 3 2>&1 | Out-Null
 
     Write-Host "  Video to CIDZ (compressed, ASCII)" -ForegroundColor White
     dotnet run --project ConsoleImage -- "$video" -a -o "$samplesDir/video_sample.cidz" -w 60 --duration 5 2>&1 | Out-Null
@@ -138,7 +138,7 @@ if (Test-Path $video) {
 $startrek = "C:/Users/scott/OneDrive/Videos/StarTrek.TNG-s01e01.Encounter.at.Farpoint.mkv"
 if (Test-Path $startrek) {
     Write-Host "  Star Trek Braille (video)" -ForegroundColor White
-    dotnet run --project ConsoleImage -- "$startrek" -B -o "gif:$samplesDir/startrek_braille.gif" -w 60 -ss 120 --duration 3 2>&1 | Out-Null
+    dotnet run --project ConsoleImage -- "$startrek" -B -o "gif:$samplesDir/startrek_braille.gif" -w 60 --colors 256 -ss 120 --duration 3 2>&1 | Out-Null
 } else {
     Write-Host "  Skipping Star Trek samples (video not found)" -ForegroundColor Yellow
 }

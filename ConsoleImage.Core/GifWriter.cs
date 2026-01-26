@@ -15,17 +15,19 @@ namespace ConsoleImage.Core;
 /// </summary>
 public class GifWriter : IDisposable
 {
-    // Pre-compiled regex for ColorBlock/Braille parsing
+    // Pre-compiled regex for ColorBlock/Braille parsing - matches SGR codes OR visible characters
     private static readonly Regex AnsiOrCharRegex =
         new(@"\x1b\[([0-9;]*)m|([^\x1b])", RegexOptions.Compiled);
 
-    // Pre-compiled regex for better performance
-    private static readonly Regex AnsiColorRegex =
-        new(@"\x1b\[([0-9;]*)m", RegexOptions.Compiled);
+    // Pre-compiled regex for matching ALL CSI sequences (SGR + cursor control etc.)
+    // Group 1 = parameters, Group 2 = final command character
+    private static readonly Regex AnsiCsiRegex =
+        new(@"\x1b\[([0-9;?]*)([A-Za-z])", RegexOptions.Compiled);
 
-    // Pre-compiled regex for stripping ANSI
+    // Pre-compiled regex for stripping ALL ANSI escape sequences (CSI sequences)
+    // Handles SGR (\x1b[0m), cursor control (\x1b[2A), synchronized output (\x1b[?2026h), etc.
     private static readonly Regex StripAnsiRegex =
-        new(@"\x1b\[[0-9;]*m", RegexOptions.Compiled);
+        new(@"\x1b\[[0-9;?]*[A-Za-z]", RegexOptions.Compiled);
 
     private readonly List<(string Content, int DelayMs)> _frames = [];
     private readonly List<(Image<Rgba32> Image, int DelayMs)> _imageFrames = [];
@@ -1086,6 +1088,8 @@ public class GifWriter : IDisposable
 
     /// <summary>
     ///     Parse ANSI color codes and return text segments with their colors.
+    ///     Handles all CSI sequences - only SGR codes ('m') affect color;
+    ///     other sequences (cursor control, etc.) are silently stripped.
     /// </summary>
     private List<(string Text, Color Color)> ParseAnsiColors(string text)
     {
@@ -1093,7 +1097,7 @@ public class GifWriter : IDisposable
         var currentColor = _options.ForegroundColor;
         var lastIndex = 0;
 
-        foreach (Match match in AnsiColorRegex.Matches(text))
+        foreach (Match match in AnsiCsiRegex.Matches(text))
         {
             // Add text before this escape sequence
             if (match.Index > lastIndex)
@@ -1103,9 +1107,13 @@ public class GifWriter : IDisposable
                     result.Add((segment, currentColor));
             }
 
-            // Parse the color code
-            var codes = match.Groups[1].Value.Split(';', StringSplitOptions.RemoveEmptyEntries);
-            currentColor = ParseAnsiCodes(codes, currentColor);
+            // Only process SGR codes (final char 'm') for color changes
+            // Non-SGR codes (cursor control, erase, etc.) are silently stripped
+            if (match.Groups[2].Value == "m")
+            {
+                var codes = match.Groups[1].Value.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                currentColor = ParseAnsiCodes(codes, currentColor);
+            }
 
             lastIndex = match.Index + match.Length;
         }

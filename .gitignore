@@ -478,3 +478,25 @@ FodyWeavers.xsd
 *.sln.iml
 
 .worktrees/
+
+# Test/debug artifacts (repo root)
+test_*
+test-*
+video_test.*
+psy.cidz
+sami_flag.png
+ascii_example.txt
+blocks_example.ansi
+nul
+ConsoleImage.old/
+aot-test-publish/
+publish-linux*/
+DebugPixels/
+
+# Test artifacts in project directories
+ConsoleImage/test.*
+ConsoleImage/earth_braille.gif
+ConsoleImage/futurama.cidz
+ConsoleImage/matrix.gif
+ConsoleImage/scenes.gif
+ConsoleImage/star_wars.cidz

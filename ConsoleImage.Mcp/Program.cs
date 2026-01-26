@@ -44,6 +44,7 @@ await app.RunAsync();
 [JsonSerializable(typeof(ExportResult))]
 [JsonSerializable(typeof(DocumentInfoResult))]
 [JsonSerializable(typeof(ExtractSubtitlesResult))]
+[JsonSerializable(typeof(PerceptualHashResult))]
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 internal partial class McpJsonContext : JsonSerializerContext
 {
@@ -201,6 +202,17 @@ internal record ExtractSubtitlesResult(
     string? OutputPath,
     int EntryCount,
     string? Language,
+    string? Message = null
+);
+
+internal record PerceptualHashResult(
+    string Hash,
+    int AverageBrightness,
+    int Width,
+    int Height,
+    int FrameCount,
+    string? ComparisonHash = null,
+    int? HammingDistance = null,
     string? Message = null
 );
 
@@ -1592,6 +1604,73 @@ public sealed class ConsoleImageTools
         catch (Exception ex)
         {
             return $"Error downloading YouTube subtitles: {ex.Message}";
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Perceptual Hash Tools
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    ///     Compute perceptual hash of an image for visual comparison
+    /// </summary>
+    [McpServerTool(Name = "compute_hash")]
+    [Description(
+        "Compute a perceptual hash (aHash) of an image file. Returns a 64-bit hash and average brightness. Compare hashes to detect visually similar images — useful for verifying color tuning, checking render fidelity, or detecting duplicate frames. Optionally compare against a second image.")]
+    public static string ComputeHash(
+        [Description("Path to the image file (JPG, PNG, GIF, WebP, BMP)")]
+        string path,
+        [Description("Optional: path to a second image for comparison (returns Hamming distance)")]
+        string? comparePath = null)
+    {
+        if (!File.Exists(path))
+            return $"Error: File not found: {path}";
+
+        try
+        {
+            using var image = Image.Load<Rgba32>(path);
+            var (hash, avgBrightness) = FrameHasher.ComputeHashWithBrightness(image);
+
+            string? comparisonHash = null;
+            int? hammingDistance = null;
+            string? message = null;
+
+            if (!string.IsNullOrEmpty(comparePath))
+            {
+                if (!File.Exists(comparePath))
+                    return $"Error: Comparison file not found: {comparePath}";
+
+                using var compareImage = Image.Load<Rgba32>(comparePath);
+                var (hash2, _) = FrameHasher.ComputeHashWithBrightness(compareImage);
+                comparisonHash = $"0x{hash2:X16}";
+                hammingDistance = FrameHasher.HammingDistance(hash, hash2);
+
+                var similarity = hammingDistance.Value switch
+                {
+                    0 => "identical",
+                    <= 5 => "very similar",
+                    <= 10 => "similar",
+                    <= 20 => "somewhat different",
+                    _ => "very different"
+                };
+                message = $"Hamming distance: {hammingDistance} / 64 bits ({similarity})";
+            }
+
+            var result = new PerceptualHashResult(
+                $"0x{hash:X16}",
+                avgBrightness,
+                image.Width,
+                image.Height,
+                image.Frames.Count,
+                comparisonHash,
+                hammingDistance,
+                message
+            );
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.PerceptualHashResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error computing hash: {ex.Message}";
         }
     }
 
