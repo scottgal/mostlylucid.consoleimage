@@ -184,31 +184,11 @@ public class OptimizedDocument
         // Frame hash -> first occurrence index (for deduplication)
         var frameHashes = new Dictionary<int, int>();
 
-        // Build global color palette from all frames
-        var colorSet = new HashSet<string> { "" }; // Index 0 = no color
-        var parsedFrames = new List<(string chars, List<string> colors, int width, int height, int delayMs)>();
+        // Growing palette (built incrementally - single pass, no intermediate list)
+        var paletteList = new List<string> { "" }; // Index 0 = no color
+        var colorToIndex = new Dictionary<string, int> { { "", 0 } };
 
-        foreach (var frame in doc.Frames)
-        {
-            var (chars, colors) = ParseAnsiContent(frame.Content);
-            foreach (var color in colors)
-            {
-                if (color.Length > 0)
-                    colorSet.Add(color);
-            }
-            parsedFrames.Add((chars, colors, frame.Width, frame.Height, frame.DelayMs));
-        }
-
-        // Create palette array and lookup
-        var palette = colorSet.ToArray();
-        var colorToIndex = new Dictionary<string, int>();
-        for (int i = 0; i < palette.Length; i++)
-        {
-            colorToIndex[palette[i]] = i;
-        }
-        optimized.Palette = palette;
-
-        // Convert frames with delta encoding and deduplication
+        // Frame state for delta encoding
         string? prevChars = null;
         List<int>? prevIndices = null;
         List<string>? prevColors = null;
@@ -217,9 +197,22 @@ public class OptimizedDocument
         var deltaSb = new StringBuilder(4096);
         var compressSb = new StringBuilder(2048);
 
-        for (int f = 0; f < parsedFrames.Count; f++)
+        for (int f = 0; f < doc.Frames.Count; f++)
         {
-            var (chars, colors, width, height, delayMs) = parsedFrames[f];
+            var frame = doc.Frames[f];
+
+            // Parse ANSI content
+            var (chars, colors) = ParseAnsiContent(frame.Content);
+
+            // Add new colors to growing palette
+            foreach (var color in colors)
+            {
+                if (color.Length > 0 && !colorToIndex.ContainsKey(color))
+                {
+                    colorToIndex[color] = paletteList.Count;
+                    paletteList.Add(color);
+                }
+            }
 
             // Apply temporal stability if enabled (modifies colors in-place)
             if (enableStability && prevColors != null && colors.Count == prevColors.Count)
@@ -227,7 +220,7 @@ public class OptimizedDocument
                 ApplyColorStabilityInPlace(colors, prevColors, colorThreshold);
             }
 
-            // Convert colors to palette indices without LINQ
+            // Convert colors to palette indices
             var indices = new List<int>(colors.Count);
             foreach (var c in colors)
             {
@@ -245,9 +238,9 @@ public class OptimizedDocument
                 {
                     IsKeyframe = false,
                     RefFrame = refFrameIdx,
-                    Width = width,
-                    Height = height,
-                    DelayMs = delayMs
+                    Width = frame.Width,
+                    Height = frame.Height,
+                    DelayMs = frame.DelayMs
                 });
                 // Don't update prev state - keep tracking from actual keyframes
                 continue;
@@ -279,9 +272,9 @@ public class OptimizedDocument
                     {
                         IsKeyframe = false,
                         Delta = delta,
-                        Width = width,
-                        Height = height,
-                        DelayMs = delayMs
+                        Width = frame.Width,
+                        Height = frame.Height,
+                        DelayMs = frame.DelayMs
                     });
                     prevChars = chars;
                     prevIndices = indices;
@@ -298,9 +291,9 @@ public class OptimizedDocument
                 IsKeyframe = true,
                 Characters = chars,
                 ColorIndices = CompressColorIndices(indices, compressSb),
-                Width = width,
-                Height = height,
-                DelayMs = delayMs
+                Width = frame.Width,
+                Height = frame.Height,
+                DelayMs = frame.DelayMs
             });
 
             prevChars = chars;
@@ -308,6 +301,7 @@ public class OptimizedDocument
             prevColors = colors;
         }
 
+        optimized.Palette = paletteList.ToArray();
         return optimized;
     }
 
@@ -936,6 +930,163 @@ public class OptimizedDocument
     }
 
     /// <summary>
+    /// Create optimized document by streaming from an NDJSON file.
+    /// Reads one frame at a time - avoids loading all frame content strings into memory.
+    /// The palette is built incrementally (no two-pass needed).
+    /// Memory: O(1 frame content + palette + optimized output) instead of O(N frames).
+    /// </summary>
+    public static async Task<OptimizedDocument> FromNdjsonFileAsync(
+        string ndjsonPath,
+        int keyframeInterval = 30,
+        bool enableStability = false,
+        int colorThreshold = 15,
+        CancellationToken ct = default)
+    {
+        var optimized = new OptimizedDocument { KeyframeInterval = keyframeInterval };
+
+        // Growing palette (built incrementally - no need for two-pass)
+        var paletteList = new List<string> { "" }; // Index 0 = no color
+        var colorToIndex = new Dictionary<string, int> { { "", 0 } };
+
+        // Frame state for delta encoding (only need previous frame)
+        string? prevChars = null;
+        List<int>? prevIndices = null;
+        List<string>? prevColors = null;
+
+        // Frame deduplication
+        var frameHashes = new Dictionary<int, int>();
+
+        // Reusable StringBuilders
+        var deltaSb = new StringBuilder(4096);
+        var compressSb = new StringBuilder(2048);
+        int frameIdx = 0;
+
+        using var reader = new StreamReader(ndjsonPath, Encoding.UTF8);
+        string? line;
+        while (!ct.IsCancellationRequested && (line = await reader.ReadLineAsync(ct)) != null)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            // Parse header for metadata
+            if (line.Contains("\"@type\":\"ConsoleImageDocumentHeader\"") ||
+                line.Contains("\"@type\": \"ConsoleImageDocumentHeader\""))
+            {
+                var header = JsonSerializer.Deserialize(line,
+                    StreamingDocumentJsonContext.Default.StreamingDocumentHeader);
+                if (header != null)
+                {
+                    optimized.SourceFile = header.SourceFile;
+                    optimized.RenderMode = header.RenderMode;
+                    optimized.Settings = header.Settings;
+                    optimized.Created = header.Created;
+                }
+                continue;
+            }
+
+            // Only process frame lines
+            if (!line.Contains("\"@type\":\"Frame\"") && !line.Contains("\"@type\": \"Frame\""))
+                continue;
+
+            var frame = JsonSerializer.Deserialize(line,
+                StreamingDocumentJsonContext.Default.StreamingDocumentFrame);
+            if (frame == null) continue;
+
+            // Parse ANSI content - frame.Content is the large string, let it be GC'd after
+            var (chars, colors) = ParseAnsiContent(frame.Content);
+
+            // Add any new colors to growing palette
+            foreach (var color in colors)
+            {
+                if (color.Length > 0 && !colorToIndex.ContainsKey(color))
+                {
+                    colorToIndex[color] = paletteList.Count;
+                    paletteList.Add(color);
+                }
+            }
+
+            // Apply temporal stability
+            if (enableStability && prevColors != null && colors.Count == prevColors.Count)
+                ApplyColorStabilityInPlace(colors, prevColors, colorThreshold);
+
+            // Convert to palette indices
+            var indices = new List<int>(colors.Count);
+            foreach (var c in colors)
+                indices.Add(colorToIndex.TryGetValue(c, out var idx) ? idx : 0);
+
+            // Content hash for deduplication
+            var contentHash = ComputeFrameHash(chars, indices);
+
+            if (frameHashes.TryGetValue(contentHash, out var refFrameIdx))
+            {
+                optimized.Frames.Add(new OptimizedFrame
+                {
+                    IsKeyframe = false,
+                    RefFrame = refFrameIdx,
+                    Width = frame.Width,
+                    Height = frame.Height,
+                    DelayMs = frame.DelayMs
+                });
+                frameIdx++;
+                continue;
+            }
+
+            // Decide if this should be a keyframe
+            bool isKeyframe = frameIdx == 0 || frameIdx % keyframeInterval == 0;
+            if (prevChars != null && chars.Length != prevChars.Length)
+                isKeyframe = true;
+
+            // Calculate delta if not a keyframe
+            if (!isKeyframe && prevChars != null && prevIndices != null)
+            {
+                var delta = CalculateDelta(prevChars, prevIndices, chars, indices, deltaSb);
+                var fullSize = chars.Length + indices.Count;
+                if (delta.Length > fullSize * 0.6)
+                {
+                    isKeyframe = true;
+                }
+                else
+                {
+                    optimized.Frames.Add(new OptimizedFrame
+                    {
+                        IsKeyframe = false,
+                        Delta = delta,
+                        Width = frame.Width,
+                        Height = frame.Height,
+                        DelayMs = frame.DelayMs,
+                        ContentHash = contentHash
+                    });
+                    prevChars = chars;
+                    prevIndices = indices;
+                    prevColors = colors;
+                    frameIdx++;
+                    continue;
+                }
+            }
+
+            // Store as keyframe
+            frameHashes[contentHash] = optimized.Frames.Count;
+            optimized.Frames.Add(new OptimizedFrame
+            {
+                IsKeyframe = true,
+                Characters = chars,
+                ColorIndices = CompressColorIndices(indices, compressSb),
+                Width = frame.Width,
+                Height = frame.Height,
+                DelayMs = frame.DelayMs,
+                ContentHash = contentHash
+            });
+
+            prevChars = chars;
+            prevIndices = indices;
+            prevColors = colors;
+            frameIdx++;
+        }
+
+        optimized.Palette = paletteList.ToArray();
+        return optimized;
+    }
+
+    /// <summary>
     /// Decompress RLE color indices directly into a pre-allocated buffer.
     /// Zero-allocation: parses using spans, writes directly to int[].
     /// </summary>
@@ -1122,6 +1273,19 @@ public static class CompressedDocumentArchive
         var colorThreshold = doc.Settings.ColorStabilityThreshold;
         var optimized = OptimizedDocument.FromDocument(doc, keyframeInterval, enableStability, colorThreshold);
 
+        await SaveOptimizedAsync(optimized, path, subtitles, ct, compressionLevel);
+    }
+
+    /// <summary>
+    /// Save an already-optimized document to CIDZ format.
+    /// Use this with OptimizedDocument.FromNdjsonFileAsync for streaming compression
+    /// that avoids loading all frame content into memory.
+    /// </summary>
+    public static async Task SaveOptimizedAsync(OptimizedDocument optimized, string path,
+        SubtitleTrack? subtitles = null,
+        CancellationToken ct = default,
+        CompressionLevel compressionLevel = CompressionLevel.Optimal)
+    {
         var hasSubtitles = subtitles != null && subtitles.HasEntries;
 
         // Write CIDZ v2 header (6 bytes)

@@ -930,24 +930,25 @@ public static class VideoHandler
                 await docWriter.FinalizeAsync(!ct.IsCancellationRequested, ct);
             }
 
-            // Load streamed document and compress
+            // Stream NDJSON directly to optimized format (avoids loading all frames into memory)
             Console.Write("\rCompressing document...                         ");
-            var doc = await StreamingDocumentReader.LoadAsync(tempPath, ct);
-
-            // Apply settings from render options
-            doc.Settings.EnableTemporalStability = opts.Dejitter;
-            doc.Settings.ColorStabilityThreshold = opts.ColorThreshold ?? 15;
+            var optimized = await OptimizedDocument.FromNdjsonFileAsync(
+                tempPath,
+                keyframeInterval: 30,
+                enableStability: opts.Dejitter,
+                colorThreshold: opts.ColorThreshold ?? 15,
+                ct: ct);
 
             // Record subtitle metadata in document settings
             if (opts.Subtitles != null)
             {
-                doc.Settings.SubtitlesEnabled = true;
-                doc.Settings.SubtitleLanguage = opts.Subtitles.Language;
-                doc.Settings.SubtitleSource = opts.Subtitles.SourceFile != null ? "file" : "auto";
+                optimized.Settings.SubtitlesEnabled = true;
+                optimized.Settings.SubtitleLanguage = opts.Subtitles.Language;
+                optimized.Settings.SubtitleSource = opts.Subtitles.SourceFile != null ? "file" : "auto";
             }
 
             // Save as CIDZ with bundled subtitles (Brotli compressed)
-            await CompressedDocumentArchive.SaveAsync(doc, opts.JsonOutputPath!, 30, opts.Subtitles, ct);
+            await CompressedDocumentArchive.SaveOptimizedAsync(optimized, opts.JsonOutputPath!, opts.Subtitles, ct);
             if (opts.Subtitles != null)
                 Console.Error.WriteLine($"Bundled {opts.Subtitles.Count} subtitles in archive");
 

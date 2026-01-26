@@ -108,12 +108,7 @@ public static class ImageHandler
             var renderModeName = useBraille ? "Braille" : useBlocks ? "Blocks" : useMatrix ? "Matrix" : "ASCII";
             StatusLine? statusRenderer = null;
             if (showStatus)
-            {
-                if (useBraille || useBlocks || useMatrix)
-                    Console.WriteLine("Note: Status line in GIF output is only supported for ASCII mode.");
-                else
-                    statusRenderer = new StatusLine(maxWidth, !noColor);
-            }
+                statusRenderer = new StatusLine(maxWidth, !noColor);
 
             await RenderAnimatedGifFrames(input, options, gifWriter,
                 useMatrix, matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet,
@@ -149,7 +144,17 @@ public static class ImageHandler
 
             foreach (var frame in frames)
             {
-                gifWriter.AddFrame(frame.Content, frame.DelayMs);
+                if (statusRenderer != null)
+                {
+                    var statusText = statusRenderer.Render(BuildImageStatusInfo(
+                        input.Name, renderModeName, frameIndex + 1, totalFrames));
+                    // Matrix renders as text - append status
+                    gifWriter.AddFrame(frame.Content + "\n" + statusText, frame.DelayMs);
+                }
+                else
+                {
+                    gifWriter.AddFrame(frame.Content, frame.DelayMs);
+                }
                 frameIndex++;
                 Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
             }
@@ -164,7 +169,18 @@ public static class ImageHandler
 
             foreach (var frame in frames)
             {
-                gifWriter.AddBrailleFrame(frame, frame.DelayMs);
+                if (statusRenderer != null)
+                {
+                    var statusText = statusRenderer.Render(BuildImageStatusInfo(
+                        input.Name, renderModeName, frameIndex + 1, totalFrames));
+                    var brailleImage = GifWriter.RenderBrailleFrameToImage(frame);
+                    gifWriter.AddImageFrameWithOverlays(brailleImage, null, statusText, frame.DelayMs);
+                    brailleImage.Dispose();
+                }
+                else
+                {
+                    gifWriter.AddBrailleFrame(frame, frame.DelayMs);
+                }
                 frameIndex++;
                 Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
             }
@@ -179,7 +195,18 @@ public static class ImageHandler
 
             foreach (var frame in frames)
             {
-                gifWriter.AddColorBlockFrame(frame, frame.DelayMs);
+                if (statusRenderer != null)
+                {
+                    var statusText = statusRenderer.Render(BuildImageStatusInfo(
+                        input.Name, renderModeName, frameIndex + 1, totalFrames));
+                    var blocksImage = GifWriter.RenderColorBlockFrameToImage(frame);
+                    gifWriter.AddImageFrameWithOverlays(blocksImage, null, statusText, frame.DelayMs);
+                    blocksImage.Dispose();
+                }
+                else
+                {
+                    gifWriter.AddColorBlockFrame(frame, frame.DelayMs);
+                }
                 frameIndex++;
                 Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
             }
@@ -197,14 +224,9 @@ public static class ImageHandler
                 var content = frame.ToAnsiString();
                 if (statusRenderer != null)
                 {
-                    var statusInfo = new StatusLine.StatusInfo
-                    {
-                        FileName = input.Name,
-                        RenderMode = renderModeName,
-                        CurrentFrame = frameIndex + 1,
-                        TotalFrames = totalFrames
-                    };
-                    content += "\n" + statusRenderer.Render(statusInfo);
+                    var statusText = statusRenderer.Render(BuildImageStatusInfo(
+                        input.Name, renderModeName, frameIndex + 1, totalFrames));
+                    content += "\n" + statusText;
                 }
                 gifWriter.AddFrame(content, frame.DelayMs);
                 frameIndex++;
@@ -213,6 +235,18 @@ public static class ImageHandler
             Console.WriteLine();
         }
         await Task.CompletedTask;
+    }
+
+    private static StatusLine.StatusInfo BuildImageStatusInfo(
+        string fileName, string renderMode, int currentFrame, int totalFrames)
+    {
+        return new StatusLine.StatusInfo
+        {
+            FileName = fileName,
+            RenderMode = renderMode,
+            CurrentFrame = currentFrame,
+            TotalFrames = totalFrames
+        };
     }
 
     private static void RenderStaticGifFrame(

@@ -1074,12 +1074,22 @@ public class BrailleRenderer : IDisposable
     /// </summary>
     private float[] ApplyFloydSteinbergDithering(float[] brightness, int width, int height, float threshold)
     {
+        var bufferLength = brightness.Length;
         var (min, max) = GetBrightnessRangeFromBuffer(brightness);
         var range = max - min;
         if (range < 0.01f) range = 1f;
+        var invRange = 1f / range; // Multiply is faster than divide in inner loop
 
-        var result = new float[brightness.Length];
-        for (var i = 0; i < brightness.Length; i++) result[i] = (brightness[i] - min) / range;
+        // Reuse dithering buffer from ArrayPool (shared with Atkinson)
+        if (_ditheringBuffer == null || _ditheringBuffer.Length < bufferLength)
+        {
+            if (_ditheringBuffer != null)
+                ArrayPool<float>.Shared.Return(_ditheringBuffer);
+            _ditheringBuffer = ArrayPool<float>.Shared.Rent(bufferLength);
+        }
+
+        var result = _ditheringBuffer;
+        for (var i = 0; i < bufferLength; i++) result[i] = (brightness[i] - min) * invRange;
 
         // Floyd-Steinberg:
         //       X   7

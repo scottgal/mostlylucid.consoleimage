@@ -204,6 +204,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var whisperThreads = parseResult.GetValue(cliOptions.WhisperThreads);
     var transcriptOnly = parseResult.GetValue(cliOptions.Transcript);
     var forceSubs = parseResult.GetValue(cliOptions.ForceSubs);
+
+    // --force-subs without --subs implies --subs auto
+    if (forceSubs && string.IsNullOrEmpty(subsValue))
+        subsValue = "auto";
     var cookiesFromBrowser = parseResult.GetValue(cliOptions.CookiesFromBrowser);
     var cookiesFile = parseResult.GetValue(cliOptions.CookiesFile);
     var cacheVideo = parseResult.GetValue(cliOptions.CacheVideo);
@@ -855,49 +859,58 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 else
                 {
                 Console.Error.WriteLine($"Starting live transcription with Whisper ({whisperModel ?? "base"})...");
-                chunkedTranscriber = new ChunkedTranscriber(
-                    inputFullPath,
-                    modelSize: whisperModel ?? "base",
-                    language: subtitleLang ?? "en",
-                    chunkDurationSeconds: 15.0,  // Smaller chunks for faster initial results
-                    bufferAheadSeconds: 30.0,    // Buffer 30s ahead of playback
-                    startTimeOffset: effectiveStart);  // Start from --ss position
-
-                // Hook up progress events for visual feedback (only during initial setup)
-                var showProgress = true;
-                chunkedTranscriber.OnProgress += (seconds, status) =>
+                try
                 {
-                    if (showProgress)
-                        Console.Error.Write($"\r{status,-60}");
-                };
+                    chunkedTranscriber = new ChunkedTranscriber(
+                        inputFullPath,
+                        modelSize: whisperModel ?? "base",
+                        language: subtitleLang ?? "en",
+                        chunkDurationSeconds: 15.0,  // Smaller chunks for faster initial results
+                        bufferAheadSeconds: 30.0,    // Buffer 30s ahead of playback
+                        startTimeOffset: effectiveStart);  // Start from --ss position
 
-                // Initialize whisper (downloads model if needed)
-                var downloadProgress = new Progress<(long downloaded, long total, string status)>(p =>
-                {
-                    if (p.total > 0)
+                    // Hook up progress events for visual feedback (only during initial setup)
+                    var showProgress = true;
+                    chunkedTranscriber.OnProgress += (seconds, status) =>
                     {
-                        var pct = (int)(p.downloaded * 100 / p.total);
-                        Console.Error.Write($"\r{p.status} ({pct}%)          ");
-                    }
-                    else
+                        if (showProgress)
+                            Console.Error.Write($"\r{status,-60}");
+                    };
+
+                    // Initialize whisper (downloads model if needed)
+                    var downloadProgress = new Progress<(long downloaded, long total, string status)>(p =>
                     {
-                        Console.Error.Write($"\r{p.status}          ");
-                    }
-                });
-                await chunkedTranscriber.StartAsync(downloadProgress, cancellationToken);
-                Console.Error.WriteLine();
+                        if (p.total > 0)
+                        {
+                            var pct = (int)(p.downloaded * 100 / p.total);
+                            Console.Error.Write($"\r{p.status} ({pct}%)          ");
+                        }
+                        else
+                        {
+                            Console.Error.Write($"\r{p.status}          ");
+                        }
+                    });
+                    await chunkedTranscriber.StartAsync(downloadProgress, cancellationToken);
+                    Console.Error.WriteLine();
 
-                // Buffer just the initial chunk (15s) before starting playback
-                // Background transcription will catch up during playback
-                await chunkedTranscriber.EnsureTranscribedUpToAsync(effectiveStart + 15.0, cancellationToken);
-                Console.Error.WriteLine("\rInitial buffer ready, starting playback...                    ");
+                    // Buffer just the initial chunk (15s) before starting playback
+                    // Background transcription will catch up during playback
+                    await chunkedTranscriber.EnsureTranscribedUpToAsync(effectiveStart + 15.0, cancellationToken);
+                    Console.Error.WriteLine("\rInitial buffer ready, starting playback...                    ");
 
-                // Disable progress output before starting playback (would interfere with video display)
-                showProgress = false;
+                    // Disable progress output before starting playback (would interfere with video display)
+                    showProgress = false;
 
-                // Start background transcription to buffer ahead
-                chunkedTranscriber.StartBackgroundTranscription();
+                    // Start background transcription to buffer ahead
+                    chunkedTranscriber.StartBackgroundTranscription();
                 }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Console.Error.WriteLine($"\rWhisper transcription failed: {ex.Message}");
+                    Console.Error.WriteLine("Continuing without subtitles. Try --subs auto for embedded subtitles.");
+                    chunkedTranscriber = null;
+                }
+            }
             }
         }
         else if (subtitles == null)
@@ -1544,6 +1557,13 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
         }
 
         return track;
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        Console.Error.WriteLine($"Whisper transcription failed: {ex.Message}");
+        if (ex.InnerException is FileNotFoundException)
+            Console.Error.WriteLine("Native Whisper library not found. Use --subs auto for embedded subtitles instead.");
+        return null;
     }
     finally
     {
