@@ -93,6 +93,13 @@
               DestinationFolder="$(PublishDir)"
               SkipUnchangedFiles="true"
               Condition="'@(_WhisperNativeFilesDistinct)' != ''" />
+        <!-- Also copy to runtimes/{rid}/ for Whisper.net's NativeLibraryLoader which
+             expects this directory structure. In single-file builds, the NuGet .targets
+             copies get bundled inside the exe, so this subdirectory doesn't exist. -->
+        <Copy SourceFiles="@(_WhisperNativeFilesDistinct)"
+              DestinationFolder="$(PublishDir)runtimes\$(RuntimeIdentifier)"
+              SkipUnchangedFiles="true"
+              Condition="'@(_WhisperNativeFilesDistinct)' != ''" />
     </Target>
 
     <ItemGroup>

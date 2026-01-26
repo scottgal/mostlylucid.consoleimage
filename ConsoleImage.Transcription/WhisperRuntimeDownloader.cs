@@ -520,15 +520,17 @@ public static class WhisperRuntimeDownloader
     /// </summary>
     public static void ConfigureRuntimePath()
     {
-        // Set Whisper.net RuntimeOptions.LibraryPath to the DIRECTORY containing the native library.
+        // Set Whisper.net RuntimeOptions.LibraryPath to the full FILE path of the native library.
         // This is critical for AOT/single-file builds where Assembly.Location returns empty,
         // causing Whisper.net's internal NativeLibraryLoader to fail (IL3000).
-        // Whisper.net does Path.Combine(LibraryPath, libraryName) so it MUST be a directory path.
+        // NOTE: We pass the full file path (not directory) because Whisper.net's
+        // GetSafeDirectoryName() calls Path.GetDirectoryName() on this value — if we pass
+        // a directory path, it returns the PARENT directory, missing the actual DLLs.
         var nativeLibPath = GetAvailableRuntimePath();
         var libDir = nativeLibPath != null ? Path.GetDirectoryName(nativeLibPath) : null;
 
-        if (libDir != null)
-            RuntimeOptions.LibraryPath = libDir;
+        if (nativeLibPath != null)
+            RuntimeOptions.LibraryPath = nativeLibPath;
 
         // Also check the download cache directory
         var rid = GetRuntimeIdentifier();
@@ -568,7 +570,14 @@ public static class WhisperRuntimeDownloader
         // the OS loader can't find them. Pre-loading them into the process ensures they're
         // available when Whisper.NET later loads whisper.dll via DllImport.
         if (libDir != null)
+        {
             PreloadNativeLibraries(libDir);
+
+            // Tell Whisper.net the CPU runtime is already loaded — bypasses its
+            // NativeLibraryLoader which expects runtimes/{rid}/ directory structure
+            // that doesn't exist in published single-file builds.
+            RuntimeOptions.LoadedLibrary = RuntimeLibrary.Cpu;
+        }
     }
 
     /// <summary>
