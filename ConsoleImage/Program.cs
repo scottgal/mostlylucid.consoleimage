@@ -41,6 +41,10 @@ cliOptions.AddToCommand(rootCommand);
 var transcribeCommand = CreateTranscribeSubcommand();
 rootCommand.Subcommands.Add(transcribeCommand);
 
+// Add tools subcommand: consoleimage tools [--verify] [--clear-cache] [--redownload]
+var toolsCommand = CreateToolsSubcommand();
+rootCommand.Subcommands.Add(toolsCommand);
+
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
     // Parse template options first
@@ -1701,6 +1705,9 @@ static Command CreateTranscribeSubcommand()
         { Description = "Suppress progress messages (output only transcribed text)" };
     quietOpt.Aliases.Add("-q");
 
+    var noEnhanceOpt = new Option<bool>("--no-enhance")
+        { Description = "Disable FFmpeg audio preprocessing filters" };
+
     var cmd = new Command("transcribe", "Generate subtitles from video/audio using Whisper");
     cmd.Arguments.Add(inputArg);
     cmd.Options.Add(outputOpt);
@@ -1711,6 +1718,7 @@ static Command CreateTranscribeSubcommand()
     cmd.Options.Add(urlOpt);
     cmd.Options.Add(streamOpt);
     cmd.Options.Add(quietOpt);
+    cmd.Options.Add(noEnhanceOpt);
 
     cmd.SetAction(async (parseResult, ct) =>
     {
@@ -1723,6 +1731,7 @@ static Command CreateTranscribeSubcommand()
         var whisperUrl = parseResult.GetValue(urlOpt);
         var stream = parseResult.GetValue(streamOpt);
         var quiet = parseResult.GetValue(quietOpt);
+        var noEnhance = parseResult.GetValue(noEnhanceOpt);
 
         if (string.IsNullOrEmpty(input))
         {
@@ -1752,7 +1761,8 @@ static Command CreateTranscribeSubcommand()
             Diarize = diarize,
             Threads = threads,
             StreamToStdout = stream,
-            Quiet = quiet
+            Quiet = quiet,
+            EnhanceAudio = !noEnhance
         };
 
         return await TranscriptionHandler.HandleAsync(opts, ct);
@@ -1761,7 +1771,6 @@ static Command CreateTranscribeSubcommand()
     return cmd;
 }
 
-/// <summary>
 /// <summary>
 /// Extract YouTube video ID from a URL.
 /// </summary>
@@ -1964,4 +1973,273 @@ static async Task<int> TranscribeWithRemoteApiAsync(
         Console.Error.WriteLine($"Remote transcription failed: {ex.Message}");
         return 1;
     }
+}
+
+// === Tools subcommand ===
+
+static Command CreateToolsSubcommand()
+{
+    var verifyOpt = new Option<bool>("--verify") { Description = "Test download URLs are reachable" };
+    var clearCacheOpt = new Option<bool>("--clear-cache") { Description = "Clear all downloaded tool caches" };
+    var redownloadOpt = new Option<bool>("--redownload") { Description = "Clear caches and re-download everything" };
+
+    var cmd = new Command("tools", "Check status of required tools (FFmpeg, yt-dlp, Whisper)");
+    cmd.Options.Add(verifyOpt);
+    cmd.Options.Add(clearCacheOpt);
+    cmd.Options.Add(redownloadOpt);
+
+    cmd.SetAction(async (parseResult, ct) =>
+    {
+        var verify = parseResult.GetValue(verifyOpt);
+        var clearCache = parseResult.GetValue(clearCacheOpt);
+        var redownload = parseResult.GetValue(redownloadOpt);
+
+        Console.WriteLine("=== ConsoleImage Tool Status ===");
+        Console.WriteLine($"Platform: {System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}");
+        Console.WriteLine($"App Dir:  {AppContext.BaseDirectory}");
+        Console.WriteLine();
+
+        // --- Clear caches if requested ---
+        if (clearCache || redownload)
+        {
+            Console.WriteLine("Clearing caches...");
+
+            Console.Write("  FFmpeg: ");
+            try { ConsoleImage.Video.Core.FFmpegProvider.ClearCache(); Console.WriteLine("cleared"); }
+            catch (Exception ex) { Console.WriteLine($"error: {ex.Message}"); }
+
+            Console.Write("  yt-dlp: ");
+            try { ConsoleImage.Core.YtdlpProvider.ClearCache(); Console.WriteLine("cleared"); }
+            catch (Exception ex) { Console.WriteLine($"error: {ex.Message}"); }
+
+            Console.Write("  Whisper: ");
+            try
+            {
+                var whisperDir = ConsoleImage.Transcription.WhisperModelDownloader.CacheDirectory;
+                if (Directory.Exists(whisperDir))
+                {
+                    Directory.Delete(whisperDir, true);
+                    Console.WriteLine("cleared");
+                }
+                else
+                {
+                    Console.WriteLine("(no cache)");
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"error: {ex.Message}"); }
+
+            Console.WriteLine();
+
+            if (!redownload)
+                return 0;
+        }
+
+        // --- FFmpeg ---
+        Console.WriteLine("[FFmpeg]");
+        Console.WriteLine($"  Cache: {ConsoleImage.Video.Core.FFmpegProvider.CacheDirectory}");
+        var ffmpegStatus = ConsoleImage.Video.Core.FFmpegProvider.GetDownloadStatus();
+        if (ffmpegStatus.NeedsDownload)
+        {
+            Console.WriteLine($"  Status: NOT FOUND");
+            Console.WriteLine($"  URL: {ffmpegStatus.DownloadUrl}");
+            if (redownload)
+            {
+                Console.Write("  Downloading... ");
+                try
+                {
+                    var progress = new Progress<(string Status, double Progress)>(p =>
+                    {
+                        if (p.Progress > 0) Console.Write($"\r  Downloading... {p.Progress:P0}  ");
+                    });
+                    var path = await ConsoleImage.Video.Core.FFmpegProvider.GetFFmpegPathAsync(null, progress, ct);
+                    Console.WriteLine($"\r  Downloaded: {path}                    ");
+                }
+                catch (Exception ex) { Console.WriteLine($"FAILED: {ex.Message}"); }
+            }
+        }
+        else
+        {
+            Console.WriteLine($"  Status: {ffmpegStatus.StatusMessage}");
+        }
+        Console.WriteLine();
+
+        // --- yt-dlp ---
+        Console.WriteLine("[yt-dlp]");
+        Console.WriteLine($"  Cache: {ConsoleImage.Core.YtdlpProvider.CacheDirectory}");
+        var ytdlpStatus = ConsoleImage.Core.YtdlpProvider.GetDownloadStatus();
+        if (ytdlpStatus.NeedsDownload)
+        {
+            Console.WriteLine($"  Status: NOT FOUND");
+            Console.WriteLine($"  URL: {ytdlpStatus.DownloadUrl}");
+            if (redownload)
+            {
+                Console.Write("  Downloading... ");
+                try
+                {
+                    var progress = new Progress<(string Status, double Progress)>(p =>
+                    {
+                        if (p.Progress > 0) Console.Write($"\r  Downloading... {p.Progress:P0}  ");
+                    });
+                    var path = await ConsoleImage.Core.YtdlpProvider.GetYtdlpPathAsync(null, progress, ct);
+                    Console.WriteLine($"\r  Downloaded: {path}                    ");
+                }
+                catch (Exception ex) { Console.WriteLine($"FAILED: {ex.Message}"); }
+            }
+        }
+        else
+        {
+            Console.WriteLine($"  Status: {ytdlpStatus.StatusMessage}");
+        }
+        Console.WriteLine();
+
+        // --- Whisper Runtime ---
+        Console.WriteLine("[Whisper Runtime]");
+        Console.WriteLine($"  Cache: {ConsoleImage.Transcription.WhisperRuntimeDownloader.RuntimesDirectory}");
+        var runtimeAvailable = ConsoleImage.Transcription.WhisperRuntimeDownloader.IsRuntimeAvailable();
+        if (!runtimeAvailable)
+        {
+            var (rid, sizeMB) = ConsoleImage.Transcription.WhisperRuntimeDownloader.GetRuntimeInfo();
+            Console.WriteLine($"  Status: NOT FOUND (need {rid}, ~{sizeMB}MB)");
+            if (redownload)
+            {
+                Console.Write("  Downloading... ");
+                try
+                {
+                    var progress = new Progress<(long downloaded, long total, string status)>(p =>
+                    {
+                        if (p.total > 0) Console.Write($"\r  Downloading... {p.downloaded * 100 / p.total}%  ");
+                        else Console.Write($"\r  {p.status}  ");
+                    });
+                    var ok = await ConsoleImage.Transcription.WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
+                    Console.WriteLine(ok
+                        ? $"\r  Downloaded: {ConsoleImage.Transcription.WhisperRuntimeDownloader.GetAvailableRuntimePath()}                    "
+                        : "\r  FAILED to download runtime                    ");
+                }
+                catch (Exception ex) { Console.WriteLine($"FAILED: {ex.Message}"); }
+            }
+        }
+        else
+        {
+            var runtimePath = ConsoleImage.Transcription.WhisperRuntimeDownloader.GetAvailableRuntimePath();
+            Console.WriteLine($"  Status: OK");
+            Console.WriteLine($"  Path: {runtimePath}");
+
+            var canLoad = ConsoleImage.Transcription.WhisperRuntimeDownloader.CanLoadRuntime(out var loadError);
+            Console.WriteLine(canLoad
+                ? $"  Load test: PASS"
+                : $"  Load test: FAIL - {loadError}");
+        }
+        Console.WriteLine();
+
+        // --- Whisper Model ---
+        Console.WriteLine("[Whisper Model]");
+        Console.WriteLine($"  Cache: {ConsoleImage.Transcription.WhisperModelDownloader.CacheDirectory}");
+        foreach (var size in new[] { "tiny", "base", "small", "medium", "large" })
+        {
+            var cached = ConsoleImage.Transcription.WhisperModelDownloader.IsModelCached(size, "en");
+            var (fileName, sizeMB) = ConsoleImage.Transcription.WhisperModelDownloader.GetModelInfo(size, "en");
+            if (cached)
+                Console.WriteLine($"  {size,-8}: CACHED ({fileName})");
+            else
+                Console.WriteLine($"  {size,-8}: not downloaded (~{sizeMB}MB)");
+        }
+
+        if (redownload)
+        {
+            Console.Write("  Downloading base model... ");
+            try
+            {
+                var progress = new Progress<(long downloaded, long total, string status)>(p =>
+                {
+                    if (p.total > 0) Console.Write($"\r  Downloading base model... {p.downloaded * 100 / p.total}%  ");
+                });
+                var modelPath = await ConsoleImage.Transcription.WhisperModelDownloader.EnsureModelAsync("base", "en", progress, ct);
+                Console.WriteLine($"\r  Downloaded: {modelPath}                    ");
+            }
+            catch (Exception ex) { Console.WriteLine($"FAILED: {ex.Message}"); }
+        }
+        Console.WriteLine();
+
+        // --- Verify download URLs ---
+        if (verify)
+        {
+            Console.WriteLine("=== URL Verification ===");
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "ConsoleImage/1.0");
+
+            // Always verify URLs regardless of local install status
+            var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+            var ffmpegUrl = rid switch
+            {
+                "win-x64" or "win-arm64" => "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+                "linux-x64" => "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",
+                "linux-arm64" => "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+                _ when rid.StartsWith("osx") => "https://evermeet.cx/ffmpeg/getrelease/zip",
+                _ => null
+            };
+            var ytdlpUrl = rid switch
+            {
+                "win-x64" or "win-arm64" => "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+                "linux-x64" => "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux",
+                "linux-arm64" => "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64",
+                _ when rid.StartsWith("osx") => "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos",
+                _ => null
+            };
+
+            var urls = new (string name, string? url)[]
+            {
+                ("FFmpeg", ffmpegUrl),
+                ("yt-dlp", ytdlpUrl),
+                ("Whisper Runtime",
+                    "https://api.nuget.org/v3-flatcontainer/whisper.net.runtime/1.9.0/whisper.net.runtime.1.9.0.nupkg"),
+                ("Whisper Model (base)",
+                    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin")
+            };
+
+            foreach (var (name, url) in urls)
+            {
+                if (string.IsNullOrEmpty(url))
+                {
+                    Console.WriteLine($"  {name,-20}: N/A (unsupported platform)");
+                    continue;
+                }
+
+                Console.Write($"  {name,-20}: ");
+                try
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Head, url);
+                    var response = await httpClient.SendAsync(request, ct);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var size = response.Content.Headers.ContentLength;
+                        Console.WriteLine(size.HasValue ? $"OK ({size.Value / 1024 / 1024}MB)" : "OK");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"HTTP {(int)response.StatusCode}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"FAIL: {ex.Message}");
+                }
+            }
+        }
+
+        // --- Cross-platform notes ---
+        Console.WriteLine("=== Cross-Platform Notes ===");
+        Console.WriteLine("  FFmpeg:  Auto-downloads on first use. ~100MB.");
+        Console.WriteLine("           Win/Linux: GitHub builds. macOS: evermeet.cx");
+        Console.WriteLine("           Gotcha: ARM64 Windows uses x64 build (emulation)");
+        Console.WriteLine("  yt-dlp:  Auto-downloads on first use. ~10MB.");
+        Console.WriteLine("           Required only for YouTube URLs.");
+        Console.WriteLine("  Whisper: Runtime ~40MB, Model 75MB-3GB.");
+        Console.WriteLine("           AOT builds: Use single-file mode (-p:BundleWhisperRuntime=true)");
+        Console.WriteLine("           Native libs (ggml-*.dll) must be co-located with whisper.dll");
+        Console.WriteLine("           Gotcha: macOS uses 'macos' RID, not 'osx' in NuGet packages");
+
+        return 0;
+    });
+
+    return cmd;
 }

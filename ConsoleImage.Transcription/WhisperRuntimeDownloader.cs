@@ -562,6 +562,51 @@ public static class WhisperRuntimeDownloader
         catch
         {
         }
+
+        // Pre-load ALL native libraries from the directory containing whisper.dll.
+        // whisper.dll depends on ggml-*.dll; if they're not on PATH or in the exe directory,
+        // the OS loader can't find them. Pre-loading them into the process ensures they're
+        // available when Whisper.NET later loads whisper.dll via DllImport.
+        if (libDir != null)
+            PreloadNativeLibraries(libDir);
+    }
+
+    /// <summary>
+    ///     Pre-load all native libraries from a directory into the process.
+    ///     Loads dependency DLLs (ggml-*.dll) before whisper.dll so the OS loader
+    ///     can resolve them when whisper.dll is loaded.
+    /// </summary>
+    private static void PreloadNativeLibraries(string directory)
+    {
+        if (!Directory.Exists(directory)) return;
+
+        var nativeExtensions = GetNativeExtensions();
+
+        try
+        {
+            var nativeFiles = Directory.GetFiles(directory)
+                .Where(f => nativeExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                // Load dependencies (ggml-*) before whisper.dll
+                .OrderBy(f => Path.GetFileName(f).Contains("whisper", StringComparison.OrdinalIgnoreCase)
+                              && !Path.GetFileName(f).Contains("ggml", StringComparison.OrdinalIgnoreCase)
+                    ? 1
+                    : 0)
+                .ToList();
+
+            foreach (var file in nativeFiles)
+                try
+                {
+                    NativeLibrary.Load(file);
+                }
+                catch
+                {
+                    // Best effort — some may already be loaded or not needed on this platform
+                }
+        }
+        catch
+        {
+            // Best effort
+        }
     }
 
     /// <summary>

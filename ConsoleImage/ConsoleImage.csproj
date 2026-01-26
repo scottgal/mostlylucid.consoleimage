@@ -8,26 +8,31 @@
         <AssemblyName>consoleimage</AssemblyName>
         <ApplicationIcon>consoleimage.ico</ApplicationIcon>
 
-        <!-- AOT Compilation Support -->
-        <PublishAot>true</PublishAot>
+        <!-- AOT Compilation Support (disabled when bundling Whisper - native lib loading requires JIT) -->
+        <PublishAot Condition="'$(BundleWhisperRuntime)' != 'true'">true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
         <OptimizationPreference>Size</OptimizationPreference>
 
-        <!-- Additional size optimizations -->
-        <StripSymbols>true</StripSymbols>
+        <!-- Single-file mode when bundling Whisper (non-AOT but still single binary) -->
+        <PublishSingleFile Condition="'$(BundleWhisperRuntime)' == 'true'">true</PublishSingleFile>
+        <SelfContained Condition="'$(BundleWhisperRuntime)' == 'true'">true</SelfContained>
+        <IncludeNativeLibrariesForSelfExtract Condition="'$(BundleWhisperRuntime)' == 'true'">true</IncludeNativeLibrariesForSelfExtract>
+
+        <!-- Additional size optimizations (AOT-only settings are conditional) -->
+        <StripSymbols Condition="'$(BundleWhisperRuntime)' != 'true'">true</StripSymbols>
         <DebugType>none</DebugType>
-        <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
-        <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+        <IlcGenerateStackTraceData Condition="'$(BundleWhisperRuntime)' != 'true'">false</IlcGenerateStackTraceData>
+        <IlcFoldIdenticalMethodBodies Condition="'$(BundleWhisperRuntime)' != 'true'">true</IlcFoldIdenticalMethodBodies>
         <UseSystemResourceKeys>true</UseSystemResourceKeys>
         <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
         <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
         <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
         <EventSourceSupport>false</EventSourceSupport>
         <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
-        <StackTraceSupport>false</StackTraceSupport>
-        <TrimMode>full</TrimMode>
-        <IlcGenerateMstatFile>false</IlcGenerateMstatFile>
-        <IlcGenerateDgmlFile>false</IlcGenerateDgmlFile>
+        <StackTraceSupport Condition="'$(BundleWhisperRuntime)' != 'true'">false</StackTraceSupport>
+        <TrimMode Condition="'$(BundleWhisperRuntime)' != 'true'">full</TrimMode>
+        <IlcGenerateMstatFile Condition="'$(BundleWhisperRuntime)' != 'true'">false</IlcGenerateMstatFile>
+        <IlcGenerateDgmlFile Condition="'$(BundleWhisperRuntime)' != 'true'">false</IlcGenerateDgmlFile>
 
         <!-- Suppress expected AOT warnings from dependencies -->
         <!-- IL3000: Whisper.net uses Assembly.Location (we work around via RuntimeOptions.LibraryPath) -->

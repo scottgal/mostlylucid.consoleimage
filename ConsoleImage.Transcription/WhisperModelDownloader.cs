@@ -175,6 +175,7 @@ public class WhisperModelDownloader
         var lang = language.ToLowerInvariant();
 
         // English-specific models are smaller and faster
+        // Note: large model is always multilingual (no .en variant exists)
         if (lang == "en")
             return size switch
             {
@@ -182,6 +183,7 @@ public class WhisperModelDownloader
                 "base" => "ggml-base.en.bin",
                 "small" => "ggml-small.en.bin",
                 "medium" => "ggml-medium.en.bin",
+                "large" => "ggml-large-v3.bin",
                 _ => "ggml-base.en.bin"
             };
 

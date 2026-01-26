@@ -28,7 +28,6 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     private int _entryIndex;
 
     private int _extractionFailures;
-    private string? _lastChunkPrompt;
     private string? _tempAudioDir;
 
     /// <summary>
@@ -362,8 +361,8 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                     return;
                 }
 
-                // Transcribe with context from previous chunk for continuity
-                var result = await _whisper.TranscribeFileAsync(chunkPath, null, ct, _lastChunkPrompt);
+                // Transcribe chunk (processor is cached internally for stability)
+                var result = await _whisper.TranscribeFileAsync(chunkPath, null, ct);
 
                 // Filter hallucinations and convert segments to subtitle entries
                 var chunkTexts = new List<string>();
@@ -425,14 +424,9 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                     }
                 }
 
-                // Update prompt for next chunk: last ~200 chars of transcribed text
-                if (chunkTexts.Count > 0)
-                {
-                    var combined = string.Join(" ", chunkTexts);
-                    _lastChunkPrompt = combined.Length > 200
-                        ? combined[^200..]
-                        : combined;
-                }
+                // Note: Per-chunk prompt context was removed for stability.
+                // The cached processor avoids GGML_ASSERT crashes from repeated create/dispose.
+                // Overlapping chunks and repetition filters provide continuity instead.
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

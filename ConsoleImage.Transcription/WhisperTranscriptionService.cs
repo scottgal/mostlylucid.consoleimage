@@ -22,6 +22,12 @@ public sealed class WhisperTranscriptionService : IDisposable
     private string _modelSize = "base";
     private int _threads = Math.Max(1, Environment.ProcessorCount / 2);
 
+    // Cached processor to avoid repeated create/dispose cycles.
+    // Whisper.cpp's ggml_init() asserts no prior uncaught exceptions;
+    // disposing and recreating processors can leave GGML in a bad state.
+    private WhisperProcessor? _cachedProcessor;
+    private readonly object _processorLock = new();
+
     /// <summary>
     ///     Get the loaded WhisperFactory for creating processors.
     ///     Returns null if not yet initialized.
@@ -33,6 +39,8 @@ public sealed class WhisperTranscriptionService : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _cachedProcessor?.Dispose();
+        _cachedProcessor = null;
         Factory?.Dispose();
         _initLock.Dispose();
     }
@@ -208,6 +216,45 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
+    ///     Get or create a cached WhisperProcessor.
+    ///     Reusing a single processor avoids repeated ggml_init/cleanup cycles that can
+    ///     trigger GGML_ASSERT(prev != ggml_uncaught_exception) in whisper.cpp.
+    /// </summary>
+    private WhisperProcessor GetOrCreateProcessor()
+    {
+        if (_cachedProcessor != null)
+            return _cachedProcessor;
+
+        lock (_processorLock)
+        {
+            if (_cachedProcessor != null)
+                return _cachedProcessor;
+
+            var builder = ApplyQualityTuning(Factory!.CreateBuilder());
+            _cachedProcessor = builder.Build();
+            return _cachedProcessor;
+        }
+    }
+
+    /// <summary>
+    ///     Sanitize audio samples before sending to native Whisper code.
+    ///     NaN, Infinity, or extreme values can cause C++ exceptions inside GGML
+    ///     which corrupt internal state and trigger GGML_ASSERT on next use.
+    /// </summary>
+    private static void SanitizeAudioSamples(float[] samples)
+    {
+        for (var i = 0; i < samples.Length; i++)
+        {
+            if (float.IsNaN(samples[i]) || float.IsInfinity(samples[i]))
+                samples[i] = 0f;
+            else if (samples[i] > 1.0f)
+                samples[i] = 1.0f;
+            else if (samples[i] < -1.0f)
+                samples[i] = -1.0f;
+        }
+    }
+
+    /// <summary>
     ///     Transcribe an audio file (batch mode - processes entire file).
     /// </summary>
     public async Task<TranscriptionResult> TranscribeFileAsync(
@@ -224,14 +271,17 @@ public sealed class WhisperTranscriptionService : IDisposable
         // Convert to 16kHz mono float samples
         progress?.Report((0, 0, "Loading audio..."));
         var samples = await ConvertToSamplesAsync(audioPath, ct);
-        var audioDuration = samples.Length / 16000.0;
 
+        // Sanitize samples to prevent NaN/Inf from reaching native GGML code,
+        // which can cause C++ exceptions that corrupt GGML's internal state
+        SanitizeAudioSamples(samples);
+
+        var audioDuration = samples.Length / 16000.0;
         progress?.Report((0, audioDuration, "Transcribing..."));
 
-        // Create processor with quality tuning and optional context prompt
-        var builder = ApplyQualityTuning(Factory!.CreateBuilder(), prompt);
-
-        using var processor = builder.Build();
+        // Use cached processor to avoid repeated create/dispose cycles that
+        // can trigger GGML_ASSERT(prev != ggml_uncaught_exception) in whisper.cpp
+        var processor = GetOrCreateProcessor();
 
         string? lastText = null;
         var consecutiveRepeats = 0;
@@ -297,9 +347,8 @@ public sealed class WhisperTranscriptionService : IDisposable
     {
         await InitializeAsync(null, ct);
 
-        var builder = ApplyQualityTuning(Factory!.CreateBuilder());
-
-        using var processor = builder.Build();
+        // Use cached processor to avoid GGML_ASSERT crash from create/dispose cycles
+        var processor = GetOrCreateProcessor();
 
         var accumulatedSamples = new List<float>();
         var processedOffset = 0.0;
@@ -528,6 +577,11 @@ public class RealtimeTranscriber : IAsyncDisposable
         var firstTimestamp = 0.0;
         var hasFirst = false;
 
+        // Create processor once and reuse — avoids GGML_ASSERT crash from
+        // repeated ggml_init/cleanup cycles in whisper.cpp
+        var builder = GetFactory()!.CreateBuilder();
+        using var processor = builder.Build();
+
         try
         {
             await foreach (var (samples, timestamp) in _audioChannel.Reader.ReadAllAsync(ct))
@@ -546,10 +600,6 @@ public class RealtimeTranscriber : IAsyncDisposable
                 {
                     var toProcess = accumulatedSamples.ToArray();
                     accumulatedSamples.Clear();
-
-                    // Transcribe this chunk
-                    var builder = GetFactory()!.CreateBuilder();
-                    using var processor = builder.Build();
 
                     await foreach (var result in processor.ProcessAsync(toProcess, ct))
                     {
@@ -571,9 +621,6 @@ public class RealtimeTranscriber : IAsyncDisposable
             // Process remaining samples
             if (accumulatedSamples.Count > 0)
             {
-                var builder = GetFactory()!.CreateBuilder();
-                using var processor = builder.Build();
-
                 await foreach (var result in processor.ProcessAsync(accumulatedSamples.ToArray(), ct))
                 {
                     var segment = new TranscriptSegment
