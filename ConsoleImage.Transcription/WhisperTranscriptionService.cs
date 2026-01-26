@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using Whisper.net;
+using Whisper.net.LibraryLoader;
 
 namespace ConsoleImage.Transcription;
 
@@ -91,11 +92,13 @@ public sealed class WhisperTranscriptionService : IDisposable
             WhisperRuntimeDownloader.ConfigureRuntimePath();
 
             // Step 2: Ensure native runtime is available and loadable
+            var attemptedDownload = false;
             if (!WhisperRuntimeDownloader.IsRuntimeAvailable())
             {
                 var (rid, sizeMB) = WhisperRuntimeDownloader.GetRuntimeInfo();
                 progress?.Report((0, 0, $"Downloading Whisper runtime for {rid} (~{sizeMB}MB)..."));
 
+                attemptedDownload = true;
                 var runtimeSuccess = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
                 if (!runtimeSuccess)
                     throw new InvalidOperationException(
@@ -109,7 +112,24 @@ public sealed class WhisperTranscriptionService : IDisposable
             if (!WhisperRuntimeDownloader.CanLoadRuntime(out var loadError))
             {
                 progress?.Report((0, 0, $"Runtime load check failed: {loadError}"));
-                // Still proceed — WhisperFactory might use different loading logic
+
+                // If we haven't tried downloading yet, attempt it now
+                if (!attemptedDownload)
+                {
+                    var (rid, sizeMB) = WhisperRuntimeDownloader.GetRuntimeInfo();
+                    progress?.Report((0, 0, $"Runtime exists but can't load. Downloading fresh copy for {rid} (~{sizeMB}MB)..."));
+
+                    var runtimeSuccess = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
+                    if (runtimeSuccess)
+                    {
+                        WhisperRuntimeDownloader.ConfigureRuntimePath();
+
+                        if (!WhisperRuntimeDownloader.CanLoadRuntime(out loadError))
+                            progress?.Report((0, 0, $"Downloaded runtime still can't load: {loadError}"));
+                        else
+                            progress?.Report((0, 0, "Fresh runtime download loaded successfully"));
+                    }
+                }
             }
             else
             {
@@ -140,14 +160,15 @@ public sealed class WhisperTranscriptionService : IDisposable
                 var rid = WhisperRuntimeDownloader.GetRuntimeIdentifier();
                 var libName = WhisperRuntimeDownloader.GetNativeLibraryName();
                 var foundPath = WhisperRuntimeDownloader.GetAvailableRuntimePath();
+                var runtimeLibPath = RuntimeOptions.LibraryPath;
                 var searchedPaths = string.Join("\n  ",
                     WhisperRuntimeDownloader.GetSearchPaths().Select(p => $"{p} {(File.Exists(p) ? "[EXISTS]" : "")}"));
 
                 throw new InvalidOperationException(
-                    $"Whisper native library not found ({libName} for {rid}).\n\n" +
-                    $"This binary was not packaged with Whisper support.\n" +
-                    $"Download the 'consoleimage-whisper' variant which includes the native libraries.\n" +
-                    $"Or use --subs auto for embedded/external subtitles instead.\n\n" +
+                    $"Whisper native library failed to load ({libName} for {rid}).\n" +
+                    $"RuntimeOptions.LibraryPath: {runtimeLibPath ?? "(not set)"}\n" +
+                    $"Found runtime file: {foundPath ?? "(none)"}\n" +
+                    $"Inner error: {ex.Message}\n\n" +
                     $"Searched:\n  {searchedPaths}", ex);
             }
 

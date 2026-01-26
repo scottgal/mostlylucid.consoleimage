@@ -91,14 +91,13 @@ public static class WhisperRuntimeDownloader
         var libName = GetNativeLibraryName();
         var appDir = AppContext.BaseDirectory;
 
-        // Priority 1: App directory root (where bundled libs typically go)
+        // Priority 1: App directory root (where bundled libs typically go in AOT publish)
         yield return Path.Combine(appDir, libName);
 
         // Priority 2: NuGet runtime layout in app directory (with native subfolder)
         yield return Path.Combine(appDir, "runtimes", rid, "native", libName);
 
         // Priority 3: NuGet runtime layout without native subfolder
-        // (Whisper.net.AllRuntimes uses runtimes/{rid}/{libName} directly)
         yield return Path.Combine(appDir, "runtimes", rid, libName);
 
         // Priority 4: Download cache (with native subfolder)
@@ -107,7 +106,25 @@ public static class WhisperRuntimeDownloader
         // Priority 5: Download cache (without native subfolder)
         yield return Path.Combine(RuntimesDirectory, rid, libName);
 
-        // Priority 6: Parent directory (development scenarios)
+        // Priority 6: NuGet package cache (for dotnet run with AllRuntimes/Runtime reference)
+        var nugetCache = GetNuGetCacheDirectory();
+        if (nugetCache != null)
+        {
+            // Whisper.net.Runtime uses build/{rid}/ layout
+            yield return Path.Combine(nugetCache, "whisper.net.runtime", "1.9.0", "build", rid, libName);
+
+            // Whisper.net.Runtime may also use macos instead of osx
+            if (rid.StartsWith("osx"))
+            {
+                var macosRid = rid.Replace("osx", "macos");
+                yield return Path.Combine(nugetCache, "whisper.net.runtime", "1.9.0", "build", macosRid, libName);
+            }
+
+            // Also check runtimes/ layout
+            yield return Path.Combine(nugetCache, "whisper.net.runtime", "1.9.0", "runtimes", rid, "native", libName);
+        }
+
+        // Priority 7: Parent directory (development scenarios)
         var parent = Directory.GetParent(appDir)?.FullName;
         if (parent != null)
         {
@@ -115,6 +132,24 @@ public static class WhisperRuntimeDownloader
             yield return Path.Combine(parent, "runtimes", rid, "native", libName);
             yield return Path.Combine(parent, "runtimes", rid, libName);
         }
+    }
+
+    /// <summary>
+    ///     Get the NuGet global packages cache directory.
+    /// </summary>
+    private static string? GetNuGetCacheDirectory()
+    {
+        // Standard NuGet cache locations
+        var nugetPackages = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
+        if (!string.IsNullOrEmpty(nugetPackages) && Directory.Exists(nugetPackages))
+            return nugetPackages;
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(home))
+            return null;
+
+        var defaultCache = Path.Combine(home, ".nuget", "packages");
+        return Directory.Exists(defaultCache) ? defaultCache : null;
     }
 
     /// <summary>
@@ -355,13 +390,20 @@ public static class WhisperRuntimeDownloader
         // Whisper.net.Runtime NuGet package structure:
         //   build/{rid}/*.dll (Windows) or *.so (Linux) or *.dylib (macOS)
         // Also check runtimes/ path used by some package versions
-        var prefixes = new[]
+        // Note: Whisper.net.Runtime uses 'macos' instead of 'osx' for macOS RIDs
+        var rids = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { rid };
+        if (rid.StartsWith("osx"))
+            rids.Add(rid.Replace("osx", "macos"));
+        else if (rid.StartsWith("macos"))
+            rids.Add(rid.Replace("macos", "osx"));
+
+        var prefixes = rids.SelectMany(r => new[]
         {
-            $"build/{rid}/",
-            $"build/{rid}/native/",
-            $"runtimes/{rid}/native/",
-            $"runtimes/{rid}/"
-        };
+            $"build/{r}/",
+            $"build/{r}/native/",
+            $"runtimes/{r}/native/",
+            $"runtimes/{r}/"
+        }).ToArray();
 
         var extractedCount = 0;
 
@@ -412,39 +454,59 @@ public static class WhisperRuntimeDownloader
     }
 
     /// <summary>
-    ///     Copy downloaded library to app directory for better compatibility.
+    ///     Copy ALL downloaded native libraries to app directory for better compatibility.
+    ///     whisper.dll depends on ggml-*.dll — all must be co-located for loading.
     /// </summary>
     private static void CopyToAppDirectory(string sourceDir)
     {
-        var libName = GetNativeLibraryName();
-        var sourcePath = Path.Combine(sourceDir, libName);
+        if (!Directory.Exists(sourceDir))
+            return;
 
-        if (!File.Exists(sourcePath))
+        var nativeExtensions = GetNativeExtensions();
+        var nativeFiles = Directory.GetFiles(sourceDir)
+            .Where(f => nativeExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (nativeFiles.Count == 0)
             return;
 
         var appDir = AppContext.BaseDirectory;
 
-        // Try to copy to app directory root
-        try
+        // Copy all native libs to app directory root (best for AOT/single-file)
+        foreach (var sourceFile in nativeFiles)
         {
-            var destPath = Path.Combine(appDir, libName);
-            if (!File.Exists(destPath))
-                File.Copy(sourcePath, destPath);
-        }
-        catch
-        {
-            /* Best effort */
+            try
+            {
+                var destPath = Path.Combine(appDir, Path.GetFileName(sourceFile));
+                if (!File.Exists(destPath))
+                    File.Copy(sourceFile, destPath);
+            }
+            catch
+            {
+                /* Best effort */
+            }
         }
 
-        // Also try NuGet layout
+        // Also copy to NuGet runtime layout
         try
         {
             var rid = GetRuntimeIdentifier();
             var runtimeDir = Path.Combine(appDir, "runtimes", rid, "native");
             Directory.CreateDirectory(runtimeDir);
-            var destPath = Path.Combine(runtimeDir, libName);
-            if (!File.Exists(destPath))
-                File.Copy(sourcePath, destPath);
+
+            foreach (var sourceFile in nativeFiles)
+            {
+                try
+                {
+                    var destPath = Path.Combine(runtimeDir, Path.GetFileName(sourceFile));
+                    if (!File.Exists(destPath))
+                        File.Copy(sourceFile, destPath);
+                }
+                catch
+                {
+                    /* Best effort */
+                }
+            }
         }
         catch
         {
@@ -458,31 +520,42 @@ public static class WhisperRuntimeDownloader
     /// </summary>
     public static void ConfigureRuntimePath()
     {
-        // Set Whisper.net RuntimeOptions.LibraryPath to the known native library location.
+        // Set Whisper.net RuntimeOptions.LibraryPath to the DIRECTORY containing the native library.
         // This is critical for AOT/single-file builds where Assembly.Location returns empty,
         // causing Whisper.net's internal NativeLibraryLoader to fail (IL3000).
-        // RuntimeOptions.LibraryPath is checked first in Whisper.net's search path array,
-        // bypassing the broken Assembly.Location lookup entirely.
+        // Whisper.net does Path.Combine(LibraryPath, libraryName) so it MUST be a directory path.
         var nativeLibPath = GetAvailableRuntimePath();
-        if (nativeLibPath != null) RuntimeOptions.LibraryPath = nativeLibPath;
-
-        // Add the directory containing the found library to PATH
         var libDir = nativeLibPath != null ? Path.GetDirectoryName(nativeLibPath) : null;
+
+        if (libDir != null)
+            RuntimeOptions.LibraryPath = libDir;
 
         // Also check the download cache directory
         var rid = GetRuntimeIdentifier();
         var cacheDir = Path.Combine(RuntimesDirectory, rid, "native");
 
+        // Collect all directories to add to PATH (for dependent DLLs like ggml-*.dll)
+        var dirsToAdd = new List<string>();
+        if (libDir != null && Directory.Exists(libDir))
+            dirsToAdd.Add(libDir);
+        if (Directory.Exists(cacheDir) && cacheDir != libDir)
+            dirsToAdd.Add(cacheDir);
+
+        // Also add the app base directory (where bundled libs go in AOT publish)
+        var appDir = AppContext.BaseDirectory;
+        if (!string.IsNullOrEmpty(appDir) && appDir != libDir)
+            dirsToAdd.Add(appDir);
+
         try
         {
             var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-            var dirsToAdd = new[] { libDir, cacheDir }
-                .Where(d => d != null && Directory.Exists(d) && !currentPath.Contains(d!))
+            var newDirs = dirsToAdd
+                .Where(d => !currentPath.Contains(d, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
-            if (dirsToAdd.Length > 0)
+            if (newDirs.Length > 0)
             {
-                var newPaths = string.Join(Path.PathSeparator, dirsToAdd);
+                var newPaths = string.Join(Path.PathSeparator, newDirs);
                 Environment.SetEnvironmentVariable("PATH", $"{newPaths}{Path.PathSeparator}{currentPath}");
             }
         }

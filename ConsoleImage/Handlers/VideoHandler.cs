@@ -264,9 +264,6 @@ public static class VideoHandler
         var uniformFrameCount = 0;
         var frameIntervalSec = 1.0 / uniformTargetFps;
 
-        // Timing tolerance for subtitle lookup (handles frame/subtitle timing misalignment)
-        const double toleranceSeconds = 0.5;
-
         await foreach (var frameImage in ffmpeg.StreamFramesAsync(
                            inputPath, targetWidth, targetHeight,
                            rawStartTime, rawEndTime, opts.FrameStepValue, uniformTargetFps, videoInfo.VideoCodec, ct))

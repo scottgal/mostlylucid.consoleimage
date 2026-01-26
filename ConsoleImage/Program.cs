@@ -950,16 +950,20 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    // Clear any progress line remnants (pad with spaces to overwrite)
+                    Console.Error.Write($"\r{new string(' ', Math.Min(Console.WindowWidth, 120))}\r");
+
                     // Check if this is a missing native library issue
                     if (ex.Message.Contains("native library", StringComparison.OrdinalIgnoreCase) ||
                         ex.InnerException is FileNotFoundException)
                     {
-                        Console.Error.WriteLine("\rWhisper native libraries not found.");
-                        Console.Error.WriteLine("Download the 'consoleimage-whisper' variant for transcription support.");
+                        Console.Error.WriteLine("Whisper native library could not be loaded.");
+                        if (ex.InnerException != null)
+                            Console.Error.WriteLine($"  Detail: {ex.InnerException.Message}");
                     }
                     else
                     {
-                        Console.Error.WriteLine($"\rWhisper transcription failed: {ex.Message}");
+                        Console.Error.WriteLine($"Whisper transcription failed: {ex.Message}");
                     }
                     Console.Error.WriteLine("Continuing without subtitles. Try --subs auto for embedded subtitles.");
                     chunkedTranscriber = null;
@@ -1636,11 +1640,15 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
     }
     catch (Exception ex) when (ex is not OperationCanceledException)
     {
+        // Clear any progress line remnants
+        try { Console.Error.Write($"\r{new string(' ', Math.Min(Console.WindowWidth, 120))}\r"); } catch { }
+
         if (ex.InnerException is FileNotFoundException ||
             ex.Message.Contains("native library", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine("Whisper native libraries not found.");
-            Console.Error.WriteLine("Download the 'consoleimage-whisper' variant for transcription support.");
+            Console.Error.WriteLine("Whisper native library could not be loaded.");
+            if (ex.InnerException != null)
+                Console.Error.WriteLine($"  Detail: {ex.InnerException.Message}");
         }
         else
         {

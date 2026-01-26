@@ -366,35 +366,42 @@ public static class ImageHandler
         Console.WriteLine("Press Ctrl+C to stop");
         Console.WriteLine();
 
-        List<IAnimationFrame> frames;
         if (useMatrix)
         {
             var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed,
                 matrixAlphabet);
             using var renderer = new MatrixRenderer(options, matrixOpts);
-            frames = renderer.RenderGif(input.FullName).Cast<IAnimationFrame>().ToList();
+            var frames = renderer.RenderGif(input.FullName).Cast<IAnimationFrame>().ToList();
+            await RenderHelpers.PlayFramesAsync(frames, loop, speed, ct);
         }
         else if (useBraille)
         {
             using var renderer = new BrailleRenderer(options);
-            frames = renderer.RenderGif(input.FullName).Cast<IAnimationFrame>().ToList();
+            var frames = renderer.RenderGif(input.FullName).Cast<IAnimationFrame>().ToList();
+            await RenderHelpers.PlayFramesAsync(frames, loop, speed, ct);
         }
         else if (useBlocks)
         {
             using var renderer = new ColorBlockRenderer(options);
-            frames = renderer.RenderGif(input.FullName).Cast<IAnimationFrame>().ToList();
+            var frames = renderer.RenderGif(input.FullName).Cast<IAnimationFrame>().ToList();
+            await RenderHelpers.PlayFramesAsync(frames, loop, speed, ct);
         }
         else
         {
+            // ASCII mode — use AsciiAnimationPlayer which has proper synchronized output,
+            // diff rendering, and line clearing for flicker-free animation.
+            // Frame delays already include speed multiplier from RenderOptions.AnimationSpeedMultiplier.
             using var renderer = new AsciiRenderer(options);
+            var asciiFrames = renderer.RenderGif(input.FullName);
             var darkThreshold = options.Invert ? options.DarkTerminalBrightnessThreshold : null;
             var lightThreshold = !options.Invert ? options.LightTerminalBrightnessThreshold : null;
-            frames = renderer.RenderGif(input.FullName)
-                .Select(f => (IAnimationFrame)new AsciiFrameAdapter(f, options.UseColor, darkThreshold, lightThreshold))
-                .ToList();
+            using var player = new AsciiAnimationPlayer(
+                asciiFrames, options.UseColor, loop,
+                useDiffRendering: true, useAltScreen: true,
+                darkThreshold: darkThreshold, lightThreshold: lightThreshold);
+            await player.PlayAsync(ct);
         }
 
-        await RenderHelpers.PlayFramesAsync(frames, loop, speed, ct);
         return 0;
     }
 

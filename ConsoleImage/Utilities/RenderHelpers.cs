@@ -65,7 +65,8 @@ public static class RenderHelpers
     }
 
     /// <summary>
-    ///     Simple frame-by-frame animation playback.
+    ///     Frame-by-frame animation playback with synchronized output.
+    ///     Uses DECSET 2026 for flicker-free rendering and proper line clearing.
     /// </summary>
     public static async Task PlayFramesAsync(
         List<IAnimationFrame> frames,
@@ -78,22 +79,51 @@ public static class RenderHelpers
         // Enter alternate screen buffer
         Console.Write("\x1b[?1049h"); // Enter alt screen
         Console.Write("\x1b[?25l"); // Hide cursor
+        Console.Write("\x1b[2J"); // Clear screen
 
         try
         {
             var loops = 0;
+            var prevLineCount = 0;
+
             while (!ct.IsCancellationRequested && (loopCount == 0 || loops < loopCount))
             {
                 foreach (var frame in frames)
                 {
                     if (ct.IsCancellationRequested) break;
 
-                    // Move to top-left and render frame
-                    Console.Write("\x1b[H"); // Home position
-                    Console.Write(frame.Content);
+                    // Begin synchronized output (atomic frame render)
+                    Console.Write("\x1b[?2026h");
 
-                    // Wait for frame delay
-                    var delayMs = Math.Max(1, (int)(frame.DelayMs / speed));
+                    // Move to top-left
+                    Console.Write("\x1b[H");
+
+                    // Write frame content with line clears to prevent artifacts
+                    var lines = frame.Content.Split('\n');
+                    for (var i = 0; i < lines.Length; i++)
+                    {
+                        Console.Write("\x1b[2K"); // Clear entire line
+                        Console.Write(lines[i]);
+                        Console.Write("\x1b[0m"); // Reset colors at end of line
+                        if (i < lines.Length - 1)
+                            Console.Write('\n');
+                    }
+
+                    // Clear any remaining lines from a previous taller frame
+                    for (var i = lines.Length; i < prevLineCount; i++)
+                    {
+                        Console.Write('\n');
+                        Console.Write("\x1b[2K");
+                    }
+
+                    prevLineCount = lines.Length;
+
+                    // End synchronized output (render atomically)
+                    Console.Write("\x1b[?2026l");
+
+                    // Wait for frame delay (GIF default is 100ms if 0/10ms specified)
+                    var baseDelay = frame.DelayMs <= 10 ? 100 : frame.DelayMs;
+                    var delayMs = Math.Max(16, (int)(baseDelay / speed));
                     await Task.Delay(delayMs, ct);
                 }
 

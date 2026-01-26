@@ -58,22 +58,36 @@
     </ItemGroup>
 
     <!-- Copy Whisper native DLLs to publish output -->
+    <!-- Searches multiple NuGet package layouts: build/{rid}/, runtimes/{rid}/native/, runtimes/{rid}/ -->
     <Target Name="PublishWhisperRuntime" AfterTargets="Publish"
             Condition="'$(BundleWhisperRuntime)' == 'true' and '$(RuntimeIdentifier)' != ''">
         <PropertyGroup>
             <_WhisperRid>$(RuntimeIdentifier)</_WhisperRid>
+            <!-- Whisper.net.Runtime uses 'macos' instead of 'osx' for macOS RIDs -->
             <_WhisperRid Condition="$(RuntimeIdentifier.StartsWith('osx'))">$(RuntimeIdentifier.Replace('osx','macos'))</_WhisperRid>
         </PropertyGroup>
         <ItemGroup>
+            <!-- Try all known NuGet package layouts for native libraries -->
             <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\build\$(_WhisperRid)\*" />
+            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\build\$(RuntimeIdentifier)\*" />
+            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\runtimes\$(_WhisperRid)\native\*" />
+            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\runtimes\$(RuntimeIdentifier)\native\*" />
+            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\runtimes\$(_WhisperRid)\*" />
+            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\runtimes\$(RuntimeIdentifier)\*" />
         </ItemGroup>
+        <!-- Deduplicate in case multiple globs match the same files -->
+        <RemoveDuplicates Inputs="@(_WhisperNativeFiles)">
+            <Output TaskParameter="Filtered" ItemName="_WhisperNativeFilesDistinct" />
+        </RemoveDuplicates>
         <Message Importance="high"
-                 Text="Publishing Whisper native runtime ($(_WhisperRid)): @(_WhisperNativeFiles->'%(Filename)%(Extension)', ', ')"
-                 Condition="'@(_WhisperNativeFiles)' != ''" />
-        <Copy SourceFiles="@(_WhisperNativeFiles)"
+                 Text="Publishing Whisper native runtime ($(_WhisperRid)): @(_WhisperNativeFilesDistinct->'%(Filename)%(Extension)', ', ')"
+                 Condition="'@(_WhisperNativeFilesDistinct)' != ''" />
+        <Warning Text="No Whisper native files found for $(_WhisperRid) or $(RuntimeIdentifier) in $(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\"
+                 Condition="'@(_WhisperNativeFilesDistinct)' == ''" />
+        <Copy SourceFiles="@(_WhisperNativeFilesDistinct)"
               DestinationFolder="$(PublishDir)"
               SkipUnchangedFiles="true"
-              Condition="'@(_WhisperNativeFiles)' != ''" />
+              Condition="'@(_WhisperNativeFilesDistinct)' != ''" />
     </Target>
 
     <ItemGroup>
