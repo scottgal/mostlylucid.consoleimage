@@ -125,7 +125,15 @@
       "Bash(cmd.exe /c \"dir F:\\\\gifs\\\\*.gif /b\")",
       "Bash(cmd.exe /c:*)",
       "Bash(del:*)",
-      "Bash(Select-Object FullName, Length)"
+      "Bash(Select-Object FullName, Length)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\build-aot.ps1\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem ''E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish'' | Format-Table Name, Length -AutoSize\")",
+      "Bash(powershell.exe -Command \"& ''E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe'' ''E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\test_video.mp4'' -w 40 --subs whisper -S --no-animate --force-subs 2>&1\")",
+      "Bash(powershell.exe -Command \"& ''E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe'' ''E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\test_whisper_aot.mp4'' -w 40 --subs whisper --no-animate --force-subs 2>&1\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem -Recurse ''C:\\\\Users\\\\scott\\\\AppData\\\\Local\\\\consoleimage\\\\whisper\\\\runtimes'' | Select-Object FullName, Length | Format-Table -AutoSize\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(comm -23:*)",
+      "mcp__plugin_playwright_playwright__browser_navigate"
     ]
   },
   "enableAllProjectMcpServers": true,

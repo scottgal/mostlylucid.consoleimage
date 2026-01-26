@@ -144,12 +144,11 @@ public sealed class WhisperTranscriptionService : IDisposable
                     WhisperRuntimeDownloader.GetSearchPaths().Select(p => $"{p} {(File.Exists(p) ? "[EXISTS]" : "")}"));
 
                 throw new InvalidOperationException(
-                    $"Failed to load Whisper model from {modelPath}: {ex.GetType().Name} - {ex.Message}\n" +
-                    $"Platform: {rid}\n" +
-                    $"Native library: {libName}\n" +
-                    $"Found at: {foundPath ?? "(NOT FOUND)"}\n" +
-                    $"Searched:\n  {searchedPaths}\n" +
-                    $"Ensure {libName} and its dependencies (ggml-*.dll) are next to the executable.", ex);
+                    $"Whisper native library not found ({libName} for {rid}).\n\n" +
+                    $"This binary was not packaged with Whisper support.\n" +
+                    $"Download the 'consoleimage-whisper' variant which includes the native libraries.\n" +
+                    $"Or use --subs auto for embedded/external subtitles instead.\n\n" +
+                    $"Searched:\n  {searchedPaths}", ex);
             }
 
             progress?.Report((0, 0, "Whisper ready"));

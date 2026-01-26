@@ -300,16 +300,19 @@ consoleimage video.mp4 --subs whisper --raw -o clip.gif -t 10
 consoleimage video.mp4 --subs movie.srt -o output.gif -w 80
 ```
 
-### Markdown Output (for Docs)
+### Markdown / SVG Export
 ```bash
-# Plain text in code block (works everywhere)
-consoleimage image.jpg -w 60 --md output.md
+# Simplest: auto-generates image.svg with full color (SVG is default format)
+consoleimage image.jpg --md
 
-# SVG with colors (embeddable, full color support)
-consoleimage image.jpg -w 60 --md output.md --md-format svg
+# Specify output path
+consoleimage image.jpg --md output.md
+
+# Plain text in code block (works everywhere)
+consoleimage image.jpg --md --md-format plain
 
 # HTML spans with inline CSS (for compatible renderers)
-consoleimage image.jpg -w 60 --md output.md --md-format html
+consoleimage image.jpg --md --md-format html
 ```
 
 ---
@@ -359,14 +362,14 @@ consoleimage -M --matrix-color amber
 
 # Show status line with progress, timing, file info
 consoleimage animation.gif --status
-consolevideo movie.mp4 -S -w 120
+consoleimage movie.mp4 -S -w 120
 
 # Frame sampling for large GIFs
 consoleimage big.gif --frame-sample 2  # Every 2nd frame (uniform skip)
 consoleimage big.gif -f s              # Smart skip: perceptual hash-based dedup
 
 # Output to GIF (auto-detected from .gif extension)
-consolevideo movie.mp4 -o output.gif -w 100
+consoleimage movie.mp4 -o output.gif -w 100
 consoleimage animation.gif -o converted.gif
 
 # Output to compressed JSON (default for .json extension)
@@ -387,13 +390,13 @@ consoleimage animation.gif -o output.cidz --dejitter --color-threshold 20
 consoleimage photo.png --blocks --no-color -o output.cidz
 
 # Explicit format prefixes also work
-consolevideo movie.mp4 -o gif:output.gif
-consolevideo movie.mp4 -o json:movie.ndjson
+consoleimage movie.mp4 -o gif:output.gif
+consoleimage movie.mp4 -o json:movie.ndjson
 
 # Play saved JSON/compressed document
 consoleimage output.json
 consoleimage output.cidz
-consolevideo output.cidz
+consoleimage output.cidz
 ```
 
 ### Output Options
@@ -413,30 +416,33 @@ GIF output settings:
 
 Note: GIFs loop infinitely by default. Use `-l 1` for single play.
 
-### Markdown Output (for Documentation)
+### Markdown / SVG Export
 
-Export ASCII art to markdown-friendly formats for embedding in READMEs, docs, or wikis.
+Export ASCII art to embeddable formats. SVG is the default — full-color, scalable vector output.
 
 ```bash
-# Plain text in code block (universal compatibility)
-consoleimage photo.jpg -w 60 --md output.md
+# Simplest: just add --md (auto-generates photo.svg with full color)
+consoleimage photo.jpg --md
 
-# SVG format (full color, works in GitHub/GitLab)
-consoleimage photo.jpg -w 60 --md output.md --md-format svg
+# Specify output path
+consoleimage photo.jpg --md output.md
+
+# Plain text in code block (universal compatibility)
+consoleimage photo.jpg --md --md-format plain
 
 # HTML with inline CSS (for renderers that support HTML)
-consoleimage photo.jpg -w 60 --md output.md --md-format html
+consoleimage photo.jpg --md --md-format html
 
 # ANSI codes preserved (for terminals that render ANSI in markdown)
-consoleimage photo.jpg -w 60 --md output.md --md-format ansi
+consoleimage photo.jpg --md --md-format ansi
 ```
 
 **Format Comparison:**
 
 | Format | Colors | Compatibility | Use Case |
 |--------|--------|---------------|----------|
+| `svg` | Full | GitHub, GitLab, most | **Default** — embeddable colored vector art |
 | `plain` | None | Universal | All markdown renderers |
-| `svg` | Full | GitHub, GitLab, most | Embeddable colored art |
 | `html` | Full | Limited | Custom docs sites |
 | `ansi` | Full | Terminals only | Terminal-rendered markdown |
 

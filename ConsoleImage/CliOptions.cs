@@ -234,12 +234,14 @@ public class CliOptions
         StatusWidth.Aliases.Add("-Sw");
 
         // Markdown output (for embedding in docs/READMEs)
+        // --md alone auto-generates path from input (photo.jpg → photo.md)
+        // --md output.md uses the specified path
         Markdown = new Option<string?>("--markdown")
-            { Description = "Output markdown file (.md) with rendered ASCII art" };
+            { Description = "Output markdown/SVG file (auto-names from input, or specify path)", Arity = ArgumentArity.ZeroOrOne };
         Markdown.Aliases.Add("--md");
         MarkdownFormat = new Option<string?>("--md-format")
-            { Description = "Markdown format: plain (default), html, svg, ansi" };
-        MarkdownFormat.DefaultValueFactory = _ => "plain";
+            { Description = "Markdown format: svg (default), plain, html, ansi" };
+        MarkdownFormat.DefaultValueFactory = _ => "svg";
 
         // GIF output
         GifFontSize = new Option<int>("--gif-font-size") { Description = "Font size for GIF output" };

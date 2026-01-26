@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ConsoleImage.Core;
+using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Video.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -33,6 +34,16 @@ await app.RunAsync();
 [JsonSerializable(typeof(ExtractFramesResult))]
 [JsonSerializable(typeof(RenderVideoResult))]
 [JsonSerializable(typeof(YouTubeInfoResult))]
+[JsonSerializable(typeof(DetailedVideoInfo))]
+[JsonSerializable(typeof(SubtitleStreamDto))]
+[JsonSerializable(typeof(SubtitleStreamDto[]))]
+[JsonSerializable(typeof(SceneDetectionResult))]
+[JsonSerializable(typeof(SubtitleEntryDto))]
+[JsonSerializable(typeof(SubtitleEntryDto[]))]
+[JsonSerializable(typeof(SubtitleParseResult))]
+[JsonSerializable(typeof(ExportResult))]
+[JsonSerializable(typeof(DocumentInfoResult))]
+[JsonSerializable(typeof(ExtractSubtitlesResult))]
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 internal partial class McpJsonContext : JsonSerializerContext
 {
@@ -102,6 +113,95 @@ internal record YouTubeInfoResult(
     string Status,
     string? VideoUrl = null,
     string? Title = null
+);
+
+internal record DetailedVideoInfo(
+    string FileName,
+    string FullPath,
+    double Duration,
+    string DurationFormatted,
+    int Width,
+    int Height,
+    string AspectRatio,
+    double FrameRate,
+    int TotalFrames,
+    long BitRate,
+    string? VideoCodec,
+    long FileSizeBytes,
+    string FileSizeFormatted,
+    SubtitleStreamDto[] SubtitleStreams
+);
+
+internal record SubtitleStreamDto(
+    int Index,
+    string Codec,
+    string? Language,
+    string? Title,
+    bool IsTextBased
+);
+
+internal record SceneDetectionResult(
+    int SceneCount,
+    double[] Timestamps,
+    string[] TimestampsFormatted,
+    double Duration,
+    string? Message = null
+);
+
+internal record SubtitleEntryDto(
+    int Index,
+    string StartTime,
+    string EndTime,
+    double StartSeconds,
+    double EndSeconds,
+    string Text,
+    string? SpeakerId = null
+);
+
+internal record SubtitleParseResult(
+    bool Success,
+    string? SourceFile,
+    string? Language,
+    int EntryCount,
+    string TotalDuration,
+    SubtitleEntryDto[] Entries
+);
+
+internal record ExportResult(
+    bool Success,
+    string OutputPath,
+    string Format,
+    double FileSizeKB,
+    string? Message = null
+);
+
+internal record DocumentInfoResult(
+    string FileName,
+    string FullPath,
+    string Type,
+    string Version,
+    string Created,
+    string? SourceFile,
+    string RenderMode,
+    int FrameCount,
+    bool IsAnimated,
+    int TotalDurationMs,
+    string DurationFormatted,
+    int MaxWidth,
+    int MaxHeight,
+    bool UseColor,
+    bool HasSubtitles,
+    int SubtitleEntryCount,
+    long FileSizeBytes,
+    string FileSizeFormatted
+);
+
+internal record ExtractSubtitlesResult(
+    bool Success,
+    string? OutputPath,
+    int EntryCount,
+    string? Language,
+    string? Message = null
 );
 
 /// <summary>
@@ -342,10 +442,11 @@ public sealed class ConsoleImageTools
     }
 
     /// <summary>
-    ///     Get information about a video file using FFmpeg
+    ///     Get detailed information about a video file using FFmpeg
     /// </summary>
     [McpServerTool(Name = "get_video_info")]
-    [Description("Get information about a video file including duration, resolution, and codec.")]
+    [Description(
+        "Get detailed information about a video file including duration, resolution, codec, bitrate, frame count, file size, and embedded subtitle streams.")]
     public static async Task<string> GetVideoInfo(
         [Description("Path to the video file")]
         string path)
@@ -361,16 +462,49 @@ public sealed class ConsoleImageTools
             if (info == null)
                 return "Error: Could not retrieve video information";
 
-            var result = new VideoInfoResult(
-                Path.GetFileName(path),
+            var fileInfo = new FileInfo(path);
+            var fileSizeFormatted = fileInfo.Length switch
+            {
+                < 1024 => $"{fileInfo.Length} B",
+                < 1024 * 1024 => $"{fileInfo.Length / 1024.0:F1} KB",
+                < 1024L * 1024 * 1024 => $"{fileInfo.Length / (1024.0 * 1024.0):F1} MB",
+                _ => $"{fileInfo.Length / (1024.0 * 1024.0 * 1024.0):F2} GB"
+            };
+
+            var gcd = GCD(info.Width, info.Height);
+            var aspectRatio = gcd > 0 ? $"{info.Width / gcd}:{info.Height / gcd}" : $"{info.Width}:{info.Height}";
+
+            // Get embedded subtitle streams
+            var subtitleStreams = Array.Empty<SubtitleStreamDto>();
+            try
+            {
+                var streams = await ffmpeg.GetSubtitleStreamsAsync(path);
+                subtitleStreams = streams.Select(s => new SubtitleStreamDto(
+                    s.Index, s.Codec, s.Language, s.Title, s.IsTextBased
+                )).ToArray();
+            }
+            catch
+            {
+                // Subtitle stream detection is best-effort
+            }
+
+            var result = new DetailedVideoInfo(
+                fileInfo.Name,
+                fileInfo.FullName,
                 info.Duration,
-                TimeSpan.FromSeconds(info.Duration).ToString(@"hh\:mm\:ss"),
+                TimeSpan.FromSeconds(info.Duration).ToString(@"hh\:mm\:ss\.fff"),
                 info.Width,
                 info.Height,
+                aspectRatio,
                 info.FrameRate,
-                info.VideoCodec
+                info.TotalFrames,
+                info.BitRate,
+                info.VideoCodec,
+                fileInfo.Length,
+                fileSizeFormatted,
+                subtitleStreams
             );
-            return JsonSerializer.Serialize(result, McpJsonContext.Default.VideoInfoResult);
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.DetailedVideoInfo);
         }
         catch (Exception ex)
         {
@@ -913,5 +1047,587 @@ public sealed class ConsoleImageTools
         {
             return $"Error extracting YouTube stream: {ex.Message}";
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Scene Detection & Video Analysis
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    ///     Detect scene changes in a video
+    /// </summary>
+    [McpServerTool(Name = "detect_scenes")]
+    [Description(
+        "Detect scene changes in a video file and return timestamps where cuts/transitions occur. Useful for finding key moments, creating chapter markers, or extracting representative frames.")]
+    public static async Task<string> DetectScenes(
+        [Description("Path to the video file")]
+        string path,
+        [Description("Detection sensitivity 0.0-1.0 (default: 0.4, lower = more sensitive, detects subtle changes)")]
+        double threshold = 0.4,
+        [Description("Start time in seconds (default: 0)")]
+        double startTime = 0,
+        [Description("End time in seconds (default: entire video)")]
+        double? endTime = null)
+    {
+        if (!File.Exists(path))
+            return $"Error: File not found: {path}";
+
+        try
+        {
+            using var ffmpeg = new FFmpegService();
+            await ffmpeg.InitializeAsync(null, CancellationToken.None);
+
+            var videoInfo = await ffmpeg.GetVideoInfoAsync(path);
+            if (videoInfo == null)
+                return "Error: Could not read video info";
+
+            var end = endTime ?? videoInfo.Duration;
+            var timestamps = await ffmpeg.DetectSceneChangesAsync(
+                path, threshold, startTime, end, CancellationToken.None);
+
+            var formatted = timestamps.Select(t =>
+                TimeSpan.FromSeconds(t).ToString(@"hh\:mm\:ss\.fff")).ToArray();
+
+            var result = new SceneDetectionResult(
+                timestamps.Count,
+                timestamps.ToArray(),
+                formatted,
+                videoInfo.Duration,
+                $"Detected {timestamps.Count} scene changes between {startTime:F1}s and {end:F1}s (threshold: {threshold})"
+            );
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.SceneDetectionResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error detecting scenes: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    ///     Render a single video frame at a specific timestamp to ASCII art
+    /// </summary>
+    [McpServerTool(Name = "render_video_frame")]
+    [Description(
+        "Render a single video frame at a specific timestamp to ASCII art text. Much faster than render_video - ideal for inspecting specific moments in a video.")]
+    public static async Task<string> RenderVideoFrame(
+        [Description("Path to the video file")]
+        string path,
+        [Description("Timestamp in seconds to extract the frame from")]
+        double timestamp = 0,
+        [Description("Render mode: ascii, blocks, braille, or matrix")]
+        string mode = "braille",
+        [Description("Maximum width in characters (default: 80)")]
+        int maxWidth = 80,
+        [Description("Enable color output (default: true)")]
+        bool useColor = true,
+        [Description("Optional: save to file instead of returning content")]
+        string? outputPath = null)
+    {
+        if (!File.Exists(path))
+            return $"Error: File not found: {path}";
+
+        try
+        {
+            using var ffmpeg = new FFmpegService();
+            await ffmpeg.InitializeAsync(null, CancellationToken.None);
+
+            var videoInfo = await ffmpeg.GetVideoInfoAsync(path);
+            if (videoInfo == null)
+                return "Error: Could not read video info";
+
+            var targetHeight = (int)(maxWidth / (videoInfo.Width / (double)videoInfo.Height) * 0.5);
+
+            using var frame = await ffmpeg.ExtractFrameAsync(path, timestamp, maxWidth, targetHeight,
+                CancellationToken.None);
+            if (frame == null)
+                return $"Error: Could not extract frame at {timestamp}s";
+
+            var options = new RenderOptions
+            {
+                MaxWidth = maxWidth,
+                UseColor = useColor
+            };
+
+            string content;
+            switch (mode.ToLowerInvariant())
+            {
+                case "blocks" or "colorblocks":
+                    using (var r = new ColorBlockRenderer(options))
+                        content = r.RenderImage(frame);
+                    break;
+                case "braille":
+                    using (var r = new BrailleRenderer(options))
+                        content = r.RenderImage(frame);
+                    break;
+                case "matrix":
+                    using (var r = new MatrixRenderer(options, MatrixOptions.ClassicGreen))
+                        content = r.RenderImage(frame).Content;
+                    break;
+                default:
+                    using (var r = new AsciiRenderer(options))
+                        content = useColor ? r.RenderImage(frame).ToAnsiString() : r.RenderImage(frame).ToString();
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(outputPath))
+            {
+                File.WriteAllText(outputPath, content);
+                var fileInfo = new FileInfo(outputPath);
+                var result = new RenderResult(true, outputPath, mode, maxWidth, targetHeight,
+                    fileInfo.Length / 1024.0);
+                return JsonSerializer.Serialize(result, McpJsonContext.Default.RenderResult);
+            }
+
+            return content;
+        }
+        catch (Exception ex)
+        {
+            return $"Error rendering video frame: {ex.Message}";
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Subtitle Tools
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    ///     List embedded subtitle streams in a video file
+    /// </summary>
+    [McpServerTool(Name = "get_subtitle_streams")]
+    [Description(
+        "List all embedded subtitle streams in a video file (MKV, MP4, etc.). Shows language, codec, and whether they can be extracted as text.")]
+    public static async Task<string> GetSubtitleStreams(
+        [Description("Path to the video file")]
+        string path)
+    {
+        if (!File.Exists(path))
+            return $"Error: File not found: {path}";
+
+        try
+        {
+            using var ffmpeg = new FFmpegService();
+            var streams = await ffmpeg.GetSubtitleStreamsAsync(path);
+
+            var dtos = streams.Select(s => new SubtitleStreamDto(
+                s.Index, s.Codec, s.Language, s.Title, s.IsTextBased
+            )).ToArray();
+
+            if (dtos.Length == 0)
+                return "No subtitle streams found in this video.";
+
+            return JsonSerializer.Serialize(dtos, McpJsonContext.Default.SubtitleStreamDtoArray);
+        }
+        catch (Exception ex)
+        {
+            return $"Error reading subtitle streams: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    ///     Extract embedded subtitles from a video file to SRT
+    /// </summary>
+    [McpServerTool(Name = "extract_subtitles")]
+    [Description(
+        "Extract embedded subtitles from a video file (MKV, MP4) to an SRT file. Can target a specific stream by index or auto-select by language.")]
+    public static async Task<string> ExtractSubtitles(
+        [Description("Path to the video file")]
+        string path,
+        [Description("Path for the output SRT file")]
+        string outputPath,
+        [Description("Subtitle stream index to extract (from get_subtitle_streams). If not specified, auto-selects first text-based stream.")]
+        int? streamIndex = null,
+        [Description("Preferred language code (e.g., 'en', 'es', 'fr'). Used when streamIndex is not specified.")]
+        string? language = null)
+    {
+        if (!File.Exists(path))
+            return $"Error: File not found: {path}";
+
+        try
+        {
+            using var ffmpeg = new FFmpegService();
+
+            // If no stream index, find the best match
+            if (streamIndex == null)
+            {
+                var streams = await ffmpeg.GetSubtitleStreamsAsync(path);
+                var textStreams = streams.Where(s => s.IsTextBased).ToList();
+
+                if (textStreams.Count == 0)
+                    return "No text-based subtitle streams found in this video. Only image-based subtitles (DVB, PGS) detected, which cannot be extracted as text.";
+
+                // Prefer matching language
+                if (!string.IsNullOrEmpty(language))
+                {
+                    var langMatch = textStreams.FirstOrDefault(s =>
+                        s.Language?.Equals(language, StringComparison.OrdinalIgnoreCase) == true);
+                    if (langMatch != null)
+                        streamIndex = langMatch.Index;
+                }
+
+                streamIndex ??= textStreams[0].Index;
+            }
+
+            var success = await ffmpeg.ExtractSubtitlesAsync(path, outputPath, streamIndex);
+
+            if (!success)
+                return "Error: Failed to extract subtitles from video";
+
+            // Parse the extracted file to count entries
+            var entryCount = 0;
+            string? detectedLanguage = null;
+            if (File.Exists(outputPath))
+            {
+                try
+                {
+                    var track = await SubtitleParser.ParseAsync(outputPath);
+                    entryCount = track.Count;
+                    detectedLanguage = track.Language;
+                }
+                catch
+                {
+                    // Count lines as fallback
+                    entryCount = File.ReadAllLines(outputPath).Count(l => l.Contains("-->"));
+                }
+            }
+
+            var result = new ExtractSubtitlesResult(true, outputPath, entryCount, detectedLanguage ?? language,
+                $"Extracted {entryCount} subtitle entries from stream {streamIndex}");
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.ExtractSubtitlesResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error extracting subtitles: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    ///     Parse an SRT or VTT subtitle file
+    /// </summary>
+    [McpServerTool(Name = "parse_subtitles")]
+    [Description(
+        "Parse an SRT or VTT subtitle file and return all entries with timestamps and text. Useful for analyzing dialogue, searching for specific content, or extracting timing information.")]
+    public static async Task<string> ParseSubtitles(
+        [Description("Path to the subtitle file (.srt or .vtt)")]
+        string path,
+        [Description("Maximum number of entries to return (default: all). Use to limit output for large files.")]
+        int? maxEntries = null)
+    {
+        if (!File.Exists(path))
+            return $"Error: File not found: {path}";
+
+        if (!SubtitleParser.IsSupportedFormat(path))
+            return "Error: Unsupported subtitle format. Supported formats: .srt, .vtt";
+
+        try
+        {
+            var track = await SubtitleParser.ParseAsync(path);
+
+            var entries = track.Entries.AsEnumerable();
+            if (maxEntries.HasValue)
+                entries = entries.Take(maxEntries.Value);
+
+            var dtos = entries.Select(e => new SubtitleEntryDto(
+                e.Index,
+                e.StartTime.ToString(@"hh\:mm\:ss\.fff"),
+                e.EndTime.ToString(@"hh\:mm\:ss\.fff"),
+                e.StartTime.TotalSeconds,
+                e.EndTime.TotalSeconds,
+                e.Text,
+                e.SpeakerId
+            )).ToArray();
+
+            var totalDuration = track.GetTotalDuration();
+            var result = new SubtitleParseResult(
+                true,
+                Path.GetFileName(path),
+                track.Language,
+                track.Count,
+                totalDuration.ToString(@"hh\:mm\:ss"),
+                dtos
+            );
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.SubtitleParseResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error parsing subtitles: {ex.Message}";
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Export Tools (SVG, Markdown)
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    ///     Render an image to SVG format
+    /// </summary>
+    [McpServerTool(Name = "export_to_svg")]
+    [Description(
+        "Render an image to ASCII art and export as an SVG file. SVG preserves colors and can be embedded in web pages, GitHub READMEs, and documents.")]
+    public static async Task<string> ExportToSvg(
+        [Description("Path to the source image file")]
+        string inputPath,
+        [Description("Path for the output SVG file")]
+        string outputPath,
+        [Description("Render mode: ascii, blocks, braille, or matrix")]
+        string mode = "braille",
+        [Description("Maximum width in characters (default: 60)")]
+        int maxWidth = 60,
+        [Description("SVG font size in pixels (default: 14)")]
+        int fontSize = 14)
+    {
+        if (!File.Exists(inputPath))
+            return $"Error: File not found: {inputPath}";
+
+        try
+        {
+            var options = new RenderOptions
+            {
+                MaxWidth = maxWidth,
+                UseColor = true
+            };
+
+            // Render the image to ANSI content
+            var ansiContent = mode.ToLowerInvariant() switch
+            {
+                "blocks" or "colorblocks" => RenderWithColorBlocks(inputPath, options),
+                "braille" => RenderWithBraille(inputPath, options),
+                "matrix" => RenderWithMatrix(inputPath, options),
+                _ => RenderWithAscii(inputPath, options, 0)
+            };
+
+            // Convert to SVG and save
+            await MarkdownRenderer.SaveSvgAsync(ansiContent, outputPath, fontSize: fontSize);
+
+            var fileInfo = new FileInfo(outputPath);
+            var result = new ExportResult(true, outputPath, "SVG", fileInfo.Length / 1024.0,
+                $"Exported {mode} render as SVG ({fileInfo.Length / 1024.0:F1} KB)");
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.ExportResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error exporting to SVG: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    ///     Render an image to markdown format
+    /// </summary>
+    [McpServerTool(Name = "export_to_markdown")]
+    [Description(
+        "Render an image to ASCII art and export as a markdown file. Supports plain text (universal), HTML spans, SVG (GitHub/GitLab), or ANSI code blocks.")]
+    public static async Task<string> ExportToMarkdown(
+        [Description("Path to the source image file")]
+        string inputPath,
+        [Description("Path for the output markdown file")]
+        string outputPath,
+        [Description("Render mode: ascii, blocks, braille, or matrix")]
+        string mode = "braille",
+        [Description("Markdown format: plain (universal), html (inline CSS), svg (GitHub/GitLab), ansi (terminal only)")]
+        string format = "svg",
+        [Description("Maximum width in characters (default: 60)")]
+        int maxWidth = 60,
+        [Description("Optional title for the markdown document")]
+        string? title = null)
+    {
+        if (!File.Exists(inputPath))
+            return $"Error: File not found: {inputPath}";
+
+        try
+        {
+            var options = new RenderOptions
+            {
+                MaxWidth = maxWidth,
+                UseColor = true
+            };
+
+            var ansiContent = mode.ToLowerInvariant() switch
+            {
+                "blocks" or "colorblocks" => RenderWithColorBlocks(inputPath, options),
+                "braille" => RenderWithBraille(inputPath, options),
+                "matrix" => RenderWithMatrix(inputPath, options),
+                _ => RenderWithAscii(inputPath, options, 0)
+            };
+
+            var mdFormat = format.ToLowerInvariant() switch
+            {
+                "html" => MarkdownRenderer.MarkdownFormat.Html,
+                "svg" => MarkdownRenderer.MarkdownFormat.Svg,
+                "ansi" => MarkdownRenderer.MarkdownFormat.Ansi,
+                _ => MarkdownRenderer.MarkdownFormat.Plain
+            };
+
+            await MarkdownRenderer.SaveMarkdownAsync(ansiContent, outputPath, mdFormat,
+                title ?? Path.GetFileNameWithoutExtension(inputPath));
+
+            var fileInfo = new FileInfo(outputPath);
+            var result = new ExportResult(true, outputPath, format.ToUpperInvariant(), fileInfo.Length / 1024.0,
+                $"Exported {mode} render as {format} markdown ({fileInfo.Length / 1024.0:F1} KB)");
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.ExportResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error exporting to markdown: {ex.Message}";
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Document Tools (CIDZ / JSON)
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    ///     Get information about a saved ConsoleImage document
+    /// </summary>
+    [McpServerTool(Name = "get_document_info")]
+    [Description(
+        "Get information about a saved ConsoleImage document (.cidz, .json, .ndjson). Shows frame count, duration, render mode, settings, and whether subtitles are embedded.")]
+    public static async Task<string> GetDocumentInfo(
+        [Description("Path to the document file (.cidz, .json, or .ndjson)")]
+        string path)
+    {
+        if (!File.Exists(path))
+            return $"Error: File not found: {path}";
+
+        try
+        {
+            var doc = await ConsoleImageDocument.LoadAsync(path);
+            var fileInfo = new FileInfo(path);
+
+            var fileSizeFormatted = fileInfo.Length switch
+            {
+                < 1024 => $"{fileInfo.Length} B",
+                < 1024 * 1024 => $"{fileInfo.Length / 1024.0:F1} KB",
+                < 1024L * 1024 * 1024 => $"{fileInfo.Length / (1024.0 * 1024.0):F1} MB",
+                _ => $"{fileInfo.Length / (1024.0 * 1024.0 * 1024.0):F2} GB"
+            };
+
+            var result = new DocumentInfoResult(
+                fileInfo.Name,
+                fileInfo.FullName,
+                doc.Type,
+                doc.Version,
+                doc.Created.ToString("O"),
+                doc.SourceFile,
+                doc.RenderMode,
+                doc.FrameCount,
+                doc.IsAnimated,
+                doc.TotalDurationMs,
+                TimeSpan.FromMilliseconds(doc.TotalDurationMs).ToString(@"hh\:mm\:ss\.fff"),
+                doc.Settings.MaxWidth,
+                doc.Settings.MaxHeight,
+                doc.Settings.UseColor,
+                doc.Subtitles != null && doc.Subtitles.Entries.Count > 0,
+                doc.Subtitles?.Entries.Count ?? 0,
+                fileInfo.Length,
+                fileSizeFormatted
+            );
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.DocumentInfoResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error reading document: {ex.Message}";
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // YouTube Tools
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    ///     Download subtitles from a YouTube video
+    /// </summary>
+    [McpServerTool(Name = "get_youtube_subtitles")]
+    [Description(
+        "Download subtitles/captions from a YouTube video. Downloads existing captions (manual or auto-generated) without requiring Whisper transcription. Returns parsed subtitle entries.")]
+    public static async Task<string> GetYouTubeSubtitles(
+        [Description("YouTube video URL")]
+        string url,
+        [Description("Output directory for the subtitle file")]
+        string outputDirectory,
+        [Description("Preferred language code (default: 'en')")]
+        string language = "en",
+        [Description("Maximum number of entries to return in response (default: all)")]
+        int? maxEntries = null)
+    {
+        if (!YtdlpProvider.IsYouTubeUrl(url))
+            return "Error: Not a valid YouTube URL";
+
+        try
+        {
+            var ytdlpPath = await YtdlpProvider.GetYtdlpPathAsync();
+
+            var subtitlePath = await YtdlpProvider.DownloadSubtitlesAsync(
+                url, outputDirectory, language, ytdlpPath);
+
+            if (subtitlePath == null)
+                return $"No subtitles available for this video in language '{language}'.";
+
+            // Parse the downloaded subtitle file
+            var track = await SubtitleParser.ParseAsync(subtitlePath);
+
+            var entries = track.Entries.AsEnumerable();
+            if (maxEntries.HasValue)
+                entries = entries.Take(maxEntries.Value);
+
+            var dtos = entries.Select(e => new SubtitleEntryDto(
+                e.Index,
+                e.StartTime.ToString(@"hh\:mm\:ss\.fff"),
+                e.EndTime.ToString(@"hh\:mm\:ss\.fff"),
+                e.StartTime.TotalSeconds,
+                e.EndTime.TotalSeconds,
+                e.Text,
+                e.SpeakerId
+            )).ToArray();
+
+            var totalDuration = track.GetTotalDuration();
+            var result = new SubtitleParseResult(
+                true,
+                subtitlePath,
+                language,
+                track.Count,
+                totalDuration.ToString(@"hh\:mm\:ss"),
+                dtos
+            );
+            return JsonSerializer.Serialize(result, McpJsonContext.Default.SubtitleParseResult);
+        }
+        catch (Exception ex)
+        {
+            return $"Error downloading YouTube subtitles: {ex.Message}";
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // System Tools
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    ///     Check status of external tool dependencies
+    /// </summary>
+    [McpServerTool(Name = "check_dependencies")]
+    [Description(
+        "Check the availability and status of external tools (FFmpeg, yt-dlp) required for video processing and YouTube support. Reports what's installed and what needs to be downloaded.")]
+    public static string CheckDependencies()
+    {
+        var results = new Dictionary<string, string>();
+
+        // FFmpeg
+        results["ffmpeg_available"] = FFmpegService.IsAvailable().ToString();
+        results["ffmpeg_status"] = FFmpegService.GetStatus();
+
+        // yt-dlp
+        results["ytdlp_available"] = YtdlpProvider.IsAvailable().ToString();
+        results["ytdlp_status"] = YtdlpProvider.GetStatus();
+        var (needsDownload, statusMessage, _) = YtdlpProvider.GetDownloadStatus();
+        results["ytdlp_needs_download"] = needsDownload.ToString();
+        results["ytdlp_detail"] = statusMessage;
+
+        // Supported formats
+        results["image_formats"] = "JPG, PNG, GIF, WebP, BMP, TIFF";
+        results["video_formats"] = "MP4, MKV, AVI, WebM, MOV, FLV, WMV (requires FFmpeg)";
+        results["subtitle_formats"] = "SRT, VTT";
+        results["document_formats"] = "CIDZ (compressed), JSON, NDJSON";
+        results["export_formats"] = "GIF, SVG, Markdown (plain/html/svg/ansi)";
+        results["render_modes"] = "ascii, blocks, braille, matrix";
+
+        return JsonSerializer.Serialize(results, McpJsonContext.Default.DictionaryStringString);
     }
 }

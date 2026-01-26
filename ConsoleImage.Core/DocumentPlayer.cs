@@ -25,6 +25,9 @@ public class DocumentPlayer : IDisposable
     private const string CursorShow = "\x1b[?25h";
     private const string CursorHome = "\x1b[H";
     private const string ColorReset = "\x1b[0m";
+    private const string AltScreenOn = "\x1b[?1049h";
+    private const string AltScreenOff = "\x1b[?1049l";
+    private const string ClearScreen = "\x1b[2J";
 
     // Pre-cached cursor move strings (avoids interpolation per frame)
     private static readonly string[] CursorMoveCache = BuildCursorMoveCache(300);
@@ -105,7 +108,9 @@ public class DocumentPlayer : IDisposable
         string? previousContent = null;
         string? previousSubtitle = null;
 
-        // Hide cursor during animation
+        // Enter alternate screen and hide cursor
+        Console.Write(AltScreenOn);
+        Console.Write(ClearScreen);
         Console.Write(CursorHide);
 
         try
@@ -178,9 +183,10 @@ public class DocumentPlayer : IDisposable
         }
         finally
         {
-            // Show cursor again
+            // Restore terminal state
             Console.Write(CursorShow);
             Console.Write(ColorReset);
+            Console.Write(AltScreenOff);
         }
     }
 

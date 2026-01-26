@@ -136,14 +136,15 @@ public static partial class MarkdownRenderer
     /// </summary>
     public static string GenerateSvg(string ansiContent, string fontFamily = "Consolas, monospace", int fontSize = 14)
     {
-        var lines = ansiContent.Split('\n');
-        var maxLineLength = lines.Max(l => StripAnsiCodes(l).Length);
+        var lines = ansiContent.ReplaceLineEndings("\n").Split('\n');
+        var maxLineLength = lines.Max(l => StripAnsiCodes(l).TrimEnd().Length);
 
-        // Estimate dimensions (monospace characters are roughly 0.6x width of height)
-        var charWidth = fontSize * 0.6;
+        // Estimate dimensions - braille/Unicode chars need ~0.65x width ratio
+        var charWidth = fontSize * 0.65;
         var lineHeight = fontSize * 1.2;
-        var width = (int)(maxLineLength * charWidth) + 20;
-        var height = (int)(lines.Length * lineHeight) + 20;
+        var padding = 20;
+        var width = (int)(maxLineLength * charWidth) + padding * 2;
+        var height = (int)(lines.Length * lineHeight) + padding;
 
         var sb = new StringBuilder();
         sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\">");
@@ -153,7 +154,9 @@ public static partial class MarkdownRenderer
         var y = (double)(fontSize + 5);
         foreach (var line in lines)
         {
-            var spans = ParseAnsiLine(line);
+            var cleanLine = line.TrimEnd();
+            if (string.IsNullOrEmpty(cleanLine)) { y += lineHeight; continue; }
+            var spans = ParseAnsiLine(cleanLine);
             var x = 10.0;
 
             sb.Append($"    <tspan x=\"{x}\" y=\"{y}\">");

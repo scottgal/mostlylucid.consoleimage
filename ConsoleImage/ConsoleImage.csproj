@@ -28,6 +28,11 @@
         <TrimMode>full</TrimMode>
         <IlcGenerateMstatFile>false</IlcGenerateMstatFile>
         <IlcGenerateDgmlFile>false</IlcGenerateDgmlFile>
+
+        <!-- Suppress expected AOT warnings from dependencies -->
+        <!-- IL3000: Whisper.net uses Assembly.Location (we work around via RuntimeOptions.LibraryPath) -->
+        <!-- IL2104: NAudio assemblies aren't fully trim-compatible (works at runtime) -->
+        <NoWarn>$(NoWarn);IL3000;IL2104</NoWarn>
     </PropertyGroup>
 
     <!-- Local development: use ProjectReference -->
@@ -42,20 +47,20 @@
         <PackageReference Include="mostlylucid.consoleimage.transcription" Version="$(CorePackageVersion)"/>
     </ItemGroup>
 
-    <!-- Bundle Whisper native runtime for AOT builds -->
-    <!-- Whisper.net.Runtime contains CPU binaries for all platforms -->
+    <!-- Bundle Whisper native runtime for AOT builds when packaging the whisper variant -->
+    <!-- CI passes -p:BundleWhisperRuntime=true for the whisper archive -->
     <PropertyGroup>
         <WhisperRuntimeVersion>1.9.0</WhisperRuntimeVersion>
+        <BundleWhisperRuntime Condition="'$(BundleWhisperRuntime)' == ''">false</BundleWhisperRuntime>
     </PropertyGroup>
-    <ItemGroup Condition="'$(PublishAot)' == 'true'">
+    <ItemGroup Condition="'$(BundleWhisperRuntime)' == 'true'">
         <PackageReference Include="Whisper.net.Runtime" Version="$(WhisperRuntimeVersion)"/>
     </ItemGroup>
 
-    <!-- Copy Whisper native DLLs to publish output (they only copy to build output by default) -->
+    <!-- Copy Whisper native DLLs to publish output -->
     <Target Name="PublishWhisperRuntime" AfterTargets="Publish"
-            Condition="'$(RuntimeIdentifier)' != ''">
+            Condition="'$(BundleWhisperRuntime)' == 'true' and '$(RuntimeIdentifier)' != ''">
         <PropertyGroup>
-            <!-- Map .NET RID to Whisper.net.Runtime folder name (macOS uses 'macos' not 'osx') -->
             <_WhisperRid>$(RuntimeIdentifier)</_WhisperRid>
             <_WhisperRid Condition="$(RuntimeIdentifier.StartsWith('osx'))">$(RuntimeIdentifier.Replace('osx','macos'))</_WhisperRid>
         </PropertyGroup>

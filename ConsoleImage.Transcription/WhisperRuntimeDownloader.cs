@@ -340,57 +340,75 @@ public static class WhisperRuntimeDownloader
     }
 
     /// <summary>
-    ///     Extract native library from NuGet package.
+    ///     Extract ALL native libraries for this platform from NuGet package.
+    ///     Whisper.dll depends on ggml-*.dll — all must be extracted together.
     /// </summary>
     private static bool ExtractFromNupkg(string zipPath, string targetDir, IProgress<(long, long, string)>? progress)
     {
         var rid = GetRuntimeIdentifier();
-        var libName = GetNativeLibraryName();
+
+        // Native library extensions for current platform
+        var nativeExtensions = GetNativeExtensions();
 
         using var archive = ZipFile.OpenRead(zipPath);
 
-        // Search for the native library in common locations
-        var searchPaths = new[]
+        // Whisper.net.Runtime NuGet package structure:
+        //   build/{rid}/*.dll (Windows) or *.so (Linux) or *.dylib (macOS)
+        // Also check runtimes/ path used by some package versions
+        var prefixes = new[]
         {
-            $"runtimes/{rid}/native/{libName}",
-            $"runtimes/{rid}/{libName}",
-            $"build/{rid}/native/{libName}",
-            $"build/{rid}/{libName}"
+            $"build/{rid}/",
+            $"build/{rid}/native/",
+            $"runtimes/{rid}/native/",
+            $"runtimes/{rid}/"
         };
+
+        var extractedCount = 0;
 
         foreach (var entry in archive.Entries)
         {
-            // Check if this entry matches any expected path
-            var matches = searchPaths.Any(p =>
-                entry.FullName.Equals(p, StringComparison.OrdinalIgnoreCase));
+            // Skip directories and non-native files
+            if (string.IsNullOrEmpty(entry.Name)) continue;
+            if (!nativeExtensions.Any(ext => entry.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                continue;
 
-            if (!matches)
-            {
-                // Also check by filename alone
-                if (!entry.Name.Equals(libName, StringComparison.OrdinalIgnoreCase))
-                    continue;
+            // Check if this entry is under a path for our platform
+            var entryPath = entry.FullName.Replace('\\', '/');
+            if (!prefixes.Any(p => entryPath.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                continue;
 
-                // Make sure it's in a runtime-specific folder for our platform
-                var pathLower = entry.FullName.ToLowerInvariant();
-                var ridLower = rid.ToLowerInvariant();
-                if (!pathLower.Contains(ridLower) && !pathLower.Contains(ridLower.Replace("-", "_")))
-                    continue;
-            }
-
-            // Found it - extract
-            var destPath = Path.Combine(targetDir, libName);
+            // Extract to target directory
+            var destPath = Path.Combine(targetDir, entry.Name);
             entry.ExtractToFile(destPath, true);
-            progress?.Report((0, 0, $"Extracted: {libName}"));
+            progress?.Report((0, 0, $"Extracted: {entry.Name}"));
+            extractedCount++;
+        }
+
+        if (extractedCount > 0)
+        {
+            progress?.Report((0, 0, $"Extracted {extractedCount} native libraries for {rid}"));
             return true;
         }
 
         // Debug: list what's in the package
-        progress?.Report((0, 0, "Library not found in package. Contents:"));
+        progress?.Report((0, 0, $"No native libraries found for {rid}. Package contents:"));
         foreach (var e in archive.Entries
-                     .Where(e => e.Name.EndsWith(".dll") || e.Name.EndsWith(".so") || e.Name.EndsWith(".dylib"))
-                     .Take(10)) progress?.Report((0, 0, $"  {e.FullName}"));
+                     .Where(e => nativeExtensions.Any(ext => e.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                     .Take(15)) progress?.Report((0, 0, $"  {e.FullName}"));
 
         return false;
+    }
+
+    /// <summary>
+    ///     Get native library file extensions for the current platform.
+    /// </summary>
+    private static string[] GetNativeExtensions()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return [".dll"];
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return [".dylib", ".metal"];
+        return [".so"];
     }
 
     /// <summary>

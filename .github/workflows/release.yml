@@ -68,7 +68,7 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: Publish AOT - consoleimage
+      - name: Publish AOT - consoleimage (with Whisper runtime)
         shell: bash
         run: |
           dotnet publish ConsoleImage/ConsoleImage.csproj \
@@ -76,6 +76,7 @@ jobs:
             -r ${{ matrix.rid }} \
             --self-contained true \
             -p:PublishAot=true \
+            -p:BundleWhisperRuntime=true \
             -p:OptimizationPreference=Size \
             -p:IlcOptimizationPreference=Size \
             -p:StripSymbols=true \
@@ -99,23 +100,35 @@ jobs:
       - name: Prepare archive contents
         shell: bash
         run: |
-          # ConsoleImage CLI
+          # === ConsoleImage CLI (default - without Whisper native libs) ===
           mkdir -p ./archive/${{ matrix.artifact }}
           if [ "${{ matrix.ext }}" == ".exe" ]; then
             cp ./publish/${{ matrix.artifact }}/consoleimage.exe ./archive/${{ matrix.artifact }}/
-            # Copy Whisper native DLLs (whisper.dll, ggml-*.dll)
-            cp ./publish/${{ matrix.artifact }}/*.dll ./archive/${{ matrix.artifact }}/ 2>/dev/null || true
           else
             cp ./publish/${{ matrix.artifact }}/consoleimage ./archive/${{ matrix.artifact }}/
             chmod +x ./archive/${{ matrix.artifact }}/consoleimage
-            # Copy Whisper native libraries (.so on Linux, .dylib on macOS)
-            cp ./publish/${{ matrix.artifact }}/*.so ./archive/${{ matrix.artifact }}/ 2>/dev/null || true
-            cp ./publish/${{ matrix.artifact }}/*.dylib ./archive/${{ matrix.artifact }}/ 2>/dev/null || true
           fi
           cp README.md ./archive/${{ matrix.artifact }}/
           cp ConsoleImage/calibration.json ./archive/${{ matrix.artifact }}/ || true
 
-          # ConsoleImage MCP Server
+          # === ConsoleImage CLI + Whisper (with native libs for transcription) ===
+          mkdir -p ./archive/${{ matrix.artifact }}-whisper
+          if [ "${{ matrix.ext }}" == ".exe" ]; then
+            cp ./publish/${{ matrix.artifact }}/consoleimage.exe ./archive/${{ matrix.artifact }}-whisper/
+            # Copy Whisper native DLLs (whisper.dll, ggml-*.dll)
+            cp ./publish/${{ matrix.artifact }}/*.dll ./archive/${{ matrix.artifact }}-whisper/ 2>/dev/null || true
+          else
+            cp ./publish/${{ matrix.artifact }}/consoleimage ./archive/${{ matrix.artifact }}-whisper/
+            chmod +x ./archive/${{ matrix.artifact }}-whisper/consoleimage
+            # Copy Whisper native libraries (.so on Linux, .dylib on macOS)
+            cp ./publish/${{ matrix.artifact }}/*.so ./archive/${{ matrix.artifact }}-whisper/ 2>/dev/null || true
+            cp ./publish/${{ matrix.artifact }}/*.dylib ./archive/${{ matrix.artifact }}-whisper/ 2>/dev/null || true
+            cp ./publish/${{ matrix.artifact }}/*.metal ./archive/${{ matrix.artifact }}-whisper/ 2>/dev/null || true
+          fi
+          cp README.md ./archive/${{ matrix.artifact }}-whisper/
+          cp ConsoleImage/calibration.json ./archive/${{ matrix.artifact }}-whisper/ || true
+
+          # === ConsoleImage MCP Server ===
           mkdir -p ./archive/${{ matrix.artifact }}-mcp
           if [ "${{ matrix.ext }}" == ".exe" ]; then
             cp ./publish/${{ matrix.artifact }}-mcp/consoleimage-mcp.exe ./archive/${{ matrix.artifact }}-mcp/
@@ -130,6 +143,7 @@ jobs:
         run: |
           cd archive
           Compress-Archive -Path ${{ matrix.artifact }}/* -DestinationPath ${{ matrix.artifact }}.zip
+          Compress-Archive -Path ${{ matrix.artifact }}-whisper/* -DestinationPath ${{ matrix.artifact }}-whisper.zip
           Compress-Archive -Path ${{ matrix.artifact }}-mcp/* -DestinationPath ${{ matrix.artifact }}-mcp.zip
         shell: pwsh
 
@@ -138,6 +152,8 @@ jobs:
         run: |
           cd archive/${{ matrix.artifact }}
           tar -czvf ../${{ matrix.artifact }}.tar.gz *
+          cd ../${{ matrix.artifact }}-whisper
+          tar -czvf ../${{ matrix.artifact }}-whisper.tar.gz *
           cd ../${{ matrix.artifact }}-mcp
           tar -czvf ../${{ matrix.artifact }}-mcp.tar.gz *
 
@@ -146,6 +162,12 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: archive/${{ matrix.artifact }}.*
+
+      - name: Upload artifact - CLI Whisper
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact }}-whisper
+          path: archive/${{ matrix.artifact }}-whisper.*
 
       - name: Upload artifact - MCP
         uses: actions/upload-artifact@v6
@@ -199,13 +221,19 @@ jobs:
 
             ### CLI Downloads
 
-            | Platform | consoleimage | consoleimage-mcp |
-            |----------|--------------|------------------|
-            | Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-win-x64-mcp.zip` |
-            | Windows ARM64 | `consoleimage-win-arm64.zip` | `consoleimage-win-arm64-mcp.zip` |
-            | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-linux-x64-mcp.tar.gz` |
-            | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
-            | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-osx-arm64-mcp.tar.gz` |
+            Two variants available:
+            - **consoleimage** — Core CLI for images, GIFs, videos, documents (smaller download)
+            - **consoleimage + whisper** — Same binary + Whisper native libraries for AI-powered transcription
+
+            | Platform | consoleimage | + whisper | consoleimage-mcp |
+            |----------|--------------|----------|------------------|
+            | Windows x64 | `consoleimage-win-x64.zip` | `consoleimage-win-x64-whisper.zip` | `consoleimage-win-x64-mcp.zip` |
+            | Windows ARM64 | `consoleimage-win-arm64.zip` | `consoleimage-win-arm64-whisper.zip` | `consoleimage-win-arm64-mcp.zip` |
+            | Linux x64 | `consoleimage-linux-x64.tar.gz` | `consoleimage-linux-x64-whisper.tar.gz` | `consoleimage-linux-x64-mcp.tar.gz` |
+            | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-whisper.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
+            | macOS ARM64 | `consoleimage-osx-arm64.tar.gz` | `consoleimage-osx-arm64-whisper.tar.gz` | `consoleimage-osx-arm64-mcp.tar.gz` |
+
+            > **Which one do I need?** The default `consoleimage` handles images, GIFs, videos, subtitles from files/embedded/YouTube, and document playback. Download the `whisper` variant if you want to generate subtitles from speech using local AI transcription (`--subs whisper`).
 
             ---
 
@@ -228,6 +256,13 @@ jobs:
             consoleimage movie.mkv --blocks -w 120
             consoleimage movie.mp4 --ss 60 -t 30    # Start at 60s, play 30s
 
+            # Subtitles (embedded, external, or YouTube - no Whisper needed)
+            consoleimage movie.mkv --subs auto
+            consoleimage movie.mp4 --subs movie.srt
+
+            # AI Transcription (requires whisper variant)
+            consoleimage movie.mp4 --subs whisper
+
             # Save to compressed document (.cidz)
             consoleimage animation.gif -o output.cidz
             consoleimage movie.mp4 -o movie.cidz --blocks
@@ -238,9 +273,6 @@ jobs:
 
             # Convert cidz to GIF
             consoleimage movie.cidz -o movie.gif
-
-            # Calibration
-            consoleimage --calibrate --aspect-ratio 0.48 --save
             ```
 
             ---
@@ -283,6 +315,7 @@ jobs:
             - **Animated playback**: GIFs with flicker-free DECSET 2026 sync
             - **Auto-fits to terminal**: Output defaults to your console size
             - **AOT compiled**: Fast startup, no .NET runtime required
+            - **Whisper variant**: Optional AI transcription with bundled native libraries
 
           files: |
             artifacts/**/*.zip

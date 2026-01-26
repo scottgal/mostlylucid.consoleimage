@@ -41,10 +41,17 @@ public static class DocumentHandler
                 return await ConvertToGif(doc, outputGif, effectiveSpeed, effectiveLoop,
                     gifFontSize, gifScale, gifColors, ct);
 
-            // Auto-detect sidecar subtitle file for playback
+            // Load subtitles: prefer bundled (from cidz), fall back to sidecar files
             SubtitleTrack? subtitles = null;
-            if (doc.Settings.SubtitlesEnabled || !string.IsNullOrEmpty(doc.Settings.SubtitleFile))
+            if (doc.Subtitles != null && doc.Subtitles.Entries.Count > 0)
+            {
+                subtitles = doc.Subtitles.ToTrack();
+                Console.Error.WriteLine($"Loaded {subtitles.Count} bundled subtitles");
+            }
+            else if (doc.Settings.SubtitlesEnabled || !string.IsNullOrEmpty(doc.Settings.SubtitleFile))
+            {
                 subtitles = await FindSidecarSubtitles(path, doc.Settings, ct);
+            }
 
             // Play the document
             using var player = new DocumentPlayer(doc, effectiveSpeed, effectiveLoop, subtitles);

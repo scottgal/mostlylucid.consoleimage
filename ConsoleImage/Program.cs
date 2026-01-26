@@ -230,8 +230,23 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     }
 
     // Markdown output options
+    // --md alone auto-generates path from input (photo.jpg → photo.md)
     var markdownPath = parseResult.GetValue(cliOptions.Markdown);
     var markdownFormat = parseResult.GetValue(cliOptions.MarkdownFormat);
+    var mdFlagSpecified = parseResult.Tokens.Any(t => t.Value is "--md" or "--markdown");
+    if (mdFlagSpecified && string.IsNullOrEmpty(markdownPath))
+    {
+        // --md was specified without a path: auto-generate from input
+        if (!string.IsNullOrEmpty(inputPath))
+        {
+            var mdExt = markdownFormat?.Equals("svg", StringComparison.OrdinalIgnoreCase) == true ? ".svg" : ".md";
+            markdownPath = Path.ChangeExtension(inputPath, mdExt);
+        }
+        else
+        {
+            markdownPath = "output.md";
+        }
+    }
 
     // Slideshow mode
     var slideDelay = template?.SlideDelay ?? parseResult.GetValue(cliOptions.SlideDelay);
@@ -919,7 +934,17 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    Console.Error.WriteLine($"\rWhisper transcription failed: {ex.Message}");
+                    // Check if this is a missing native library issue
+                    if (ex.Message.Contains("native library", StringComparison.OrdinalIgnoreCase) ||
+                        ex.InnerException is FileNotFoundException)
+                    {
+                        Console.Error.WriteLine("\rWhisper native libraries not found.");
+                        Console.Error.WriteLine("Download the 'consoleimage-whisper' variant for transcription support.");
+                    }
+                    else
+                    {
+                        Console.Error.WriteLine($"\rWhisper transcription failed: {ex.Message}");
+                    }
                     Console.Error.WriteLine("Continuing without subtitles. Try --subs auto for embedded subtitles.");
                     chunkedTranscriber = null;
                 }
@@ -1595,10 +1620,16 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
     }
     catch (Exception ex) when (ex is not OperationCanceledException)
     {
-        Console.Error.WriteLine($"Whisper transcription failed: {ex.Message}");
-        if (ex.InnerException is FileNotFoundException)
-            Console.Error.WriteLine(
-                "Native Whisper library not found. Use --subs auto for embedded subtitles instead.");
+        if (ex.InnerException is FileNotFoundException ||
+            ex.Message.Contains("native library", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Whisper native libraries not found.");
+            Console.Error.WriteLine("Download the 'consoleimage-whisper' variant for transcription support.");
+        }
+        else
+        {
+            Console.Error.WriteLine($"Whisper transcription failed: {ex.Message}");
+        }
         return null;
     }
     finally

@@ -2,9 +2,6 @@
 
 **Version 4.1** - High-quality ASCII art renderer for .NET 10 with live AI transcription.
 
-> NOTE: Whisper (`--subs whisper` ) is not currently functional. Will be before 4.1 RTM With MANY performance
-> optimizations.
-
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
 
@@ -421,6 +418,32 @@ consoleimage transcribe movie.mp4 --whisper-url https://api.example.com/transcri
 
 Models are automatically downloaded on first use (~30s-5min depending on size).
 
+### Markdown & SVG Export
+
+Export ASCII art to embeddable formats for documentation, READMEs, and wikis. The default format is SVG — full-color, scalable vector output that works in GitHub, GitLab, and most markdown renderers.
+
+```bash
+# Just add --md — auto-generates photo.svg with full color (simplest!)
+consoleimage photo.jpg --md
+
+# Specify a custom output path
+consoleimage photo.jpg --md output.md
+
+# Choose a different format
+consoleimage photo.jpg --md --md-format plain    # Text in code block (universal)
+consoleimage photo.jpg --md --md-format html     # HTML spans with CSS colors
+consoleimage photo.jpg --md --md-format ansi     # Preserve ANSI codes
+```
+
+| Format | Colors | Compatibility | Use Case |
+|--------|--------|---------------|----------|
+| `svg` | Full | GitHub, GitLab, most | **Default** — embeddable colored vector art |
+| `plain` | None | Universal | All markdown renderers |
+| `html` | Full | Limited | Custom docs sites |
+| `ansi` | Full | Terminals only | Terminal-rendered markdown |
+
+> **Note:** Markdown and SVG exports are static (single frame). For animated output, use GIF export (`-o output.gif`).
+
 ## Features
 
 - **Shape-matching algorithm**: Characters selected by visual shape similarity, not just brightness
@@ -466,12 +489,18 @@ dotnet add package mostlylucid.consoleimage
 
 Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
 
-| Platform    | CLI                               | MCP Server                            |
-|-------------|-----------------------------------|---------------------------------------|
-| Windows x64 | `consoleimage-win-x64.zip`        | `consoleimage-win-x64-mcp.zip`        |
-| Linux x64   | `consoleimage-linux-x64.tar.gz`   | `consoleimage-linux-x64-mcp.tar.gz`   |
-| Linux ARM64 | `consoleimage-linux-arm64.tar.gz` | `consoleimage-linux-arm64-mcp.tar.gz` |
-| macOS ARM64 | `consoleimage-osx-arm64.tar.gz`   | `consoleimage-osx-arm64-mcp.tar.gz`   |
+| Platform      | CLI                                 | + Whisper                                   | MCP Server                            |
+|---------------|-------------------------------------|---------------------------------------------|---------------------------------------|
+| Windows x64   | `consoleimage-win-x64.zip`          | `consoleimage-win-x64-whisper.zip`          | `consoleimage-win-x64-mcp.zip`        |
+| Windows ARM64 | `consoleimage-win-arm64.zip`        | `consoleimage-win-arm64-whisper.zip`        | `consoleimage-win-arm64-mcp.zip`      |
+| Linux x64     | `consoleimage-linux-x64.tar.gz`     | `consoleimage-linux-x64-whisper.tar.gz`     | `consoleimage-linux-x64-mcp.tar.gz`   |
+| Linux ARM64   | `consoleimage-linux-arm64.tar.gz`   | `consoleimage-linux-arm64-whisper.tar.gz`   | `consoleimage-linux-arm64-mcp.tar.gz` |
+| macOS ARM64   | `consoleimage-osx-arm64.tar.gz`     | `consoleimage-osx-arm64-whisper.tar.gz`     | `consoleimage-osx-arm64-mcp.tar.gz`   |
+
+> **Which download do I need?**
+> - **consoleimage** — Core CLI for images, GIFs, videos, subtitles from files/embedded/YouTube, and document playback.
+> - **consoleimage + whisper** — Same binary + Whisper native libraries for local AI transcription (`--subs whisper`).
+> - **consoleimage-mcp** — MCP server for AI assistants (Claude Desktop, Claude Code). See [MCP Server](#mcp-server).
 
 #### Quick Install (Command Line)
 
@@ -607,23 +636,19 @@ this image as ASCII art" and it will use the tools automatically.
 }
 ```
 
-**Available tools:**
-| Tool | Description |
-|------|-------------|
-| `render_image` | Render image/GIF to ASCII art (ascii, blocks, braille, matrix) |
-| `render_to_gif` | Create animated GIF output |
-| `render_video` | Render video to animated GIF (braille/ASCII/blocks) |
-| `extract_frames` | Extract raw video frames to GIF (no ASCII, just frames) |
-| `get_image_info` | Get detailed image metadata (format, dimensions, EXIF) |
-| `get_gif_info` | Get GIF metadata (dimensions, frame count) |
-| `get_video_info` | Get video file info via FFmpeg |
-| `check_youtube_url` | Check if URL is a YouTube video |
-| `get_youtube_stream` | Extract stream URL from YouTube |
-| `list_render_modes` | List available render modes with descriptions |
-| `list_matrix_presets` | List Matrix color presets |
-| `compare_render_modes` | Render same image in all modes for comparison |
+**21 tools** across 6 categories:
 
-See [ConsoleImage.Mcp/README.md](ConsoleImage.Mcp/README.md) for full documentation.
+| Category | Tools | What You Can Do |
+|----------|-------|-----------------|
+| **Image Rendering** | `render_image`, `render_to_gif`, `compare_render_modes`, `list_render_modes`, `list_matrix_presets` | See any image as text, create GIFs, compare styles |
+| **Video Analysis** | `get_video_info`, `render_video`, `render_video_frame`, `extract_frames`, `detect_scenes` | Inspect videos, render frames, find scene cuts |
+| **Subtitles** | `get_subtitle_streams`, `extract_subtitles`, `parse_subtitles`, `get_youtube_subtitles` | Read dialogue from any video or YouTube URL |
+| **YouTube** | `check_youtube_url`, `get_youtube_stream` | Access YouTube video streams and captions |
+| **Export** | `export_to_svg`, `export_to_markdown` | Create embeddable SVG art and markdown docs |
+| **Documents** | `get_document_info`, `get_image_info`, `get_gif_info` | Inspect saved documents and image metadata |
+| **System** | `check_dependencies` | Verify FFmpeg/yt-dlp availability |
+
+See [ConsoleImage.Mcp/README.md](ConsoleImage.Mcp/README.md) for full documentation including AI-optimized usage patterns.
 
 ## Library
 
@@ -793,12 +818,27 @@ consoleimage photo.jpg -p classic   # Original 71-char set
 | `--gif-font-size`     | GIF font size in pixels                                   | 10             |
 | `--gif-length`        | Max GIF length in seconds                                 | -              |
 | `--gif-frames`        | Max GIF frames                                            | -              |
+| **Export**            |                                                           |                |
+| `--md`                | Export to markdown/SVG (auto-names from input, or specify path) | -         |
+| `--md-format`         | Format: svg, plain, html, ansi                            | svg            |
+| **Subtitles**         |                                                           |                |
+| `--subs`              | Subtitle source: auto, off, `<path>`, yt, whisper         | -              |
+| `--sub-lang`          | Subtitle language code                                    | en             |
+| `--whisper-model`     | Whisper model: tiny, base, small, medium, large           | base           |
+| `--whisper-threads`   | CPU threads for Whisper                                   | Half available |
+| `--transcript`        | Generate subtitles only (no video rendering)              | OFF            |
+| `--no-enhance`        | Disable FFmpeg audio preprocessing for Whisper            | Enhance ON     |
 | **Slideshow**         |                                                           |                |
-| `--slide-delay`       | Auto-advance delay in ms (0 = manual only)                | 3000           |
+| `--slide-delay`       | Auto-advance delay in seconds (0 = manual only)           | 3              |
 | `--shuffle`           | Randomize slideshow order                                 | OFF            |
 | `--hide-info`         | Hide file info header in slideshow                        | OFF            |
 | **YouTube**           |                                                           |                |
 | `--ytdlp-path`        | Path to yt-dlp executable                                 | Auto-detect    |
+| `--cookies-from-browser` | Use cookies from browser (chrome, firefox, edge, etc.) | -              |
+| `--no-cache`          | Don't cache YouTube videos locally                        | Cache ON       |
+| **System**            |                                                           |                |
+| `--no-write`          | Disable all caching and downloads (read-only mode)        | OFF            |
+| `-y, --yes`           | Auto-confirm tool downloads (FFmpeg, yt-dlp)              | Prompt         |
 
 ## JSON Document Format
 
@@ -1097,9 +1137,11 @@ Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 | Component                           | Description                                | Documentation                                                          |
 |-------------------------------------|--------------------------------------------|------------------------------------------------------------------------|
 | **consoleimage**                    | Unified CLI for images, GIFs, videos, cidz | [ConsoleImage/README.md](ConsoleImage/README.md)                       |
+| **consoleimage-mcp**                | MCP server for AI assistants (21 tools)    | [ConsoleImage.Mcp/README.md](ConsoleImage.Mcp/README.md)              |
 | **mostlylucid.consoleimage**        | Core rendering library (NuGet)             | [ConsoleImage.Core/README.md](ConsoleImage.Core/README.md)             |
 | **mostlylucid.consoleimage.video**  | Video support library (NuGet)              | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
 | **mostlylucid.consoleimage.player** | Document playback library (NuGet)          | [ConsoleImage.Player/README.md](ConsoleImage.Player/README.md)         |
+| **mostlylucid.consoleimage.spectre**| Spectre.Console integration (NuGet)        | [ConsoleImage.Spectre/README.md](ConsoleImage.Spectre/README.md)       |
 | **JSON/CIDZ Format**                | Document format specification              | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md)                             |
 | **Braille Rendering**               | How the 8x resolution braille mode works   | [docs/BRAILLE-RENDERING.md](docs/BRAILLE-RENDERING.md)                 |
 | **Changelog**                       | Version history                            | [CHANGELOG.md](CHANGELOG.md)                                           |
@@ -1112,15 +1154,19 @@ ConsoleImage.Core              # Core library (NuGet: mostlylucid.consoleimage)
 ├── ColorBlockRenderer         # Unicode half-block renderer
 ├── BrailleRenderer            # 2×4 dot braille renderer
 ├── MatrixRenderer             # Digital rain effect
+├── MarkdownRenderer           # SVG/HTML/Markdown export
 ├── Protocol renderers         # iTerm2, Kitty, Sixel support
 ├── AsciiAnimationPlayer       # Flicker-free GIF playback
 ├── ConsoleImageDocument       # JSON/CIDZ document format
 ├── DocumentPlayer             # Document playback
 ├── GifWriter                  # Animated GIF output
+├── Subtitles/                 # SRT/VTT parsing, rendering, embedded extraction
 └── ConsoleHelper              # Windows ANSI support
 
 ConsoleImage                   # Unified CLI (images, GIFs, videos, documents)
 ConsoleImage.Video.Core        # FFmpeg video decoding (optional, for video files)
+ConsoleImage.Transcription     # Whisper AI transcription (optional, for --subs whisper)
+ConsoleImage.Mcp               # MCP server for AI assistants (21 tools)
 ConsoleImage.Player            # Standalone document playback (NuGet)
 ConsoleImage.Spectre           # Spectre.Console integration
 ```
