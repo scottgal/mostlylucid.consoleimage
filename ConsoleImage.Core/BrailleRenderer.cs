@@ -213,8 +213,8 @@ public class BrailleRenderer : IDisposable
                     }
                 }
 
-                // Get braille character (always full block in color mode)
-                var brailleCode = _options.UseColor
+                // Get braille character (always full block in color/greyscale mode)
+                var brailleCode = (_options.UseColor || _options.UseGreyscaleAnsi)
                     ? CalculateHybridBrailleCode(cellBrightness, cellIndices, colorCount,
                         minBrightness, maxBrightness, _options.Invert)
                     : 0xFF;
@@ -312,11 +312,11 @@ public class BrailleRenderer : IDisposable
                 sb.Append('H');
 
                 // Output color if needed
-                if (_options.UseColor)
+                if (_options.UseColor || _options.UseGreyscaleAnsi)
                 {
                     if (!hasColor || current.R != lastR || current.G != lastG || current.B != lastB)
                     {
-                        AppendColorCode(sb, current.R, current.G, current.B);
+                        AppendColorCode(sb, current.R, current.G, current.B, _options.ColorDepth, _options.UseGreyscaleAnsi);
                         lastR = current.R;
                         lastG = current.G;
                         lastB = current.B;
@@ -376,10 +376,10 @@ public class BrailleRenderer : IDisposable
             {
                 var cell = cells[y, x];
 
-                if (_options.UseColor)
+                if (_options.UseColor || _options.UseGreyscaleAnsi)
                 {
                     // Append color code
-                    AppendColorCode(sb, cell.R, cell.G, cell.B);
+                    AppendColorCode(sb, cell.R, cell.G, cell.B, _options.ColorDepth, _options.UseGreyscaleAnsi);
 
                     // Run-length encode: collect consecutive cells with same color
                     var runStart = x;
@@ -410,8 +410,23 @@ public class BrailleRenderer : IDisposable
     ///     Append ANSI color code efficiently, using pre-computed greyscale when possible.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void AppendColorCode(StringBuilder sb, byte r, byte g, byte b)
+    private static void AppendColorCode(StringBuilder sb, byte r, byte g, byte b,
+        ColorDepth depth = ColorDepth.TrueColor, bool greyscale = false)
     {
+        // Greyscale ANSI: convert to brightness and use 256-color grey ramp
+        if (greyscale)
+        {
+            var brightness = (byte)(0.299f * r + 0.587f * g + 0.114f * b);
+            AnsiCodes.AppendForegroundGrey256(sb, brightness);
+            return;
+        }
+
+        if (depth != ColorDepth.TrueColor)
+        {
+            AnsiCodes.AppendForegroundAdaptive(sb, r, g, b, depth);
+            return;
+        }
+
         // Use pre-computed escape for greyscale colors
         if (r == g && g == b)
         {
@@ -437,8 +452,6 @@ public class BrailleRenderer : IDisposable
     {
         // Calculate output dimensions (each char = 2x4 braille dots)
         var (pixelWidth, pixelHeight) = CalculateBrailleDimensions(image.Width, image.Height);
-        var charWidth = pixelWidth / 2;
-        var charHeight = pixelHeight / 4;
 
         // Resize image
         var resized = image.Clone(ctx => ctx.Resize(pixelWidth, pixelHeight));
@@ -447,37 +460,98 @@ public class BrailleRenderer : IDisposable
         var (brightness, colors) = PrecomputePixelData(resized);
 
         // Calculate threshold using autocontrast
-        var (minBrightness, maxBrightness) = GetBrightnessRangeFromBuffer(brightness);
         var invertMode = _options.Invert;
 
-        // For COLOR mode: show most dots, only hide truly dark pixels
-        // The color carries the detail, so we want dense output
+        // For COLOR/GREYSCALE mode: show most dots, only hide truly dark pixels
         // For MONOCHROME mode: use Otsu's method for optimal separation
         float threshold;
-        if (_options.UseColor)
-            // Color mode: use generous threshold to show most content
-            // In invert mode (dark terminal): only hide very dark pixels (< 15%)
-            // In normal mode (light terminal): only hide very bright pixels (> 85%)
+        if (_options.UseColor || _options.UseGreyscaleAnsi)
             threshold = invertMode ? 0.15f : 0.85f;
         else
-            // Monochrome: use Otsu's method for best separation
             threshold = CalculateOtsuThreshold(brightness);
 
         // Apply Atkinson dithering for smooth gradients
         brightness = ApplyAtkinsonDithering(brightness, pixelWidth, pixelHeight, threshold);
         // After dithering, values are 0 or 1, so use 0.5 threshold
-        threshold = 0.5f;
+        var result = RenderBrailleContent(brightness, colors, pixelWidth, pixelHeight, 0.5f);
+
+        resized.Dispose();
+        return result;
+    }
+
+    /// <summary>
+    ///     Generate multiple braille frames with different brightness thresholds
+    ///     for temporal super-resolution (perceptual interlacing).
+    ///     Each frame uses a slightly different dithering threshold; when played
+    ///     rapidly, the human visual system integrates the frames and perceives
+    ///     more tonal detail than any single frame can display.
+    /// </summary>
+    public List<BrailleFrame> RenderInterlaceFrames(Image<Rgba32> image)
+    {
+        var frameCount = Math.Clamp(_options.InterlaceFrameCount, 2, 8);
+        var spread = Math.Clamp(_options.InterlaceSpread, 0.01f, 0.2f);
+        // Delay per subframe: distribute one visible frame period across N subframes
+        var delayMs = Math.Max(1, (int)(1000f / (_options.InterlaceFps * frameCount)));
+
+        // Shared computation: resize and pixel data (expensive, done once)
+        var (pixelWidth, pixelHeight) = CalculateBrailleDimensions(image.Width, image.Height);
+        using var resized = image.Clone(ctx => ctx.Resize(pixelWidth, pixelHeight));
+        var (baseBrightness, colors) = PrecomputePixelData(resized);
+
+        // Calculate base threshold
+        var invertMode = _options.Invert;
+        float baseThreshold;
+        if (_options.UseColor || _options.UseGreyscaleAnsi)
+            baseThreshold = invertMode ? 0.15f : 0.85f;
+        else
+            baseThreshold = CalculateOtsuThreshold(baseBrightness);
+
+        var frames = new List<BrailleFrame>(frameCount);
+
+        for (var f = 0; f < frameCount; f++)
+        {
+            // Spread thresholds evenly around the base.
+            // For 4 frames: biases are [-0.5, -0.167, +0.167, +0.5] * spread
+            var bias = spread * ((float)f / Math.Max(1, frameCount - 1) - 0.5f);
+            var threshold = Math.Clamp(baseThreshold + bias, 0.01f, 0.99f);
+
+            // Apply Atkinson dithering with biased threshold (creates a new array)
+            var dithered = ApplyAtkinsonDithering(baseBrightness, pixelWidth, pixelHeight, threshold);
+
+            // Render to braille string using post-dithering threshold of 0.5
+            var content = RenderBrailleContent(dithered, colors, pixelWidth, pixelHeight, 0.5f);
+            frames.Add(new BrailleFrame(content, delayMs));
+        }
+
+        return frames;
+    }
+
+    /// <summary>
+    ///     Render pre-computed brightness and color data to a braille ANSI string.
+    ///     This is the core rendering step shared by RenderImage and RenderInterlaceFrames.
+    /// </summary>
+    private string RenderBrailleContent(float[] brightness, Rgba32[] colors,
+        int pixelWidth, int pixelHeight, float threshold)
+    {
+        var charWidth = pixelWidth / 2;
+        var charHeight = pixelHeight / 4;
+        var invertMode = _options.Invert;
+
+        // useAnsiOutput covers both full-color and greyscale ANSI modes
+        var useAnsiOutput = _options.UseColor || _options.UseGreyscaleAnsi;
 
         // Pre-size StringBuilder: each char cell needs ~20 bytes for ANSI codes + 1 char
-        // Plus newlines and resets
-        var estimatedSize = charWidth * charHeight * (_options.UseColor ? 25 : 1) + charHeight * 10;
+        var estimatedSize = charWidth * charHeight * (useAnsiOutput ? 25 : 1) + charHeight * 10;
         var sb = new StringBuilder(estimatedSize);
 
         // Key insight: separate color and brightness concerns
         // - COLOR: average ALL 8 pixels in cell (prevents solarization)
         // - DOTS: show brightness detail via threshold
 
-        if (_options.UseColor && _options.UseParallelProcessing && charHeight > 4)
+        var colorDepth = _options.ColorDepth;
+        var greyscaleAnsi = _options.UseGreyscaleAnsi;
+
+        if (useAnsiOutput && _options.UseParallelProcessing && charHeight > 4)
         {
             // Parallel processing: compute each row independently, then combine
             var rowStrings = new string[charHeight];
@@ -553,7 +627,6 @@ public class BrailleRenderer : IDisposable
                         (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
 
                         // Skip absolute black characters (invisible on dark terminal)
-                        // This reduces file size and improves rendering
                         if (r <= 2 && g <= 2 && b <= 2 && brailleCode == 0)
                         {
                             rowSb.Append(' ');
@@ -564,13 +637,12 @@ public class BrailleRenderer : IDisposable
 
                         if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
                         {
-                            rowSb.Append("\x1b[38;2;");
-                            rowSb.Append(avgColor.R);
-                            rowSb.Append(';');
-                            rowSb.Append(avgColor.G);
-                            rowSb.Append(';');
-                            rowSb.Append(avgColor.B);
-                            rowSb.Append('m');
+                            if (greyscaleAnsi)
+                                AnsiCodes.AppendForegroundGrey256(rowSb,
+                                    BrightnessHelper.ToGrayscale(avgColor));
+                            else
+                                AnsiCodes.AppendForegroundAdaptive(rowSb, avgColor.R, avgColor.G, avgColor.B,
+                                    colorDepth);
                             lastColor = avgColor;
                         }
                     }
@@ -656,18 +728,16 @@ public class BrailleRenderer : IDisposable
 
                     var brailleChar = (char)(BrailleBase + brailleCode);
 
-                    if (_options.UseColor && colorCount > 0)
+                    if (useAnsiOutput && colorCount > 0)
                     {
                         var r = (byte)(totalR / colorCount);
                         var g = (byte)(totalG / colorCount);
                         var b = (byte)(totalB / colorCount);
 
                         // Apply gamma correction and boost saturation/brightness for braille
-                        // Braille dots are sparse, so colors appear less vibrant
                         (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
 
                         // Skip absolute black characters (invisible on dark terminal)
-                        // This reduces file size and improves rendering
                         if (r <= 2 && g <= 2 && b <= 2 && brailleCode == 0)
                         {
                             sb.Append(' ');
@@ -678,13 +748,12 @@ public class BrailleRenderer : IDisposable
 
                         if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
                         {
-                            sb.Append("\x1b[38;2;");
-                            sb.Append(avgColor.R);
-                            sb.Append(';');
-                            sb.Append(avgColor.G);
-                            sb.Append(';');
-                            sb.Append(avgColor.B);
-                            sb.Append('m');
+                            if (greyscaleAnsi)
+                                AnsiCodes.AppendForegroundGrey256(sb,
+                                    BrightnessHelper.ToGrayscale(avgColor));
+                            else
+                                AnsiCodes.AppendForegroundAdaptive(sb, avgColor.R, avgColor.G, avgColor.B,
+                                    colorDepth);
                             lastColor = avgColor;
                         }
 
@@ -698,18 +767,17 @@ public class BrailleRenderer : IDisposable
 
                 if (cy < charHeight - 1)
                 {
-                    if (_options.UseColor)
+                    if (useAnsiOutput)
                         sb.Append("\x1b[0m");
                     sb.AppendLine();
                     lastColor = null;
                 }
             }
 
-            if (_options.UseColor)
+            if (useAnsiOutput)
                 sb.Append("\x1b[0m");
         }
 
-        resized.Dispose();
         return sb.ToString();
     }
 

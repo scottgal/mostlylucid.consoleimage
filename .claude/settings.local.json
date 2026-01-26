@@ -147,7 +147,14 @@
       "Bash(git log:*)",
       "Bash(git rm:*)",
       "Bash(git checkout:*)",
-      "Bash(ffplay:*)"
+      "Bash(ffplay:*)",
+      "WebFetch(domain:humanfactors.arc.nasa.gov)",
+      "WebFetch(domain:developer.nvidia.com)",
+      "WebFetch(domain:bartwronski.com)",
+      "WebFetch(domain:surma.dev)",
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\test-publish\\\\consoleimage.exe\" tools --verify)",
+      "Bash(git stash:*)",
+      "WebFetch(domain:news.ycombinator.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

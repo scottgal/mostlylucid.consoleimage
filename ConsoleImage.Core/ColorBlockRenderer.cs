@@ -180,7 +180,7 @@ public class ColorBlockRenderer : IDisposable
                         lower = ColorHelper.QuantizeColor(lower, quantStep);
                     }
 
-                    AppendColoredBlock(rowSb, upper, lower, darkThreshold, lightThreshold);
+                    AppendColoredBlock(rowSb, upper, lower, darkThreshold, lightThreshold, _options.ColorDepth);
                 }
 
                 rowSb.Append("\x1b[0m"); // Reset at end of line
@@ -225,7 +225,7 @@ public class ColorBlockRenderer : IDisposable
                     lower = ColorHelper.QuantizeColor(lower, quantStep);
                 }
 
-                AppendColoredBlock(sb, upper, lower, darkThreshold, lightThreshold);
+                AppendColoredBlock(sb, upper, lower, darkThreshold, lightThreshold, _options.ColorDepth);
             }
 
             sb.Append("\x1b[0m"); // Reset at end of line
@@ -237,7 +237,7 @@ public class ColorBlockRenderer : IDisposable
     }
 
     private static void AppendColoredBlock(StringBuilder sb, Rgba32 upper, Rgba32 lower, float? darkThreshold,
-        float? lightThreshold)
+        float? lightThreshold, ColorDepth depth = ColorDepth.TrueColor)
     {
         // Calculate brightness
         var upperBrightness = BrightnessHelper.GetBrightness(upper);
@@ -260,7 +260,7 @@ public class ColorBlockRenderer : IDisposable
         if (upperSkip)
         {
             // Only lower visible - use lower half block with foreground color only
-            AnsiCodes.AppendResetAndForeground(sb, lower);
+            AnsiCodes.AppendResetAndForegroundAdaptive(sb, lower, depth);
             sb.Append(LowerHalfBlock);
             return;
         }
@@ -268,13 +268,13 @@ public class ColorBlockRenderer : IDisposable
         if (lowerSkip)
         {
             // Only upper visible - use upper half block with foreground color only
-            AnsiCodes.AppendResetAndForeground(sb, upper);
+            AnsiCodes.AppendResetAndForegroundAdaptive(sb, upper, depth);
             sb.Append(UpperHalfBlock);
             return;
         }
 
         // Both visible - use upper half block with upper as foreground, lower as background
-        AnsiCodes.AppendForegroundAndBackground(sb, upper, lower);
+        AnsiCodes.AppendForegroundAndBackgroundAdaptive(sb, upper, lower, depth);
         sb.Append(UpperHalfBlock);
     }
 

@@ -42,6 +42,7 @@ public record SlideshowOptions
     public bool UseBraille { get; init; } = true;
     public bool UseMatrix { get; init; }
     public bool UseColor { get; init; } = true;
+    public bool UseGreyscaleAnsi { get; init; }
     public float Contrast { get; init; } = 2.5f;
     public float Gamma { get; init; } = 0.65f;
     public float? CharAspect { get; init; }
@@ -1040,6 +1041,7 @@ public static class SlideshowHandler
             MaxWidth = options.MaxWidth,
             MaxHeight = options.MaxHeight,
             UseColor = options.UseColor,
+            UseGreyscaleAnsi = options.UseGreyscaleAnsi,
             CharacterAspectRatio = options.CharAspect ?? 0.5f,
             ContrastPower = options.Contrast,
             Gamma = options.Gamma,

@@ -329,6 +329,25 @@ public class CliOptions
         HideSlideInfo = new Option<bool>("--hide-info") { Description = "Hide [1/N] filename header in slideshow" };
         HideSlideInfo.Aliases.Add("--no-header");
 
+        // Color depth for terminal output
+        ColorDepthOpt = new Option<string?>("--color-depth")
+            { Description = "Terminal color depth: true (24-bit, default), 256 (xterm-256), 16 (standard ANSI)" };
+        ColorDepthOpt.Aliases.Add("--depth");
+
+        // Interlace (temporal super-resolution for braille)
+        Interlace = new Option<bool>("--interlace")
+            { Description = "Enable temporal interlacing for braille (rapid threshold cycling)" };
+        Interlace.Aliases.Add("--interleave");
+
+        InterlaceFrames = new Option<int?>("--interlace-frames")
+            { Description = "Number of interlace subframes (2-8, default 4)" };
+
+        InterlaceSpread = new Option<float?>("--interlace-spread")
+            { Description = "Threshold spread across subframes (0.01-0.2, default 0.06)" };
+
+        InterlaceFps = new Option<float?>("--interlace-fps")
+            { Description = "Visible frame rate for interlace cycling (default 20)" };
+
         // Easter egg
         EasterEgg = new Option<bool>("--ee") { Description = "Play animation demo" };
 
@@ -494,6 +513,15 @@ public class CliOptions
     public Option<bool> GifLoop { get; }
     public Option<bool> HideSlideInfo { get; }
 
+    // Color depth
+    public Option<string?> ColorDepthOpt { get; }
+
+    // Interlace (temporal super-resolution for braille)
+    public Option<bool> Interlace { get; }
+    public Option<int?> InterlaceFrames { get; }
+    public Option<float?> InterlaceSpread { get; }
+    public Option<float?> InterlaceFps { get; }
+
     // Easter egg
     public Option<bool> EasterEgg { get; }
 
@@ -653,6 +681,15 @@ public class CliOptions
         command.Options.Add(VideoPreview);
         command.Options.Add(GifLoop);
         command.Options.Add(HideSlideInfo);
+        // Color depth
+        command.Options.Add(ColorDepthOpt);
+
+        // Interlace
+        command.Options.Add(Interlace);
+        command.Options.Add(InterlaceFrames);
+        command.Options.Add(InterlaceSpread);
+        command.Options.Add(InterlaceFps);
+
         command.Options.Add(EasterEgg);
         command.Options.Add(Debug);
         command.Options.Add(Hash);

@@ -29,6 +29,9 @@ public static class ImageHandler
         bool outputAsJson, string? jsonOutputPath,
         bool showStatus,
         string? markdownPath, string? markdownFormatStr,
+        bool interlace, int? interlaceFrames, float? interlaceSpread, float? interlaceFps,
+        Core.ColorDepth colorDepth,
+        bool useGreyscaleAnsi,
         CancellationToken ct)
     {
         ConsoleHelper.EnableAnsiSupport();
@@ -54,7 +57,9 @@ public static class ImageHandler
             UseParallelProcessing = true,
             LoopCount = loop,
             AnimationSpeedMultiplier = speed,
-            ColorCount = colorCount
+            ColorCount = colorCount,
+            ColorDepth = colorDepth,
+            UseGreyscaleAnsi = useGreyscaleAnsi
         };
 
         // Check if it's an animated GIF
@@ -79,7 +84,8 @@ public static class ImageHandler
         return await HandleStaticDisplay(input, options,
             useMatrix, matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet,
             useBraille, useBlocks, outputAsJson, jsonOutputPath,
-            markdownPath, markdownFormatStr, maxWidth, maxHeight, ct);
+            markdownPath, markdownFormatStr, maxWidth, maxHeight,
+            interlace, interlaceFrames, interlaceSpread, interlaceFps, ct);
     }
 
     private static async Task<int> HandleGifOutput(
@@ -412,7 +418,9 @@ public static class ImageHandler
         bool useBraille, bool useBlocks,
         bool outputAsJson, string? jsonOutputPath,
         string? markdownPath, string? markdownFormatStr,
-        int maxWidth, int maxHeight, CancellationToken ct)
+        int maxWidth, int maxHeight,
+        bool interlace, int? interlaceFrames, float? interlaceSpread, float? interlaceFps,
+        CancellationToken ct)
     {
         // Parse markdown format
         var mdFormat = markdownFormatStr?.ToLowerInvariant() switch
@@ -460,7 +468,30 @@ public static class ImageHandler
         }
         else if (useBraille)
         {
+            // Apply interlace settings to RenderOptions
+            if (interlace)
+            {
+                options.InterlaceEnabled = true;
+                if (interlaceFrames.HasValue)
+                    options.InterlaceFrameCount = interlaceFrames.Value;
+                if (interlaceSpread.HasValue)
+                    options.InterlaceSpread = interlaceSpread.Value;
+                if (interlaceFps.HasValue)
+                    options.InterlaceFps = interlaceFps.Value;
+            }
+
             using var renderer = new BrailleRenderer(options);
+
+            // Interlace mode: generate subframes and play them rapidly
+            if (interlace && string.IsNullOrEmpty(markdownPath))
+            {
+                using var image = Image.Load<Rgba32>(input.FullName);
+                var frames = renderer.RenderInterlaceFrames(image);
+                using var player = new BrailleInterlacePlayer(frames);
+                await player.PlayAsync(ct);
+                return 0;
+            }
+
             var frame = renderer.RenderFileToFrame(input.FullName);
             ansiContent = frame.Content;
             Console.WriteLine(frame.Content);
