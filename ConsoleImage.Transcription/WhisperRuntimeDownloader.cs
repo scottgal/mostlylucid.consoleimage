@@ -487,11 +487,12 @@ public static class WhisperRuntimeDownloader
             }
         }
 
-        // Also copy to NuGet runtime layout
+        // Also copy to runtimes/{rid}/ layout that Whisper.net's NativeLibraryLoader searches.
+        // For RuntimeLibrary.Cpu, it searches runtimes/{platform}-{arch}/ (no "native" subfolder).
         try
         {
             var rid = GetRuntimeIdentifier();
-            var runtimeDir = Path.Combine(appDir, "runtimes", rid, "native");
+            var runtimeDir = Path.Combine(appDir, "runtimes", rid);
             Directory.CreateDirectory(runtimeDir);
 
             foreach (var sourceFile in nativeFiles)
@@ -573,10 +574,57 @@ public static class WhisperRuntimeDownloader
         {
             PreloadNativeLibraries(libDir);
 
-            // Tell Whisper.net the CPU runtime is already loaded — bypasses its
-            // NativeLibraryLoader which expects runtimes/{rid}/ directory structure
-            // that doesn't exist in published single-file builds.
-            RuntimeOptions.LoadedLibrary = RuntimeLibrary.Cpu;
+            // Ensure runtimes/{rid}/ directory exists with the native DLLs.
+            // Whisper.net's NativeLibraryLoader searches runtimes/{platform}-{arch}/ for CPU,
+            // but in published single-file builds this directory may not exist (the NuGet
+            // targets' copies get bundled inside the exe). Create it at runtime if needed.
+            EnsureRuntimesDirectory(libDir);
+        }
+    }
+
+    /// <summary>
+    ///     Ensure the runtimes/{rid}/ directory exists with native DLLs.
+    ///     Whisper.net's NativeLibraryLoader searches runtimes/{platform}-{arch}/ for CPU runtime.
+    ///     In published single-file builds, the NuGet targets' copies get bundled inside the exe,
+    ///     so this directory may not exist. Create it at runtime by copying from the source directory.
+    /// </summary>
+    private static void EnsureRuntimesDirectory(string sourceDirectory)
+    {
+        if (!Directory.Exists(sourceDirectory)) return;
+
+        try
+        {
+            var rid = GetRuntimeIdentifier();
+            var runtimeDir = Path.Combine(sourceDirectory, "runtimes", rid);
+
+            if (Directory.Exists(runtimeDir)) return; // Already exists
+
+            var nativeExtensions = GetNativeExtensions();
+            var nativeFiles = Directory.GetFiles(sourceDirectory)
+                .Where(f => nativeExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (nativeFiles.Count == 0) return;
+
+            Directory.CreateDirectory(runtimeDir);
+
+            foreach (var sourceFile in nativeFiles)
+            {
+                try
+                {
+                    var destPath = Path.Combine(runtimeDir, Path.GetFileName(sourceFile));
+                    if (!File.Exists(destPath))
+                        File.Copy(sourceFile, destPath);
+                }
+                catch
+                {
+                    /* Best effort — directory may be read-only */
+                }
+            }
+        }
+        catch
+        {
+            /* Best effort */
         }
     }
 
