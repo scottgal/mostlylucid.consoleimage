@@ -3,30 +3,30 @@ using System.Text.Json.Serialization;
 namespace ConsoleImage.Core.Subtitles;
 
 /// <summary>
-/// Serializable DTO for storing subtitles in JSON/CIDZ documents.
+///     Serializable DTO for storing subtitles in JSON/CIDZ documents.
 /// </summary>
 public class SubtitleTrackData
 {
     /// <summary>
-    /// Language code (e.g., "en", "es").
+    ///     Language code (e.g., "en", "es").
     /// </summary>
     [JsonPropertyName("language")]
     public string? Language { get; set; }
 
     /// <summary>
-    /// Original source file path.
+    ///     Original source file path.
     /// </summary>
     [JsonPropertyName("sourceFile")]
     public string? SourceFile { get; set; }
 
     /// <summary>
-    /// List of subtitle entries.
+    ///     List of subtitle entries.
     /// </summary>
     [JsonPropertyName("entries")]
     public List<SubtitleEntryData> Entries { get; set; } = new();
 
     /// <summary>
-    /// Create from a SubtitleTrack.
+    ///     Create from a SubtitleTrack.
     /// </summary>
     public static SubtitleTrackData FromTrack(SubtitleTrack track)
     {
@@ -45,7 +45,7 @@ public class SubtitleTrackData
     }
 
     /// <summary>
-    /// Convert to a SubtitleTrack.
+    ///     Convert to a SubtitleTrack.
     /// </summary>
     public SubtitleTrack ToTrack()
     {
@@ -65,30 +65,30 @@ public class SubtitleTrackData
 }
 
 /// <summary>
-/// Serializable DTO for a single subtitle entry.
+///     Serializable DTO for a single subtitle entry.
 /// </summary>
 public class SubtitleEntryData
 {
     /// <summary>
-    /// Sequential index.
+    ///     Sequential index.
     /// </summary>
     [JsonPropertyName("index")]
     public int Index { get; set; }
 
     /// <summary>
-    /// Start time in milliseconds.
+    ///     Start time in milliseconds.
     /// </summary>
     [JsonPropertyName("startMs")]
     public long StartMs { get; set; }
 
     /// <summary>
-    /// End time in milliseconds.
+    ///     End time in milliseconds.
     /// </summary>
     [JsonPropertyName("endMs")]
     public long EndMs { get; set; }
 
     /// <summary>
-    /// Subtitle text.
+    ///     Subtitle text.
     /// </summary>
     [JsonPropertyName("text")]
     public string Text { get; set; } = "";

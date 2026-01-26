@@ -8,11 +8,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+        <PackageReference Include="BenchmarkDotNet" Version="0.14.0"/>
     </ItemGroup>
 
 </Project>

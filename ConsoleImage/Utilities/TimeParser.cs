@@ -3,13 +3,13 @@
 namespace ConsoleImage.Cli.Utilities;
 
 /// <summary>
-/// Parses time strings in various formats to seconds.
-/// Supports: seconds (4.7), mm:ss (6:47), hh:mm:ss (1:30:00)
+///     Parses time strings in various formats to seconds.
+///     Supports: seconds (4.7), mm:ss (6:47), hh:mm:ss (1:30:00)
 /// </summary>
 public static class TimeParser
 {
     /// <summary>
-    /// Parse a time string to seconds.
+    ///     Parse a time string to seconds.
     /// </summary>
     /// <param name="input">Time string: "4.7", "6:47", "1:30:00"</param>
     /// <returns>Time in seconds</returns>
@@ -82,7 +82,7 @@ public static class TimeParser
     }
 
     /// <summary>
-    /// Parse decimal minutes to seconds (e.g., 6.47 = 6m 28.2s)
+    ///     Parse decimal minutes to seconds (e.g., 6.47 = 6m 28.2s)
     /// </summary>
     public static double ParseMinutes(string input)
     {
@@ -103,7 +103,7 @@ public static class TimeParser
     }
 
     /// <summary>
-    /// Parse nullable decimal minutes.
+    ///     Parse nullable decimal minutes.
     /// </summary>
     public static double? ParseMinutesNullable(string? input)
     {
@@ -113,7 +113,7 @@ public static class TimeParser
     }
 
     /// <summary>
-    /// Try to parse a time string. Returns false if invalid.
+    ///     Try to parse a time string. Returns false if invalid.
     /// </summary>
     public static bool TryParse(string? input, out double seconds)
     {
@@ -133,7 +133,7 @@ public static class TimeParser
     }
 
     /// <summary>
-    /// Parse a nullable time string. Returns null if input is null/empty.
+    ///     Parse a nullable time string. Returns null if input is null/empty.
     /// </summary>
     /// <exception cref="FormatException">Thrown with helpful error if format is invalid</exception>
     public static double? ParseNullable(string? input)
@@ -144,7 +144,7 @@ public static class TimeParser
     }
 
     /// <summary>
-    /// Format seconds as a human-readable time string.
+    ///     Format seconds as a human-readable time string.
     /// </summary>
     public static string Format(double seconds)
     {

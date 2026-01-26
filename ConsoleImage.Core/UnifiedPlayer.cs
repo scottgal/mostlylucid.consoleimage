@@ -8,13 +8,12 @@ using ConsoleImage.Core.Subtitles;
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Unified player for ConsoleImageDocument playback.
-/// Supports JSON, NDJSON (streaming), and compressed (.cidz, .7z) formats.
-/// Consolidates functionality from DocumentPlayer and AsciiAnimationPlayer.
+///     Unified player for ConsoleImageDocument playback.
+///     Supports JSON, NDJSON (streaming), and compressed (.cidz, .7z) formats.
+///     Consolidates functionality from DocumentPlayer and AsciiAnimationPlayer.
 /// </summary>
 public class UnifiedPlayer : IDisposable
 {
-    private readonly ConsoleImageDocument _document;
     private readonly UnifiedPlayerOptions _options;
     private readonly StatusLine? _statusLine;
     private readonly SubtitleRenderer? _subtitleRenderer;
@@ -23,45 +22,60 @@ public class UnifiedPlayer : IDisposable
     private bool _disposed;
 
     /// <summary>
-    /// Event raised when a frame is rendered.
-    /// </summary>
-    public event Action<int, int>? FrameRendered;
-
-    /// <summary>
-    /// Event raised when playback completes.
-    /// </summary>
-    public event Action<int>? PlaybackComplete;
-
-    /// <summary>
-    /// Create player from a document.
+    ///     Create player from a document.
     /// </summary>
     public UnifiedPlayer(ConsoleImageDocument document, UnifiedPlayerOptions? options = null)
     {
-        _document = document ?? throw new ArgumentNullException(nameof(document));
+        Document = document ?? throw new ArgumentNullException(nameof(document));
         _options = options ?? new UnifiedPlayerOptions();
 
         // Get frame width for status line and subtitles
-        int frameWidth = 120;
-        if (_document.Frames.Count > 0)
-            frameWidth = _document.Frames[0].Width;
-        try { frameWidth = Math.Min(frameWidth, Console.WindowWidth - 1); } catch { }
-
-        if (_options.ShowStatus)
+        var frameWidth = 120;
+        if (Document.Frames.Count > 0)
+            frameWidth = Document.Frames[0].Width;
+        try
         {
-            _statusLine = new StatusLine(frameWidth, true);
+            frameWidth = Math.Min(frameWidth, Console.WindowWidth - 1);
+        }
+        catch
+        {
         }
 
+        if (_options.ShowStatus) _statusLine = new StatusLine(frameWidth);
+
         // Initialize subtitle support if document has subtitles and display is enabled
-        if (_options.ShowSubtitles && _document.Subtitles != null)
+        if (_options.ShowSubtitles && Document.Subtitles != null)
         {
-            _subtitleTrack = _document.Subtitles.ToTrack();
-            _subtitleRenderer = new SubtitleRenderer(frameWidth, 2, true);
+            _subtitleTrack = Document.Subtitles.ToTrack();
+            _subtitleRenderer = new SubtitleRenderer(frameWidth);
         }
     }
 
     /// <summary>
-    /// Load and create player from file path.
-    /// Auto-detects format (JSON, NDJSON, compressed).
+    ///     Get the underlying document.
+    /// </summary>
+    public ConsoleImageDocument Document { get; }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _cts?.Dispose();
+    }
+
+    /// <summary>
+    ///     Event raised when a frame is rendered.
+    /// </summary>
+    public event Action<int, int>? FrameRendered;
+
+    /// <summary>
+    ///     Event raised when playback completes.
+    /// </summary>
+    public event Action<int>? PlaybackComplete;
+
+    /// <summary>
+    ///     Load and create player from file path.
+    ///     Auto-detects format (JSON, NDJSON, compressed).
     /// </summary>
     public static async Task<UnifiedPlayer> LoadAsync(
         string path,
@@ -75,11 +89,11 @@ public class UnifiedPlayer : IDisposable
     }
 
     /// <summary>
-    /// Play the document with animation support.
+    ///     Play the document with animation support.
     /// </summary>
     public async Task PlayAsync(CancellationToken externalCt = default)
     {
-        if (_document.Frames.Count == 0)
+        if (Document.Frames.Count == 0)
             return;
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
@@ -97,7 +111,7 @@ public class UnifiedPlayer : IDisposable
         try
         {
             var loopsDone = 0;
-            var effectiveLoops = _options.LoopCountOverride ?? _document.Settings.LoopCount;
+            var effectiveLoops = _options.LoopCountOverride ?? Document.Settings.LoopCount;
 
             while (!ct.IsCancellationRequested)
             {
@@ -125,7 +139,7 @@ public class UnifiedPlayer : IDisposable
     }
 
     /// <summary>
-    /// Display a single frame or all frames sequentially (no animation timing).
+    ///     Display a single frame or all frames sequentially (no animation timing).
     /// </summary>
     public void Display(int? frameIndex = null)
     {
@@ -133,25 +147,26 @@ public class UnifiedPlayer : IDisposable
 
         if (frameIndex.HasValue)
         {
-            if (frameIndex < 0 || frameIndex >= _document.Frames.Count)
+            if (frameIndex < 0 || frameIndex >= Document.Frames.Count)
                 throw new ArgumentOutOfRangeException(nameof(frameIndex));
 
-            Console.Write(_document.Frames[frameIndex.Value].Content);
+            Console.Write(Document.Frames[frameIndex.Value].Content);
             Console.Write("\x1b[0m");
         }
         else
         {
-            foreach (var frame in _document.Frames)
+            foreach (var frame in Document.Frames)
             {
                 Console.Write(frame.Content);
                 Console.Write("\x1b[0m\n");
             }
         }
+
         Console.Out.Flush();
     }
 
     /// <summary>
-    /// Stop playback if running in background.
+    ///     Stop playback if running in background.
     /// </summary>
     public void Stop()
     {
@@ -159,53 +174,46 @@ public class UnifiedPlayer : IDisposable
     }
 
     /// <summary>
-    /// Get document information as formatted string.
+    ///     Get document information as formatted string.
     /// </summary>
     public string GetInfo()
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"Source: {_document.SourceFile ?? "(unknown)"}");
-        sb.AppendLine($"Mode: {_document.RenderMode}");
-        sb.AppendLine($"Frames: {_document.FrameCount}");
-        sb.AppendLine($"Animated: {_document.IsAnimated}");
-        if (_document.IsAnimated)
+        sb.AppendLine($"Source: {Document.SourceFile ?? "(unknown)"}");
+        sb.AppendLine($"Mode: {Document.RenderMode}");
+        sb.AppendLine($"Frames: {Document.FrameCount}");
+        sb.AppendLine($"Animated: {Document.IsAnimated}");
+        if (Document.IsAnimated)
         {
-            sb.AppendLine($"Duration: {TimeSpan.FromMilliseconds(_document.TotalDurationMs):mm\\:ss\\.fff}");
-            var avgDelay = _document.Frames.Average(f => f.DelayMs);
+            sb.AppendLine($"Duration: {TimeSpan.FromMilliseconds(Document.TotalDurationMs):mm\\:ss\\.fff}");
+            var avgDelay = Document.Frames.Average(f => f.DelayMs);
             sb.AppendLine($"Avg FPS: {1000.0 / avgDelay:F1}");
         }
-        if (_document.Frames.Count > 0)
-        {
-            sb.AppendLine($"Size: {_document.Frames[0].Width}x{_document.Frames[0].Height}");
-        }
+
+        if (Document.Frames.Count > 0) sb.AppendLine($"Size: {Document.Frames[0].Width}x{Document.Frames[0].Height}");
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Get the underlying document.
-    /// </summary>
-    public ConsoleImageDocument Document => _document;
-
     private async Task PlayFramesAsync(int currentLoop, int totalLoops, CancellationToken ct)
     {
-        var speedMultiplier = _options.SpeedMultiplierOverride ?? _document.Settings.AnimationSpeedMultiplier;
+        var speedMultiplier = _options.SpeedMultiplierOverride ?? Document.Settings.AnimationSpeedMultiplier;
         if (speedMultiplier <= 0) speedMultiplier = 1.0f;
 
         string? previousFrame = null;
-        var totalFrames = _document.Frames.Count;
+        var totalFrames = Document.Frames.Count;
 
         // Track current playback time for subtitle sync
         long currentTimeMs = 0;
 
-        for (int i = 0; i < totalFrames; i++)
+        for (var i = 0; i < totalFrames; i++)
         {
             ct.ThrowIfCancellationRequested();
 
-            var frame = _document.Frames[i];
+            var frame = Document.Frames[i];
             var buffer = BuildFrameBuffer(frame.Content, previousFrame, i == 0);
 
             // Track lines used for overlays (subtitles + status)
-            int extraLines = 0;
+            var extraLines = 0;
 
             // Add subtitles if enabled and document has them
             if (_subtitleRenderer != null && _subtitleTrack != null)
@@ -218,10 +226,8 @@ public class UnifiedPlayer : IDisposable
                 {
                     // Position subtitles below frame content
                     var subtitleLines = subtitleContent.Split('\n');
-                    for (int j = 0; j < subtitleLines.Length; j++)
-                    {
+                    for (var j = 0; j < subtitleLines.Length; j++)
                         buffer += $"\x1b[{frame.Height + 1 + j};1H\x1b[2K{subtitleLines[j]}";
-                    }
                     extraLines = subtitleLines.Length;
                 }
                 else
@@ -238,18 +244,18 @@ public class UnifiedPlayer : IDisposable
             {
                 var statusInfo = new StatusLine.StatusInfo
                 {
-                    FileName = _options.SourceFileName ?? _document.SourceFile ?? "document",
+                    FileName = _options.SourceFileName ?? Document.SourceFile ?? "document",
                     SourceWidth = frame.Width,
                     SourceHeight = frame.Height,
                     OutputWidth = frame.Width,
                     OutputHeight = frame.Height,
-                    RenderMode = _document.RenderMode,
+                    RenderMode = Document.RenderMode,
                     CurrentFrame = i + 1,
                     TotalFrames = totalFrames,
                     LoopNumber = currentLoop,
                     TotalLoops = totalLoops,
                     CurrentTime = TimeSpan.FromMilliseconds(currentTimeMs),
-                    TotalDuration = TimeSpan.FromMilliseconds(_document.TotalDurationMs)
+                    TotalDuration = TimeSpan.FromMilliseconds(Document.TotalDurationMs)
                 };
                 buffer += $"\x1b[{frame.Height + 1 + extraLines};1H\x1b[2K{_statusLine.Render(statusInfo)}";
             }
@@ -265,10 +271,7 @@ public class UnifiedPlayer : IDisposable
 
             // Frame delay with speed multiplier
             var delayMs = (int)(frame.DelayMs / speedMultiplier);
-            if (delayMs > 0)
-            {
-                await ResponsiveDelayAsync(delayMs, ct);
-            }
+            if (delayMs > 0) await ResponsiveDelayAsync(delayMs, ct);
 
             // Update current time for next frame's subtitle lookup
             currentTimeMs += frame.DelayMs;
@@ -294,7 +297,7 @@ public class UnifiedPlayer : IDisposable
             var changedLines = 0;
 
             // Count changes
-            for (int i = 0; i < maxLines; i++)
+            for (var i = 0; i < maxLines; i++)
             {
                 var currLine = i < currLines.Length ? currLines[i].TrimEnd('\r') : "";
                 var prevLine = i < prevLines.Length ? prevLines[i].TrimEnd('\r') : "";
@@ -310,7 +313,7 @@ public class UnifiedPlayer : IDisposable
             else
             {
                 // Only update changed lines
-                for (int i = 0; i < maxLines; i++)
+                for (var i = 0; i < maxLines; i++)
                 {
                     var currLine = i < currLines.Length ? currLines[i].TrimEnd('\r') : "";
                     var prevLine = i < prevLines.Length ? prevLines[i].TrimEnd('\r') : "";
@@ -336,19 +339,22 @@ public class UnifiedPlayer : IDisposable
 
     private static int GetVisibleLength(string line)
     {
-        int len = 0;
-        bool inEscape = false;
-        foreach (char c in line)
-        {
+        var len = 0;
+        var inEscape = false;
+        foreach (var c in line)
             if (c == '\x1b')
+            {
                 inEscape = true;
+            }
             else if (inEscape)
             {
                 if (c == 'm') inEscape = false;
             }
             else
+            {
                 len++;
-        }
+            }
+
         return len;
     }
 
@@ -363,50 +369,43 @@ public class UnifiedPlayer : IDisposable
             remaining -= delay;
         }
     }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        _cts?.Dispose();
-    }
 }
 
 /// <summary>
-/// Options for UnifiedPlayer.
+///     Options for UnifiedPlayer.
 /// </summary>
 public class UnifiedPlayerOptions
 {
     /// <summary>
-    /// Override the loop count from document settings.
-    /// 0 = infinite, null = use document setting.
+    ///     Override the loop count from document settings.
+    ///     0 = infinite, null = use document setting.
     /// </summary>
     public int? LoopCountOverride { get; set; }
 
     /// <summary>
-    /// Override the speed multiplier from document settings.
-    /// 1.0 = normal, 2.0 = double speed, 0.5 = half speed.
+    ///     Override the speed multiplier from document settings.
+    ///     1.0 = normal, 2.0 = double speed, 0.5 = half speed.
     /// </summary>
     public float? SpeedMultiplierOverride { get; set; }
 
     /// <summary>
-    /// Use alternate screen buffer (preserves terminal scrollback).
+    ///     Use alternate screen buffer (preserves terminal scrollback).
     /// </summary>
     public bool UseAltScreen { get; set; } = true;
 
     /// <summary>
-    /// Show status line below output.
+    ///     Show status line below output.
     /// </summary>
     public bool ShowStatus { get; set; }
 
     /// <summary>
-    /// Show subtitles during playback (if document contains subtitle track).
-    /// Default is true - subtitles are shown when available.
+    ///     Show subtitles during playback (if document contains subtitle track).
+    ///     Default is true - subtitles are shown when available.
     /// </summary>
     public bool ShowSubtitles { get; set; } = true;
 
     /// <summary>
-    /// Source file name for status display.
+    ///     Source file name for status display.
     /// </summary>
     public string? SourceFileName { get; set; }
 }

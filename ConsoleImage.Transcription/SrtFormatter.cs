@@ -3,12 +3,12 @@ using System.Text;
 namespace ConsoleImage.Transcription;
 
 /// <summary>
-/// Formats transcription segments to SRT subtitle format.
+///     Formats transcription segments to SRT subtitle format.
 /// </summary>
 public static class SrtFormatter
 {
     /// <summary>
-    /// Format segments as SRT file content.
+    ///     Format segments as SRT file content.
     /// </summary>
     public static string Format(IEnumerable<TranscriptSegment> segments, bool includeSpeakerIds = true)
     {
@@ -21,10 +21,7 @@ public static class SrtFormatter
             sb.AppendLine($"{FormatTimestamp(segment.StartSeconds)} --> {FormatTimestamp(segment.EndSeconds)}");
 
             var text = segment.Text;
-            if (includeSpeakerIds && !string.IsNullOrEmpty(segment.SpeakerId))
-            {
-                text = $"[{segment.SpeakerId}] {text}";
-            }
+            if (includeSpeakerIds && !string.IsNullOrEmpty(segment.SpeakerId)) text = $"[{segment.SpeakerId}] {text}";
             sb.AppendLine(text);
             sb.AppendLine();
 
@@ -35,7 +32,7 @@ public static class SrtFormatter
     }
 
     /// <summary>
-    /// Write segments to SRT file.
+    ///     Write segments to SRT file.
     /// </summary>
     public static async Task WriteAsync(
         string path,
@@ -48,7 +45,7 @@ public static class SrtFormatter
     }
 
     /// <summary>
-    /// Append segments to existing SRT file (for incremental writing).
+    ///     Append segments to existing SRT file (for incremental writing).
     /// </summary>
     public static async Task AppendAsync(
         string path,
@@ -62,10 +59,7 @@ public static class SrtFormatter
         sb.AppendLine($"{FormatTimestamp(segment.StartSeconds)} --> {FormatTimestamp(segment.EndSeconds)}");
 
         var text = segment.Text;
-        if (includeSpeakerId && !string.IsNullOrEmpty(segment.SpeakerId))
-        {
-            text = $"[{segment.SpeakerId}] {text}";
-        }
+        if (includeSpeakerId && !string.IsNullOrEmpty(segment.SpeakerId)) text = $"[{segment.SpeakerId}] {text}";
         sb.AppendLine(text);
         sb.AppendLine();
 

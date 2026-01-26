@@ -7,18 +7,13 @@ using SixLabors.ImageSharp.Processing;
 namespace ConsoleVideo.Avalonia.Services;
 
 /// <summary>
-/// Service for rendering subtitle text overlays onto images.
-/// Uses ImageSharp for high-quality text rendering.
+///     Service for rendering subtitle text overlays onto images.
+///     Uses ImageSharp for high-quality text rendering.
 /// </summary>
 public class SubtitleOverlayService
 {
-    private FontFamily? _fontFamily;
     private readonly string _fontName;
-
-    /// <summary>
-    /// Default subtitle style settings.
-    /// </summary>
-    public SubtitleStyle DefaultStyle { get; set; } = new();
+    private FontFamily? _fontFamily;
 
     public SubtitleOverlayService(string fontName = "Arial")
     {
@@ -26,30 +21,27 @@ public class SubtitleOverlayService
         InitializeFont();
     }
 
+    /// <summary>
+    ///     Default subtitle style settings.
+    /// </summary>
+    public SubtitleStyle DefaultStyle { get; set; } = new();
+
     private void InitializeFont()
     {
         // Try to load the font
         if (SystemFonts.TryGet(_fontName, out var family))
-        {
             _fontFamily = family;
-        }
         else if (SystemFonts.TryGet("Segoe UI", out family))
-        {
             _fontFamily = family;
-        }
         else if (SystemFonts.TryGet("DejaVu Sans", out family))
-        {
             _fontFamily = family;
-        }
         else
-        {
             // Fallback to first available font
             _fontFamily = SystemFonts.Families.FirstOrDefault();
-        }
     }
 
     /// <summary>
-    /// Render subtitle text onto an image.
+    ///     Render subtitle text onto an image.
     /// </summary>
     public Image<Rgba32> RenderSubtitle(
         Image<Rgba32> sourceImage,
@@ -97,7 +89,7 @@ public class SubtitleOverlayService
     }
 
     /// <summary>
-    /// Find which transcription segment applies to a given timestamp.
+    ///     Find which transcription segment applies to a given timestamp.
     /// </summary>
     public static TranscriptionSegment? FindSegmentForTimestamp(
         IEnumerable<TranscriptionSegment> segments,
@@ -108,7 +100,7 @@ public class SubtitleOverlayService
     }
 
     /// <summary>
-    /// Apply subtitles to a list of keyframes based on their timestamps.
+    ///     Apply subtitles to a list of keyframes based on their timestamps.
     /// </summary>
     public List<(int Index, double Timestamp, Image<Rgba32> Image, string? Subtitle)> ApplySubtitles(
         IEnumerable<(int Index, double Timestamp, Image<Rgba32> Image)> keyframes,
@@ -125,13 +117,9 @@ public class SubtitleOverlayService
 
             Image<Rgba32> outputImage;
             if (!string.IsNullOrWhiteSpace(subtitle))
-            {
                 outputImage = RenderSubtitle(kf.Image, subtitle, style);
-            }
             else
-            {
                 outputImage = kf.Image.Clone();
-            }
 
             results.Add((kf.Index, kf.Timestamp, outputImage, subtitle));
         }
@@ -141,7 +129,7 @@ public class SubtitleOverlayService
 }
 
 /// <summary>
-/// Style settings for subtitle rendering.
+///     Style settings for subtitle rendering.
 /// </summary>
 public class SubtitleStyle
 {
@@ -162,7 +150,7 @@ public class SubtitleStyle
 }
 
 /// <summary>
-/// An editable subtitle entry for the UI.
+///     An editable subtitle entry for the UI.
 /// </summary>
 public class EditableSubtitle
 {
@@ -179,18 +167,24 @@ public class EditableSubtitle
         return ts.ToString(@"mm\:ss\.f");
     }
 
-    public static EditableSubtitle FromTranscription(TranscriptionSegment segment, int index) => new()
+    public static EditableSubtitle FromTranscription(TranscriptionSegment segment, int index)
     {
-        Index = index,
-        StartTime = segment.StartTime,
-        EndTime = segment.EndTime,
-        Text = segment.Text
-    };
+        return new EditableSubtitle
+        {
+            Index = index,
+            StartTime = segment.StartTime,
+            EndTime = segment.EndTime,
+            Text = segment.Text
+        };
+    }
 
-    public TranscriptionSegment ToTranscription() => new()
+    public TranscriptionSegment ToTranscription()
     {
-        StartTime = StartTime,
-        EndTime = EndTime,
-        Text = Text
-    };
+        return new TranscriptionSegment
+        {
+            StartTime = StartTime,
+            EndTime = EndTime,
+            Text = Text
+        };
+    }
 }

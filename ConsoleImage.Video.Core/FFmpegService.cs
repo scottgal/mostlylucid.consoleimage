@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ConsoleImage.Core;
@@ -9,23 +10,46 @@ using SixLabors.ImageSharp.PixelFormats;
 namespace ConsoleImage.Video.Core;
 
 /// <summary>
-/// FFmpeg service for video frame extraction with hardware acceleration.
-/// Uses pipe-based streaming for efficient memory usage - no temp files needed.
+///     FFmpeg service for video frame extraction with hardware acceleration.
+///     Uses pipe-based streaming for efficient memory usage - no temp files needed.
 /// </summary>
 public sealed class FFmpegService : IDisposable
 {
-    private string _ffprobePath;
-    private string _ffmpegPath;
-    private readonly bool _useHardwareAcceleration;
-    private string _hwAccelType;
-    private bool _initialized;
-
     private static string? _ffmpegBinPath;
     private static readonly object _ffmpegLock = new();
 
     /// <summary>
-    /// Create FFmpegService with optional custom paths.
-    /// If no paths provided, will use FFmpegProvider to find or download FFmpeg.
+    ///     Codecs known to have issues with hardware acceleration.
+    ///     These typically cause "auto_scale" filter errors or other conversion issues.
+    /// </summary>
+    private static readonly HashSet<string> _hwAccelProblematicCodecs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "theora", // Ogg Theora - causes auto_scale filter errors
+        "vp6", // Old Flash codec
+        "vp6f", // Flash VP6
+        "gif", // GIF as video
+        "apng", // Animated PNG
+        "mpeg4", // MPEG-4 part 2 / DivX - hwdownload nv12 format issues
+        "av1", // AV1 - hwdownload nv12 format issues
+        "mjpeg", // Motion JPEG - CUDA decoder fails on many systems
+        "mjpegb", // Motion JPEG B
+        "jpeg2000", // JPEG 2000
+        "jpegls", // JPEG-LS
+        "rawvideo", // Raw video - no hardware decode
+        "prores", // ProRes - not supported by CUDA
+        "dnxhd", // DNxHD - not supported by CUDA
+        "huffyuv", // Huffyuv - lossless, no CUDA
+        "ffv1" // FFV1 - lossless, no CUDA
+    };
+
+    private readonly bool _useHardwareAcceleration;
+    private string _ffmpegPath;
+    private string _ffprobePath;
+    private bool _initialized;
+
+    /// <summary>
+    ///     Create FFmpegService with optional custom paths.
+    ///     If no paths provided, will use FFmpegProvider to find or download FFmpeg.
     /// </summary>
     public FFmpegService(
         string? ffprobePath = null,
@@ -35,20 +59,30 @@ public sealed class FFmpegService : IDisposable
         _ffprobePath = ffprobePath ?? "";
         _ffmpegPath = ffmpegPath ?? "";
         _useHardwareAcceleration = useHardwareAcceleration;
-        _hwAccelType = "";
+        HardwareAccelerationType = "";
 
         // If paths provided, initialize immediately
         if (!string.IsNullOrEmpty(ffmpegPath) || !string.IsNullOrEmpty(ffprobePath))
         {
             _ffmpegPath = ffmpegPath ?? FindExecutable("ffmpeg");
             _ffprobePath = ffprobePath ?? FindExecutable("ffprobe");
-            _hwAccelType = useHardwareAcceleration ? DetectHardwareAcceleration() : "";
+            HardwareAccelerationType = useHardwareAcceleration ? DetectHardwareAcceleration() : "";
             _initialized = true;
         }
     }
 
     /// <summary>
-    /// Initialize FFmpeg paths asynchronously, downloading if necessary.
+    ///     The detected hardware acceleration type (cuda, d3d11va, vaapi, or empty).
+    /// </summary>
+    public string HardwareAccelerationType { get; private set; }
+
+    public void Dispose()
+    {
+        // No managed resources to dispose
+    }
+
+    /// <summary>
+    ///     Initialize FFmpeg paths asynchronously, downloading if necessary.
     /// </summary>
     public async Task InitializeAsync(
         IProgress<(string Status, double Progress)>? progress = null,
@@ -62,12 +96,12 @@ public sealed class FFmpegService : IDisposable
         // Verify FFmpeg can actually execute (important for Linux where permissions or library issues can occur)
         await VerifyFFmpegAsync(ct);
 
-        _hwAccelType = _useHardwareAcceleration ? DetectHardwareAcceleration() : "";
+        HardwareAccelerationType = _useHardwareAcceleration ? DetectHardwareAcceleration() : "";
         _initialized = true;
     }
 
     /// <summary>
-    /// Verify FFmpeg can execute by running a simple version check.
+    ///     Verify FFmpeg can execute by running a simple version check.
     /// </summary>
     private async Task VerifyFFmpegAsync(CancellationToken ct)
     {
@@ -110,33 +144,31 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Ensure initialized before operations.
+    ///     Ensure initialized before operations.
     /// </summary>
     private async Task EnsureInitializedAsync(CancellationToken ct = default)
     {
-        if (!_initialized)
-        {
-            await InitializeAsync(null, ct);
-        }
+        if (!_initialized) await InitializeAsync(null, ct);
     }
 
     /// <summary>
-    /// Get FFmpeg status information.
+    ///     Get FFmpeg status information.
     /// </summary>
-    public static string GetStatus(string? customPath = null) => FFmpegProvider.GetStatus(customPath);
+    public static string GetStatus(string? customPath = null)
+    {
+        return FFmpegProvider.GetStatus(customPath);
+    }
 
     /// <summary>
-    /// Check if FFmpeg is available (without downloading).
+    ///     Check if FFmpeg is available (without downloading).
     /// </summary>
-    public static bool IsAvailable(string? customPath = null) => FFmpegProvider.IsAvailable(customPath);
+    public static bool IsAvailable(string? customPath = null)
+    {
+        return FFmpegProvider.IsAvailable(customPath);
+    }
 
     /// <summary>
-    /// The detected hardware acceleration type (cuda, d3d11va, vaapi, or empty).
-    /// </summary>
-    public string HardwareAccelerationType => _hwAccelType;
-
-    /// <summary>
-    /// Detect available hardware acceleration.
+    ///     Detect available hardware acceleration.
     /// </summary>
     private static string DetectHardwareAcceleration()
     {
@@ -144,62 +176,30 @@ public sealed class FFmpegService : IDisposable
         if (File.Exists(@"C:\Windows\System32\nvidia-smi.exe") ||
             File.Exists(@"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe") ||
             !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CUDA_PATH")))
-        {
             return "cuda";
-        }
 
         // Check for AMD GPU (DirectX Video Acceleration on Windows)
-        if (OperatingSystem.IsWindows())
-        {
-            return "d3d11va";
-        }
+        if (OperatingSystem.IsWindows()) return "d3d11va";
 
         // Linux: try VAAPI
-        if (OperatingSystem.IsLinux() && Directory.Exists("/dev/dri"))
-        {
-            return "vaapi";
-        }
+        if (OperatingSystem.IsLinux() && Directory.Exists("/dev/dri")) return "vaapi";
 
         return "";
     }
 
     /// <summary>
-    /// Codecs known to have issues with hardware acceleration.
-    /// These typically cause "auto_scale" filter errors or other conversion issues.
-    /// </summary>
-    private static readonly HashSet<string> _hwAccelProblematicCodecs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "theora",   // Ogg Theora - causes auto_scale filter errors
-        "vp6",      // Old Flash codec
-        "vp6f",     // Flash VP6
-        "gif",      // GIF as video
-        "apng",     // Animated PNG
-        "mpeg4",    // MPEG-4 part 2 / DivX - hwdownload nv12 format issues
-        "av1",      // AV1 - hwdownload nv12 format issues
-        "mjpeg",    // Motion JPEG - CUDA decoder fails on many systems
-        "mjpegb",   // Motion JPEG B
-        "jpeg2000", // JPEG 2000
-        "jpegls",   // JPEG-LS
-        "rawvideo", // Raw video - no hardware decode
-        "prores",   // ProRes - not supported by CUDA
-        "dnxhd",    // DNxHD - not supported by CUDA
-        "huffyuv",  // Huffyuv - lossless, no CUDA
-        "ffv1",     // FFV1 - lossless, no CUDA
-    };
-
-    /// <summary>
-    /// Get FFmpeg hardware acceleration arguments.
+    ///     Get FFmpeg hardware acceleration arguments.
     /// </summary>
     private string GetHwAccelArgs(string? codec = null)
     {
-        if (!_useHardwareAcceleration || string.IsNullOrEmpty(_hwAccelType))
+        if (!_useHardwareAcceleration || string.IsNullOrEmpty(HardwareAccelerationType))
             return "";
 
         // Disable hwaccel for codecs known to cause issues
         if (!string.IsNullOrEmpty(codec) && _hwAccelProblematicCodecs.Contains(codec))
             return "";
 
-        return _hwAccelType switch
+        return HardwareAccelerationType switch
         {
             "cuda" => "-hwaccel cuda -hwaccel_output_format cuda ",
             "d3d11va" => "-hwaccel d3d11va ",
@@ -209,7 +209,7 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Get filter prefix for hwdownload if using CUDA.
+    ///     Get filter prefix for hwdownload if using CUDA.
     /// </summary>
     private string GetHwDownloadFilter(string? codec = null)
     {
@@ -217,18 +217,16 @@ public sealed class FFmpegService : IDisposable
         if (!string.IsNullOrEmpty(codec) && _hwAccelProblematicCodecs.Contains(codec))
             return "";
 
-        if (_hwAccelType == "cuda" && _useHardwareAcceleration)
-        {
+        if (HardwareAccelerationType == "cuda" && _useHardwareAcceleration)
             // hwdownload transfers from GPU to CPU memory
             // format=nv12 is required because that's the native format for CUDA decoded frames
             // The final -pix_fmt rgba will handle RGB conversion with proper color space
             return "hwdownload,format=nv12,";
-        }
         return "";
     }
 
     /// <summary>
-    /// Get comprehensive video information.
+    ///     Get comprehensive video information.
     /// </summary>
     public async Task<VideoInfo?> GetVideoInfoAsync(string videoPath, CancellationToken ct = default)
     {
@@ -251,36 +249,41 @@ public sealed class FFmpegService : IDisposable
             double duration = 0;
             long bitRate = 0;
             string? videoCodec = null;
-            int width = 0;
-            int height = 0;
+            var width = 0;
+            var height = 0;
             double frameRate = 0;
-            int totalFrames = 0;
+            var totalFrames = 0;
 
             // Parse format info
             if (root.TryGetProperty("format", out var format))
             {
                 duration = format.TryGetProperty("duration", out var d)
-                    ? double.Parse(d.GetString() ?? "0") : 0;
+                    ? double.Parse(d.GetString() ?? "0")
+                    : 0;
                 bitRate = format.TryGetProperty("bit_rate", out var br)
-                    ? long.Parse(br.GetString() ?? "0") : 0;
+                    ? long.Parse(br.GetString() ?? "0")
+                    : 0;
             }
 
             // Parse streams
             if (root.TryGetProperty("streams", out var streams))
-            {
                 foreach (var stream in streams.EnumerateArray())
                 {
                     var codecType = stream.TryGetProperty("codec_type", out var ct2)
-                        ? ct2.GetString() : null;
+                        ? ct2.GetString()
+                        : null;
 
                     if (codecType == "video" && videoCodec == null)
                     {
                         videoCodec = stream.TryGetProperty("codec_name", out var cn)
-                            ? cn.GetString() : null;
+                            ? cn.GetString()
+                            : null;
                         width = stream.TryGetProperty("width", out var w)
-                            ? w.GetInt32() : 0;
+                            ? w.GetInt32()
+                            : 0;
                         height = stream.TryGetProperty("height", out var h)
-                            ? h.GetInt32() : 0;
+                            ? h.GetInt32()
+                            : 0;
 
                         if (stream.TryGetProperty("r_frame_rate", out var fps))
                         {
@@ -289,28 +292,18 @@ public sealed class FFmpegService : IDisposable
                             if (parts.Length == 2 &&
                                 double.TryParse(parts[0], out var num) &&
                                 double.TryParse(parts[1], out var den) && den > 0)
-                            {
                                 frameRate = num / den;
-                            }
                         }
 
                         // Get total frame count
                         if (stream.TryGetProperty("nb_frames", out var nbf))
-                        {
                             if (int.TryParse(nbf.GetString(), out var frameCount))
-                            {
                                 totalFrames = frameCount;
-                            }
-                        }
                     }
                 }
-            }
 
             // Estimate total frames if not provided
-            if (totalFrames == 0 && frameRate > 0 && duration > 0)
-            {
-                totalFrames = (int)(duration * frameRate);
-            }
+            if (totalFrames == 0 && frameRate > 0 && duration > 0) totalFrames = (int)(duration * frameRate);
 
             return new VideoInfo
             {
@@ -331,14 +324,15 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Extract codec-level I-frames (keyframes) without decoding.
-    /// Very fast - uses compression metadata only.
+    ///     Extract codec-level I-frames (keyframes) without decoding.
+    ///     Very fast - uses compression metadata only.
     /// </summary>
     public async Task<List<KeyframeInfo>> GetKeyframesAsync(string videoPath, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
         var keyframes = new List<KeyframeInfo>();
-        var args = $"-v quiet -select_streams v:0 -show_frames -show_entries frame=key_frame,pkt_pts_time,pict_type,coded_picture_number -of json \"{videoPath}\"";
+        var args =
+            $"-v quiet -select_streams v:0 -show_frames -show_entries frame=key_frame,pkt_pts_time,pict_type,coded_picture_number -of json \"{videoPath}\"";
 
         var output = await RunProcessAsync(_ffprobePath, args, ct);
         if (string.IsNullOrEmpty(output)) return keyframes;
@@ -354,13 +348,11 @@ public sealed class FFmpegService : IDisposable
                 if (!isKeyFrame) continue;
 
                 var timestamp = 0.0;
-                if (frame.TryGetProperty("pkt_pts_time", out var pts))
-                {
-                    double.TryParse(pts.GetString(), out timestamp);
-                }
+                if (frame.TryGetProperty("pkt_pts_time", out var pts)) double.TryParse(pts.GetString(), out timestamp);
 
                 var frameNumber = frame.TryGetProperty("coded_picture_number", out var cpn)
-                    ? cpn.GetInt32() : -1;
+                    ? cpn.GetInt32()
+                    : -1;
 
                 keyframes.Add(new KeyframeInfo
                 {
@@ -369,14 +361,16 @@ public sealed class FFmpegService : IDisposable
                 });
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return keyframes;
     }
 
     /// <summary>
-    /// Detect scene changes using FFmpeg's scene detection filter.
-    /// Returns timestamps where visual content changes significantly.
+    ///     Detect scene changes using FFmpeg's scene detection filter.
+    ///     Returns timestamps where visual content changes significantly.
     /// </summary>
     public async Task<List<double>> DetectSceneChangesAsync(
         string videoPath,
@@ -397,7 +391,7 @@ public sealed class FFmpegService : IDisposable
             inputArgs += $"-ss {startTime.Value:F3} ";
         inputArgs += $"{hwAccel}-i \"{videoPath}\" ";
         if (endTime.HasValue && startTime.HasValue)
-            inputArgs += $"-t {(endTime.Value - startTime.Value):F3} ";
+            inputArgs += $"-t {endTime.Value - startTime.Value:F3} ";
         else if (endTime.HasValue)
             inputArgs += $"-t {endTime.Value:F3} ";
 
@@ -411,20 +405,16 @@ public sealed class FFmpegService : IDisposable
 
         var offset = startTime ?? 0;
         foreach (Match match in matches)
-        {
             if (double.TryParse(match.Groups[1].Value, out var timestamp))
-            {
                 scenes.Add(timestamp + offset);
-            }
-        }
 
         return scenes;
     }
 
     /// <summary>
-    /// Stream frames from video using pipe - no temp files needed.
-    /// Most efficient method for sequential playback.
-    /// Outputs RGBA32 for compatibility with renderers.
+    ///     Stream frames from video using pipe - no temp files needed.
+    ///     Most efficient method for sequential playback.
+    ///     Outputs RGBA32 for compatibility with renderers.
     /// </summary>
     /// <param name="codec">Optional codec hint to detect problematic codecs for hwaccel.</param>
     public async IAsyncEnumerable<Image<Rgba32>> StreamFramesAsync(
@@ -436,7 +426,7 @@ public sealed class FFmpegService : IDisposable
         int frameStep = 1,
         double? targetFps = null,
         string? codec = null,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
 
@@ -463,10 +453,7 @@ public sealed class FFmpegService : IDisposable
         }
 
         // Target FPS via fps filter
-        if (targetFps.HasValue && targetFps.Value > 0)
-        {
-            filters.Add($"fps={targetFps.Value:F2}");
-        }
+        if (targetFps.HasValue && targetFps.Value > 0) filters.Add($"fps={targetFps.Value:F2}");
 
         // Explicit format conversion to avoid auto_scale issues with some codecs (e.g., Theora)
         filters.Add("format=rgba");
@@ -485,7 +472,7 @@ public sealed class FFmpegService : IDisposable
         inputArgs += $"{hwAccel}-i \"{videoPath}\" ";
 
         if (endTime.HasValue && startTime.HasValue)
-            inputArgs += $"-t {(endTime.Value - startTime.Value):F3} ";
+            inputArgs += $"-t {endTime.Value - startTime.Value:F3} ";
         else if (endTime.HasValue)
             inputArgs += $"-t {endTime.Value:F3} ";
 
@@ -541,8 +528,10 @@ public sealed class FFmpegService : IDisposable
                                 throw new InvalidOperationException(errorMsg);
                             }
                         }
+
                         yield break;
                     }
+
                     bytesRead += read;
                 }
 
@@ -564,10 +553,7 @@ public sealed class FFmpegService : IDisposable
 
             try
             {
-                if (!process.HasExited)
-                {
-                    process.Kill();
-                }
+                if (!process.HasExited) process.Kill();
             }
             catch (InvalidOperationException)
             {
@@ -582,8 +568,8 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Check if a frame buffer appears corrupted (blank, uniform, or noise pattern).
-    /// Some codecs output garbage for the first frame before keyframes are decoded.
+    ///     Check if a frame buffer appears corrupted (blank, uniform, or noise pattern).
+    ///     Some codecs output garbage for the first frame before keyframes are decoded.
     /// </summary>
     private static bool IsLikelyCorruptedFrame(byte[] buffer, int width, int height)
     {
@@ -603,7 +589,7 @@ public sealed class FFmpegService : IDisposable
 
         for (var i = 0; i < sampleCount; i++)
         {
-            var pixelIdx = (i * step) * 4;
+            var pixelIdx = i * step * 4;
             if (pixelIdx + 3 >= buffer.Length) break;
 
             byte r = buffer[pixelIdx], g = buffer[pixelIdx + 1], b = buffer[pixelIdx + 2];
@@ -638,8 +624,8 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Extract a single frame at a specific timestamp.
-    /// Returns the frame as an Image for direct processing.
+    ///     Extract a single frame at a specific timestamp.
+    ///     Returns the frame as an Image for direct processing.
     /// </summary>
     public async Task<Image<Rgba32>?> ExtractFrameAsync(
         string videoPath,
@@ -658,8 +644,8 @@ public sealed class FFmpegService : IDisposable
         var hwDownload = GetHwDownloadFilter();
 
         // Get video dimensions if not specified
-        int outputWidth = width ?? 0;
-        int outputHeight = height ?? 0;
+        var outputWidth = width ?? 0;
+        var outputHeight = height ?? 0;
 
         if (outputWidth == 0 || outputHeight == 0)
         {
@@ -689,7 +675,8 @@ public sealed class FFmpegService : IDisposable
 
         var filterChain = string.Join(",", filters);
 
-        var args = $"-loglevel error -ss {timestamp:F3} {hwAccel}-i \"{videoPath}\" -vf \"{filterChain}\" -frames:v 1 -f rawvideo -pix_fmt rgba -";
+        var args =
+            $"-loglevel error -ss {timestamp:F3} {hwAccel}-i \"{videoPath}\" -vf \"{filterChain}\" -frames:v 1 -f rawvideo -pix_fmt rgba -";
 
         var frameSize = outputWidth * outputHeight * 4;
         var buffer = new byte[frameSize];
@@ -728,9 +715,9 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Extract a single frame very fast by seeking to nearest keyframe only.
-    /// Useful for thumbnail generation where exact timestamp accuracy is not required.
-    /// Uses -skip_frame nokey for ~100x faster extraction.
+    ///     Extract a single frame very fast by seeking to nearest keyframe only.
+    ///     Useful for thumbnail generation where exact timestamp accuracy is not required.
+    ///     Uses -skip_frame nokey for ~100x faster extraction.
     /// </summary>
     public async Task<Image<Rgba32>?> ExtractFrameFastAsync(
         string videoPath,
@@ -742,8 +729,8 @@ public sealed class FFmpegService : IDisposable
         await EnsureInitializedAsync(ct);
 
         // Get video dimensions if not specified
-        int outputWidth = width ?? 0;
-        int outputHeight = height ?? 0;
+        var outputWidth = width ?? 0;
+        var outputHeight = height ?? 0;
 
         if (outputWidth == 0 || outputHeight == 0)
         {
@@ -769,7 +756,8 @@ public sealed class FFmpegService : IDisposable
 
         // Use -skip_frame nokey to only decode keyframes (much faster)
         // -vsync passthrough avoids frame duplication
-        var args = $"-loglevel error -skip_frame nokey -ss {timestamp:F3} -i \"{videoPath}\" -vf \"{filters}\" -vsync passthrough -frames:v 1 -f rawvideo -pix_fmt rgba -";
+        var args =
+            $"-loglevel error -skip_frame nokey -ss {timestamp:F3} -i \"{videoPath}\" -vf \"{filters}\" -vsync passthrough -frames:v 1 -f rawvideo -pix_fmt rgba -";
 
         var frameSize = outputWidth * outputHeight * 4;
         var buffer = new byte[frameSize];
@@ -808,9 +796,9 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Extract all I-frames (keyframes) from a video segment very quickly.
-    /// Uses select filter with I-frame detection - much faster than scene detection.
-    /// Great for generating scrub bar thumbnails.
+    ///     Extract all I-frames (keyframes) from a video segment very quickly.
+    ///     Uses select filter with I-frame detection - much faster than scene detection.
+    ///     Great for generating scrub bar thumbnails.
     /// </summary>
     public async IAsyncEnumerable<(double Timestamp, Image<Rgba32> Frame)> ExtractKeyframeThumbnailsAsync(
         string videoPath,
@@ -819,7 +807,7 @@ public sealed class FFmpegService : IDisposable
         double? startTime = null,
         double? endTime = null,
         int maxCount = 60,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
 
@@ -831,16 +819,18 @@ public sealed class FFmpegService : IDisposable
         inputArgs += $"-i \"{videoPath}\" ";
 
         if (endTime.HasValue && startTime.HasValue)
-            inputArgs += $"-t {(endTime.Value - startTime.Value):F3} ";
+            inputArgs += $"-t {endTime.Value - startTime.Value:F3} ";
         else if (endTime.HasValue)
             inputArgs += $"-t {endTime.Value:F3} ";
 
         // Select only I-frames, scale down, limit count
         // The showinfo filter gives us the timestamp
-        var filters = $"select='eq(pict_type,I)',scale={outputWidth}:{outputHeight}:flags=fast_bilinear,format=rgba,showinfo";
+        var filters =
+            $"select='eq(pict_type,I)',scale={outputWidth}:{outputHeight}:flags=fast_bilinear,format=rgba,showinfo";
 
         // Output raw frames - limit to maxCount
-        var args = $"-loglevel error {inputArgs}-vf \"{filters}\" -vsync vfr -frames:v {maxCount} -f rawvideo -pix_fmt rgba -";
+        var args =
+            $"-loglevel error {inputArgs}-vf \"{filters}\" -vsync vfr -frames:v {maxCount} -f rawvideo -pix_fmt rgba -";
 
         var frameSize = outputWidth * outputHeight * 4;
         var buffer = new byte[frameSize];
@@ -872,10 +862,7 @@ public sealed class FFmpegService : IDisposable
             while (bytesRead < frameSize)
             {
                 var read = await stream.ReadAsync(buffer.AsMemory(bytesRead, frameSize - bytesRead), ct);
-                if (read == 0)
-                {
-                    yield break;
-                }
+                if (read == 0) yield break;
                 bytesRead += read;
             }
 
@@ -886,7 +873,7 @@ public sealed class FFmpegService : IDisposable
             // For thumbnails, uniform distribution is fine
             var info = await GetVideoInfoAsync(videoPath, ct);
             var duration = info?.Duration ?? 60;
-            var timestamp = offset + (count * (duration - offset) / maxCount);
+            var timestamp = offset + count * (duration - offset) / maxCount;
 
             yield return (timestamp, image);
             count++;
@@ -894,16 +881,15 @@ public sealed class FFmpegService : IDisposable
 
         try
         {
-            if (!process.HasExited)
-            {
-                process.Kill();
-            }
+            if (!process.HasExited) process.Kill();
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     /// <summary>
-    /// Extract frames at specific timestamps.
+    ///     Extract frames at specific timestamps.
     /// </summary>
     public async Task<List<(double Timestamp, Image<Rgba32> Frame)>> ExtractFramesAtTimestampsAsync(
         string videoPath,
@@ -922,10 +908,7 @@ public sealed class FFmpegService : IDisposable
             ct.ThrowIfCancellationRequested();
 
             var frame = await ExtractFrameAsync(videoPath, timestamp, width, height, ct);
-            if (frame != null)
-            {
-                results.Add((timestamp, frame));
-            }
+            if (frame != null) results.Add((timestamp, frame));
         }
 
         return results;
@@ -982,7 +965,11 @@ public sealed class FFmpegService : IDisposable
             var fullPath = Path.Combine(dir, exeName);
             if (File.Exists(fullPath))
             {
-                lock (_ffmpegLock) { _ffmpegBinPath = dir; }
+                lock (_ffmpegLock)
+                {
+                    _ffmpegBinPath = dir;
+                }
+
                 return fullPath;
             }
         }
@@ -1015,18 +1002,28 @@ public sealed class FFmpegService : IDisposable
                     if (foundExe != null)
                     {
                         var binDir = Path.GetDirectoryName(foundExe)!;
-                        lock (_ffmpegLock) { _ffmpegBinPath = binDir; }
+                        lock (_ffmpegLock)
+                        {
+                            _ffmpegBinPath = binDir;
+                        }
+
                         return foundExe;
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
             else
             {
                 var fullPath = Path.Combine(basePath, exeName);
                 if (File.Exists(fullPath))
                 {
-                    lock (_ffmpegLock) { _ffmpegBinPath = basePath; }
+                    lock (_ffmpegLock)
+                    {
+                        _ffmpegBinPath = basePath;
+                    }
+
                     return fullPath;
                 }
             }
@@ -1036,8 +1033,8 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Extract a clip from video and re-encode to a new file.
-    /// Supports various output formats based on file extension.
+    ///     Extract a clip from video and re-encode to a new file.
+    ///     Supports various output formats based on file extension.
     /// </summary>
     public async Task<bool> ExtractClipAsync(
         string inputPath,
@@ -1115,9 +1112,10 @@ public sealed class FFmpegService : IDisposable
     }
 
     /// <summary>
-    /// Get information about embedded subtitle streams in a video file.
+    ///     Get information about embedded subtitle streams in a video file.
     /// </summary>
-    public async Task<List<SubtitleStreamInfo>> GetSubtitleStreamsAsync(string videoPath, CancellationToken ct = default)
+    public async Task<List<SubtitleStreamInfo>> GetSubtitleStreamsAsync(string videoPath,
+        CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
         var subtitles = new List<SubtitleStreamInfo>();
@@ -1142,7 +1140,8 @@ public sealed class FFmpegService : IDisposable
                 foreach (var stream in streams.EnumerateArray())
                 {
                     var codecName = stream.TryGetProperty("codec_name", out var cn)
-                        ? cn.GetString() : null;
+                        ? cn.GetString()
+                        : null;
 
                     // Get language from tags
                     string? language = null;
@@ -1156,7 +1155,8 @@ public sealed class FFmpegService : IDisposable
                     }
 
                     var streamIndex = stream.TryGetProperty("index", out var si)
-                        ? si.GetInt32() : index;
+                        ? si.GetInt32()
+                        : index;
 
                     subtitles.Add(new SubtitleStreamInfo
                     {
@@ -1169,13 +1169,15 @@ public sealed class FFmpegService : IDisposable
                 }
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return subtitles;
     }
 
     /// <summary>
-    /// Extract embedded subtitles from a video file to SRT format.
+    ///     Extract embedded subtitles from a video file to SRT format.
     /// </summary>
     /// <param name="videoPath">Path to video file</param>
     /// <param name="outputPath">Path to save SRT file</param>
@@ -1226,15 +1228,10 @@ public sealed class FFmpegService : IDisposable
             return false;
         }
     }
-
-    public void Dispose()
-    {
-        // No managed resources to dispose
-    }
 }
 
 /// <summary>
-/// Video stream information.
+///     Video stream information.
 /// </summary>
 public class VideoInfo
 {
@@ -1249,7 +1246,7 @@ public class VideoInfo
 }
 
 /// <summary>
-/// Information about a codec-level keyframe.
+///     Information about a codec-level keyframe.
 /// </summary>
 public record KeyframeInfo
 {
@@ -1258,7 +1255,7 @@ public record KeyframeInfo
 }
 
 /// <summary>
-/// Information about an embedded subtitle stream.
+///     Information about an embedded subtitle stream.
 /// </summary>
 public record SubtitleStreamInfo
 {
@@ -1275,8 +1272,8 @@ public record SubtitleStreamInfo
     public string? Title { get; init; }
 
     /// <summary>
-    /// Check if this subtitle format can be extracted to text (SRT).
-    /// Bitmap-based subtitles (dvd_subtitle, hdmv_pgs, dvb_subtitle) cannot.
+    ///     Check if this subtitle format can be extracted to text (SRT).
+    ///     Bitmap-based subtitles (dvd_subtitle, hdmv_pgs, dvb_subtitle) cannot.
     /// </summary>
     public bool IsTextBased => Codec is "subrip" or "ass" or "ssa" or "webvtt" or "mov_text" or "srt";
 }

@@ -1,9 +1,9 @@
 namespace ConsoleImage.Core.Subtitles;
 
 /// <summary>
-/// Splits long subtitle segments into readable chunks based on sentence boundaries
-/// and reading speed. Standard subtitle guidelines: max 2 lines × 42 chars,
-/// comfortable reading at ~20 characters/second.
+///     Splits long subtitle segments into readable chunks based on sentence boundaries
+///     and reading speed. Standard subtitle guidelines: max 2 lines × 42 chars,
+///     comfortable reading at ~20 characters/second.
 /// </summary>
 public static class SubtitleSplitter
 {
@@ -17,9 +17,9 @@ public static class SubtitleSplitter
     private const double MinDurationSeconds = 1.2;
 
     /// <summary>
-    /// Split a long subtitle entry into multiple shorter entries if needed.
-    /// Returns the original entry (with Index assigned) if no splitting is needed.
-    /// Assigns sequential Index values using the provided counter.
+    ///     Split a long subtitle entry into multiple shorter entries if needed.
+    ///     Returns the original entry (with Index assigned) if no splitting is needed.
+    ///     Assigns sequential Index values using the provided counter.
     /// </summary>
     /// <param name="entry">The entry to split (Index field is ignored/overwritten).</param>
     /// <param name="entryIndex">Running counter for sequential subtitle indices.</param>
@@ -41,9 +41,7 @@ public static class SubtitleSplitter
 
         // If we only got one "sentence" that's still too long, split at clause boundaries
         if (sentences.Count == 1 && sentences[0].Length > MaxCharsPerEntry)
-        {
             sentences = SplitAtClauseBoundaries(sentences[0]);
-        }
 
         // Group sentences into chunks that fit within MaxCharsPerEntry
         var chunks = GroupIntoChunks(sentences);
@@ -89,6 +87,11 @@ public static class SubtitleSplitter
             else if (chunkEnd > originalEnd)
                 chunkEnd = originalEnd;
 
+            // Skip zero or negative duration entries (can happen when min-duration
+            // clamp causes earlier chunks to consume all available time)
+            if (chunkEnd <= currentStart)
+                break;
+
             result.Add(new SubtitleEntry
             {
                 Index = ++entryIndex,
@@ -109,7 +112,7 @@ public static class SubtitleSplitter
     }
 
     /// <summary>
-    /// Split text at sentence boundaries (., !, ?).
+    ///     Split text at sentence boundaries (., !, ?).
     /// </summary>
     private static List<string> SplitIntoSentences(string text)
     {
@@ -123,10 +126,7 @@ public static class SubtitleSplitter
                 continue;
 
             // Check for ellipsis (...) — treat as single punctuation
-            if (ch == '.' && i + 2 < text.Length && text[i + 1] == '.' && text[i + 2] == '.')
-            {
-                i += 2; // Skip past ...
-            }
+            if (ch == '.' && i + 2 < text.Length && text[i + 1] == '.' && text[i + 2] == '.') i += 2; // Skip past ...
 
             // Sentence end: punctuation followed by space or end of text
             if (i + 1 >= text.Length || text[i + 1] == ' ')
@@ -150,9 +150,9 @@ public static class SubtitleSplitter
     }
 
     /// <summary>
-    /// Split text at clause boundaries (commas, semicolons, dashes, ellipsis)
-    /// when no sentence boundaries are found. Only splits if the piece before
-    /// the boundary is at least 20 characters to avoid tiny fragments.
+    ///     Split text at clause boundaries (commas, semicolons, dashes, ellipsis)
+    ///     when no sentence boundaries are found. Only splits if the piece before
+    ///     the boundary is at least 20 characters to avoid tiny fragments.
     /// </summary>
     private static List<string> SplitAtClauseBoundaries(string text)
     {
@@ -180,7 +180,7 @@ public static class SubtitleSplitter
             }
 
             // Only split if we have a reasonable amount of text
-            if (isBoundary && (i - current) >= 20)
+            if (isBoundary && i - current >= 20)
             {
                 var clause = text[current..boundaryEnd].Trim();
                 if (clause.Length > 0)
@@ -201,8 +201,8 @@ public static class SubtitleSplitter
     }
 
     /// <summary>
-    /// Group text pieces into chunks that fit within MaxCharsPerEntry.
-    /// Combines short sentences into single entries when they fit.
+    ///     Group text pieces into chunks that fit within MaxCharsPerEntry.
+    ///     Combines short sentences into single entries when they fit.
     /// </summary>
     private static List<string> GroupIntoChunks(List<string> pieces)
     {
@@ -210,7 +210,6 @@ public static class SubtitleSplitter
         var current = "";
 
         foreach (var piece in pieces)
-        {
             if (current.Length == 0)
             {
                 current = piece;
@@ -224,7 +223,6 @@ public static class SubtitleSplitter
                 chunks.Add(current);
                 current = piece;
             }
-        }
 
         if (current.Length > 0)
             chunks.Add(current);

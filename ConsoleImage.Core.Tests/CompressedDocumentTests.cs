@@ -1,8 +1,6 @@
 // Unit tests for CompressedDocument functionality
 // Tests delta encoding, temporal stability, and compressed I/O
 
-using System.Text;
-
 namespace ConsoleImage.Core.Tests;
 
 public class CompressedDocumentTests
@@ -70,7 +68,7 @@ public class CompressedDocumentTests
         var doc = CreateTestDocument(10);
 
         // Act
-        var optimized = OptimizedDocument.FromDocument(doc, keyframeInterval: 3);
+        var optimized = OptimizedDocument.FromDocument(doc, 3);
 
         // Assert - frames 0, 3, 6, 9 should be keyframes
         Assert.True(optimized.Frames[0].IsKeyframe);
@@ -85,8 +83,7 @@ public class CompressedDocumentTests
         // Arrange - create frames with identical content (same chars, same colors)
         var frames = new List<DocumentFrame>();
         var content = "\x1b[38;2;100;100;100mAAAAA\x1b[0m";
-        for (int i = 0; i < 5; i++)
-        {
+        for (var i = 0; i < 5; i++)
             frames.Add(new DocumentFrame
             {
                 Content = content,
@@ -94,7 +91,6 @@ public class CompressedDocumentTests
                 Height = 1,
                 DelayMs = 100
             });
-        }
 
         var doc = new ConsoleImageDocument
         {
@@ -105,7 +101,7 @@ public class CompressedDocumentTests
         };
 
         // Act
-        var optimized = OptimizedDocument.FromDocument(doc, keyframeInterval: 100);
+        var optimized = OptimizedDocument.FromDocument(doc, 100);
 
         // Assert - identical frames should produce delta frames with empty or minimal changes
         Assert.True(optimized.Frames[0].IsKeyframe, "First frame should be keyframe");
@@ -120,8 +116,8 @@ public class CompressedDocumentTests
         var doc = CreateSimilarColorsDocument();
 
         // Act - enable stability with threshold of 20
-        var optimized = OptimizedDocument.FromDocument(doc, keyframeInterval: 100,
-            enableStability: true, colorThreshold: 20);
+        var optimized = OptimizedDocument.FromDocument(doc, 100,
+            true, 20);
 
         // Restore and check
         var restored = optimized.ToDocument();
@@ -137,8 +133,8 @@ public class CompressedDocumentTests
         var doc = CreateDifferentColorsDocument();
 
         // Act - enable stability
-        var optimized = OptimizedDocument.FromDocument(doc, keyframeInterval: 100,
-            enableStability: true, colorThreshold: 10);
+        var optimized = OptimizedDocument.FromDocument(doc, 100,
+            true, 10);
 
         // Restore and check
         var restored = optimized.ToDocument();
@@ -209,8 +205,8 @@ public class CompressedDocumentTests
         // Test the color similarity logic indirectly through frame processing
         // Colors that differ by less than threshold should be considered similar
         var doc = CreateSimilarColorsDocument();
-        var optimized = OptimizedDocument.FromDocument(doc, keyframeInterval: 100,
-            enableStability: true, colorThreshold: 50);
+        var optimized = OptimizedDocument.FromDocument(doc, 100,
+            true, 50);
 
         // Should complete without error
         Assert.NotNull(optimized);
@@ -236,8 +232,7 @@ public class CompressedDocumentTests
     private static ConsoleImageDocument CreateTestDocument(int frameCount)
     {
         var frames = new List<DocumentFrame>();
-        for (int i = 0; i < frameCount; i++)
-        {
+        for (var i = 0; i < frameCount; i++)
             frames.Add(new DocumentFrame
             {
                 Content = $"\x1b[38;2;255;{i * 50};0mFrame {i}\x1b[0m",
@@ -245,7 +240,6 @@ public class CompressedDocumentTests
                 Height = 1,
                 DelayMs = 100
             });
-        }
 
         return new ConsoleImageDocument
         {
@@ -260,7 +254,7 @@ public class CompressedDocumentTests
     {
         var baseContent = "\x1b[38;2;255;100;50mAAAAA\x1b[0m";
         var frames = new List<DocumentFrame>();
-        for (int i = 0; i < frameCount; i++)
+        for (var i = 0; i < frameCount; i++)
         {
             // Only change one character per frame
             var content = baseContent.Replace("AAAAA", $"AAA{(char)('A' + i)}A");

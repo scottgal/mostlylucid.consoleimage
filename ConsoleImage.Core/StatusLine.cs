@@ -11,16 +11,15 @@ namespace ConsoleImage.Core;
 /// </summary>
 public class StatusLine
 {
-    private readonly int _maxWidth;
-    private readonly bool _useColor;
-
-    // Pre-allocated reusable buffers
-    private readonly StringBuilder _sb = new(256);
-    private readonly StringBuilder _barSb = new(64);
-
     // Pre-cached progress bar fill strings (avoids new string('█', N) per frame)
     private static readonly string FilledBar = new('█', 20);
     private static readonly string EmptyBar = new('░', 20);
+    private readonly StringBuilder _barSb = new(64);
+    private readonly int _maxWidth;
+
+    // Pre-allocated reusable buffers
+    private readonly StringBuilder _sb = new(256);
+    private readonly bool _useColor;
 
     public StatusLine(int maxWidth = 80, bool useColor = true)
     {
@@ -63,6 +62,7 @@ public class StatusLine
             {
                 _sb.Append(name);
             }
+
             partCount++;
         }
 
@@ -185,12 +185,16 @@ public class StatusLine
         public string? RenderMode { get; set; }
         public int? CurrentFrame { get; set; }
         public int? TotalFrames { get; set; }
+
         /// <summary>Absolute video time (includes -ss offset)</summary>
         public TimeSpan? CurrentTime { get; set; }
+
         /// <summary>Total video duration (full file, not just clip)</summary>
         public TimeSpan? TotalDuration { get; set; }
+
         /// <summary>Progress within current playback clip (0.0-1.0), used for progress bar</summary>
         public double? ClipProgress { get; set; }
+
         public double? Fps { get; set; }
         public string? Codec { get; set; }
         public bool IsPlaying { get; set; } = true;

@@ -6,13 +6,13 @@ using SixLabors.ImageSharp.PixelFormats;
 namespace ConsoleVideo.Avalonia.Services;
 
 /// <summary>
-/// Wrapper service for keyframe extraction in the Avalonia app.
-/// Uses SmartKeyframeExtractor from Video.Core for the actual extraction.
+///     Wrapper service for keyframe extraction in the Avalonia app.
+///     Uses SmartKeyframeExtractor from Video.Core for the actual extraction.
 /// </summary>
 public class KeyframeExtractionService
 {
     /// <summary>
-    /// Extract keyframes based on the specified settings.
+    ///     Extract keyframes based on the specified settings.
     /// </summary>
     public async Task<List<ExtractedKeyframeViewModel>> ExtractKeyframesAsync(
         string videoPath,
@@ -56,7 +56,7 @@ public class KeyframeExtractionService
 }
 
 /// <summary>
-/// Extended keyframe model with source indication.
+///     Extended keyframe model with source indication.
 /// </summary>
 public record ExtractedKeyframeViewModel
 {

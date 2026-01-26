@@ -2,14 +2,15 @@
 // Supports multiple render modes: ASCII, ColorBlocks, Braille, Matrix
 
 using System.CommandLine;
+using System.Diagnostics;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using ConsoleImage.Cli;
 using ConsoleImage.Cli.Handlers;
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Transcription;
-using ConsoleImage.Video.Core;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
@@ -89,6 +90,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         Console.Error.WriteLine($"Error: {ex.Message}");
         return 1;
     }
+
     var speed = template?.Speed ?? parseResult.GetValue(cliOptions.Speed);
     var loop = template?.Loop ?? parseResult.GetValue(cliOptions.Loop);
     var noAnimate = parseResult.GetValue(cliOptions.NoAnimate);
@@ -101,6 +103,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         loop = 1;
         durationFrames ??= 1;
     }
+
     var sampling = parseResult.GetValue(cliOptions.Sampling) ?? template?.Sampling;
     var sceneThreshold = template?.SceneThreshold ?? parseResult.GetValue(cliOptions.SceneThreshold);
     var useAsciiOpt = parseResult.GetValue(cliOptions.Ascii) || (template?.Ascii ?? false);
@@ -146,6 +149,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             useBraille = !useAscii && !useBlocks && !useMatrix;
         }
     }
+
     var matrixColor = parseResult.GetValue(cliOptions.MatrixColor) ?? template?.MatrixColor;
     var matrixFullColor = parseResult.GetValue(cliOptions.MatrixFullColor) || (template?.MatrixFullColor ?? false);
     var matrixDensity = parseResult.GetValue(cliOptions.MatrixDensity) ?? template?.MatrixDensity;
@@ -340,7 +344,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             charAspect, gamma, savedCalibration,
             noColor, saveCalibrationOpt,
             width, height,
-            colorCalibration: false); // Start in aspect ratio mode by default
+            false); // Start in aspect ratio mode by default
 
     // Compute effective gamma from explicit value or saved calibration
     var effectiveGamma = RenderHelpers.GetEffectiveGamma(gamma, savedCalibration, renderMode);
@@ -351,7 +355,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // Matrix mode without input shows pure rain effect - just for fun!
         if (useMatrix)
         {
-            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet);
+            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed,
+                matrixAlphabet);
             var pureRainOptions = new RenderOptions
             {
                 Width = width,
@@ -364,11 +369,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
             // Pure Matrix with GIF output
             if (outputGif != null)
-            {
                 return await ImageHandler.HandlePureMatrixGifAsync(
                     pureRainOptions, matrixOpts, outputGif,
                     gifFontSize, gifScale, gifColors, loop, cancellationToken);
-            }
 
             // Pure Matrix to console display (space to pause)
             await ImageHandler.PlayPureMatrixAsync(pureRainOptions, matrixOpts, loop, speed, cancellationToken);
@@ -507,7 +510,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // For ASCII rendering, we don't need high resolution - 480p is plenty
         var ytMaxHeight = useBraille ? 480 : 360;
         // Pass start time to yt-dlp so it can use download-sections for efficient seeking
-        var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, start, cookiesFromBrowser, cookiesFile, cancellationToken);
+        var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, start,
+            cookiesFromBrowser, cookiesFile, cancellationToken);
 
         if (streamInfo == null)
         {
@@ -529,7 +533,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         if (!noCacheVideo && cachedVideoPath != null && SubtitleResolver.IsVideoCached(videoId!))
         {
             // Cache exists - use it for instant playback (zero bandwidth)
-            Console.Error.WriteLine($"  Using cached video (instant start)");
+            Console.Error.WriteLine("  Using cached video (instant start)");
             inputFullPath = cachedVideoPath;
             input = new FileInfo(cachedVideoPath);
         }
@@ -542,10 +546,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             // Start background download for future replays (unless --no-cache)
             if (!noCacheVideo && cachedVideoPath != null)
             {
-                Console.Error.WriteLine($"  Streaming (caching in background for next time)");
+                Console.Error.WriteLine("  Streaming (caching in background for next time)");
 
                 // Ensure cache has space
-                SubtitleResolver.EnsureVideoCacheSpace(500);
+                SubtitleResolver.EnsureVideoCacheSpace();
 
                 // Start background download - don't block playback
                 var downloadUrl = inputPath; // Original YouTube URL
@@ -696,22 +700,21 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 // Save to output file if specified
                 if (!string.IsNullOrEmpty(output))
                 {
-                    File.Copy(srtPath, output, overwrite: true);
+                    File.Copy(srtPath, output, true);
                     Console.Error.WriteLine($"Saved: {output}");
                 }
 
                 return 0;
             }
-            else
+
+            Console.Error.WriteLine("not available.");
+            if (transcriptSource == "yt")
             {
-                Console.Error.WriteLine("not available.");
-                if (transcriptSource == "yt")
-                {
-                    Console.Error.WriteLine("YouTube subtitles not found. Use --subs whisper to generate with Whisper.");
-                    return 1;
-                }
-                Console.Error.WriteLine("Falling back to Whisper transcription...");
+                Console.Error.WriteLine("YouTube subtitles not found. Use --subs whisper to generate with Whisper.");
+                return 1;
             }
+
+            Console.Error.WriteLine("Falling back to Whisper transcription...");
         }
 
         // Use Whisper for transcription
@@ -754,6 +757,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     }
     // Image files (jpg, png, gif, etc.) - normal rendering
     else if (IsImageFile(extension))
+    {
         return await ImageHandler.HandleAsync(
             input, width, height, maxWidth, maxHeight,
             charAspect, savedCalibration,
@@ -766,6 +770,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             showStatus,
             markdownPath, markdownFormat,
             cancellationToken);
+    }
 
     // Load subtitles based on --subs value
     SubtitleTrack? subtitles = null;
@@ -782,7 +787,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // 1. Embedded text subtitles from video container (most reliable)
         // 2. External subtitle files (.srt/.vtt alongside video)
         // 3. Whisper transcription (last resort)
-        bool useStreamingWhisper = false;
+        var useStreamingWhisper = false;
         if (subtitleSource == "auto" && isPlaybackMode)
         {
             // 1. Try extracting embedded text subtitles from the video container
@@ -799,7 +804,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 // 2. Check for external subtitle files
                 var localSubFile = SubtitleResolver.FindMatchingSubtitleFile(inputFullPath, subtitleLang ?? "en")
-                    ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputFullPath);
+                                   ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputFullPath);
 
                 if (!string.IsNullOrEmpty(localSubFile))
                 {
@@ -831,10 +836,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             if (!File.Exists(cachedSubPath))
             {
                 var migratedPath = MigrateOldSubtitleCache(inputFullPath, cachedSubPath);
-                if (migratedPath != null)
-                {
-                    Console.Error.WriteLine($"Migrated cached subtitles to new format");
-                }
+                if (migratedPath != null) Console.Error.WriteLine("Migrated cached subtitles to new format");
             }
 
             // Don't use cached subtitles when -ss is specified (timestamps won't match)
@@ -849,31 +851,36 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             {
                 // Delete existing cache if forcing re-transcription
                 if (forceSubs && File.Exists(cachedSubPath))
-                {
-                    try { File.Delete(cachedSubPath); }
-                    catch { /* ignore */ }
-                }
+                    try
+                    {
+                        File.Delete(cachedSubPath);
+                    }
+                    catch
+                    {
+                        /* ignore */
+                    }
+
                 var effectiveStart = start ?? 0.0;
 
                 // Check model availability and prompt if needed
                 if (!EnsureWhisperModelOrPrompt(whisperModel ?? "base", subtitleLang ?? "en", autoConfirmDownload))
                 {
-                    Console.Error.WriteLine("Whisper transcription unavailable. Use --no-subs to play without subtitles.");
+                    Console.Error.WriteLine(
+                        "Whisper transcription unavailable. Use --no-subs to play without subtitles.");
                     return 1;
                 }
-                else
-                {
+
                 Console.Error.WriteLine($"Starting live transcription with Whisper ({whisperModel ?? "base"})...");
                 try
                 {
                     chunkedTranscriber = new ChunkedTranscriber(
                         inputFullPath,
-                        modelSize: whisperModel ?? "base",
-                        language: subtitleLang ?? "en",
-                        chunkDurationSeconds: 15.0,  // Smaller chunks for faster initial results
-                        bufferAheadSeconds: 30.0,    // Buffer 30s ahead of playback
-                        startTimeOffset: effectiveStart,  // Start from --ss position
-                        enhanceAudio: enhanceAudio);  // FFmpeg audio preprocessing filters
+                        whisperModel ?? "base",
+                        subtitleLang ?? "en",
+                        15.0, // Smaller chunks for faster initial results
+                        30.0, // Buffer 30s ahead of playback
+                        effectiveStart, // Start from --ss position
+                        enhanceAudio); // FFmpeg audio preprocessing filters
 
                     // Hook up progress events for visual feedback (only during initial setup)
                     var showProgress = true;
@@ -917,14 +924,14 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                     chunkedTranscriber = null;
                 }
             }
-            }
         }
         else if (subtitles == null)
         {
             // For file sources or output mode (not already loaded), use full batch transcription
             subtitles = await LoadSubtitlesAsync(
                 subtitleSource, subtitleFilePath, inputFullPath, subtitleLang ?? "en",
-                whisperModel ?? "base", whisperThreads, diarize, start, duration, autoConfirmDownload, enhanceAudio, cancellationToken);
+                whisperModel ?? "base", whisperThreads, diarize, start, duration, autoConfirmDownload, enhanceAudio,
+                cancellationToken);
         }
     }
 
@@ -1056,16 +1063,17 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     finally
     {
         // Clean up chunked transcriber
-        if (chunkedTranscriber != null)
-        {
-            await chunkedTranscriber.DisposeAsync();
-        }
+        if (chunkedTranscriber != null) await chunkedTranscriber.DisposeAsync();
 
         // Clean up temp file if we created one
         if (tempFile != null && File.Exists(tempFile))
-        {
-            try { File.Delete(tempFile); } catch { }
-        }
+            try
+            {
+                File.Delete(tempFile);
+            }
+            catch
+            {
+            }
     }
 });
 
@@ -1166,7 +1174,14 @@ static string? ResolveInputPath(string inputPath, FileInfo input)
         if (!string.IsNullOrEmpty(dir))
         {
             var dirExists = false;
-            try { dirExists = Directory.Exists(dir); } catch { }
+            try
+            {
+                dirExists = Directory.Exists(dir);
+            }
+            catch
+            {
+            }
+
             Console.Error.WriteLine($"  Directory exists: {dirExists}");
         }
 
@@ -1223,7 +1238,6 @@ static async Task PlayEasterEggAsync()
         // Start key listener only if we have interactive console
         Task? keyTask = null;
         if (!Console.IsInputRedirected)
-        {
             keyTask = Task.Run(() =>
             {
                 try
@@ -1231,16 +1245,19 @@ static async Task PlayEasterEggAsync()
                     Console.ReadKey(true);
                     cts.Cancel();
                 }
-                catch { }
+                catch
+                {
+                }
             });
-        }
 
         // Play the animation
         try
         {
             await player.PlayAsync(cts.Token);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
 
         // Cancel key listener if still running
         cts.Cancel();
@@ -1293,9 +1310,9 @@ static void ShowHelpAndPrompt()
             if (!string.IsNullOrWhiteSpace(input))
             {
                 // Re-invoke with the provided input
-                var process = new System.Diagnostics.Process
+                var process = new Process
                 {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    StartInfo = new ProcessStartInfo
                     {
                         FileName = Environment.ProcessPath ?? "consoleimage",
                         Arguments = $"\"{input}\"",
@@ -1307,7 +1324,9 @@ static void ShowHelpAndPrompt()
             }
         }
     }
-    catch { }
+    catch
+    {
+    }
 }
 
 // === Subtitle handling ===
@@ -1365,11 +1384,13 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                     Console.Error.WriteLine($"Loaded {track.Count} subtitles from {Path.GetFileName(filePath)}");
                     return track;
                 }
+
                 Console.Error.WriteLine($"Warning: Subtitle file not found: {filePath}");
                 return null;
 
             case "whisper":
-                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, enhanceAudio, ct);
+                return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize,
+                    startTime, duration, autoConfirm, enhanceAudio, ct);
 
             case "auto":
                 // Auto mode priority:
@@ -1391,7 +1412,7 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
 
                 // 2. Search for external subtitle files
                 var localSubFile = SubtitleResolver.FindMatchingSubtitleFile(inputPath, lang)
-                    ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputPath);
+                                   ?? SubtitleResolver.FindSubtitleInMediaLibrary(inputPath);
 
                 if (!string.IsNullOrEmpty(localSubFile))
                 {
@@ -1405,9 +1426,12 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                 if (WhisperTranscriptionService.IsAvailable())
                 {
                     Console.Error.WriteLine("No subtitles found, using Whisper transcription...");
-                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize, startTime, duration, autoConfirm, enhanceAudio, ct);
+                    return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize,
+                        startTime, duration, autoConfirm, enhanceAudio, ct);
                 }
-                Console.Error.WriteLine("Note: No subtitles found and Whisper not available. Run: consoleimage transcribe --help");
+
+                Console.Error.WriteLine(
+                    "Note: No subtitles found and Whisper not available. Run: consoleimage transcribe --help");
                 return null;
 
             default:
@@ -1484,6 +1508,7 @@ static async Task<bool> EnsureWhisperReadyAsync(string model, string lang, bool 
             Console.Error.WriteLine("Failed to download Whisper runtime.");
             return false;
         }
+
         WhisperRuntimeDownloader.ConfigureRuntimePath();
     }
 
@@ -1562,7 +1587,8 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
         {
             var first = track.Entries.First();
             var last = track.Entries.Last();
-            Console.Error.WriteLine($"Subtitle range: {first.StartTime:mm\\:ss\\.ff} - {last.EndTime:mm\\:ss\\.ff} (relative to extraction start)");
+            Console.Error.WriteLine(
+                $"Subtitle range: {first.StartTime:mm\\:ss\\.ff} - {last.EndTime:mm\\:ss\\.ff} (relative to extraction start)");
         }
 
         return track;
@@ -1571,15 +1597,20 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
     {
         Console.Error.WriteLine($"Whisper transcription failed: {ex.Message}");
         if (ex.InnerException is FileNotFoundException)
-            Console.Error.WriteLine("Native Whisper library not found. Use --subs auto for embedded subtitles instead.");
+            Console.Error.WriteLine(
+                "Native Whisper library not found. Use --subs auto for embedded subtitles instead.");
         return null;
     }
     finally
     {
         if (File.Exists(tempVtt))
-        {
-            try { File.Delete(tempVtt); } catch { }
-        }
+            try
+            {
+                File.Delete(tempVtt);
+            }
+            catch
+            {
+            }
     }
 }
 
@@ -1611,7 +1642,8 @@ static Command CreateTranscribeSubcommand()
     var streamOpt = new Option<bool>("--stream") { Description = "Stream transcript text to stdout as generated" };
     streamOpt.Aliases.Add("-s");
 
-    var quietOpt = new Option<bool>("--quiet") { Description = "Suppress progress messages (output only transcribed text)" };
+    var quietOpt = new Option<bool>("--quiet")
+        { Description = "Suppress progress messages (output only transcribed text)" };
     quietOpt.Aliases.Add("-q");
 
     var cmd = new Command("transcribe", "Generate subtitles from video/audio using Whisper");
@@ -1654,9 +1686,7 @@ static Command CreateTranscribeSubcommand()
 
         // If whisper URL specified, use remote API instead
         if (!string.IsNullOrEmpty(whisperUrl))
-        {
             return await TranscribeWithRemoteApiAsync(input, output, lang ?? "en", whisperUrl, ct);
-        }
 
         var opts = new TranscriptionHandler.TranscriptionOptions
         {
@@ -1697,7 +1727,7 @@ static string? ExtractYouTubeVideoId(string url)
 
     foreach (var pattern in patterns)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(url, pattern);
+        var match = Regex.Match(url, pattern);
         if (match.Success)
             return match.Groups[1].Value;
     }
@@ -1738,10 +1768,7 @@ static string ComputeStableHash(string input)
     unchecked
     {
         uint hash = 5381;
-        foreach (char c in input)
-        {
-            hash = ((hash << 5) + hash) + c;
-        }
+        foreach (var c in input) hash = (hash << 5) + hash + c;
         return hash.ToString("X8");
     }
 }
@@ -1783,15 +1810,21 @@ static string? MigrateOldSubtitleCache(string videoPath, string newCachePath)
                 // If move fails (file in use, etc.), try copy
                 try
                 {
-                    File.Copy(oldFile, newCachePath, overwrite: false);
+                    File.Copy(oldFile, newCachePath, false);
                     File.Delete(oldFile);
                     return newCachePath;
                 }
-                catch { /* Migration failed, will re-transcribe */ }
+                catch
+                {
+                    /* Migration failed, will re-transcribe */
+                }
             }
         }
     }
-    catch { /* Ignore migration errors */ }
+    catch
+    {
+        /* Ignore migration errors */
+    }
 
     return null;
 }
@@ -1812,18 +1845,23 @@ static void CleanupOldSubtitleCache(string cacheDir)
         // Clean files older than 7 days
         var cutoff = DateTime.Now.AddDays(-7);
         foreach (var file in Directory.GetFiles(cacheDir, "*.vtt"))
-        {
             if (File.GetLastWriteTime(file) < cutoff)
-            {
-                try { File.Delete(file); }
-                catch { /* ignore */ }
-            }
-        }
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    /* ignore */
+                }
 
         // Update marker
         File.WriteAllText(markerFile, DateTime.Now.ToString("o"));
     }
-    catch { /* ignore cleanup errors */ }
+    catch
+    {
+        /* ignore cleanup errors */
+    }
 }
 
 static async Task<int> TranscribeWithRemoteApiAsync(

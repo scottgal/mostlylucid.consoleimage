@@ -3,7 +3,6 @@
 // Color block renderer for high-fidelity colored terminal output
 
 using System.Buffers;
-using System.Runtime.CompilerServices;
 using System.Text;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -25,10 +24,10 @@ public class ColorBlockRenderer : IDisposable
     private const char Space = ' '; // Empty
     private readonly RenderOptions _options;
     private bool _disposed;
+    private int _lastBufferSize;
 
     // Reusable buffer to reduce GC pressure during video playback
     private Rgba32[]? _pixelBuffer;
-    private int _lastBufferSize;
 
     public ColorBlockRenderer(RenderOptions? options = null)
     {

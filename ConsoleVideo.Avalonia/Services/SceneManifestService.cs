@@ -7,12 +7,12 @@ using CoreKeyframe = ConsoleImage.Video.Core.ExtractedKeyframe;
 namespace ConsoleVideo.Avalonia.Services;
 
 /// <summary>
-/// Service for creating and managing scene manifests.
+///     Service for creating and managing scene manifests.
 /// </summary>
 public class SceneManifestService
 {
     /// <summary>
-    /// Create a scene manifest from extracted keyframes.
+    ///     Create a scene manifest from extracted keyframes.
     /// </summary>
     public SceneManifest CreateManifest(
         string videoPath,
@@ -46,25 +46,23 @@ public class SceneManifestService
         };
 
         foreach (var kf in keyframes)
-        {
             manifest.Keyframes.Add(new KeyframeEntry
             {
                 Index = kf.Index,
                 Timestamp = kf.Timestamp,
                 TimestampFormatted = FormatTimestamp(kf.Timestamp),
-                PositionPercent = videoInfo.Duration > 0 ? (kf.Timestamp / videoInfo.Duration) * 100 : 0,
+                PositionPercent = videoInfo.Duration > 0 ? kf.Timestamp / videoInfo.Duration * 100 : 0,
                 Source = kf.Source,
                 IsSceneBoundary = kf.IsSceneBoundary ? true : null,
                 Path = $"frames/keyframe_{kf.Index:D3}_{kf.Timestamp:F2}s.png",
                 SceneChangeScore = kf.IsSceneBoundary ? 1.0 : null
             });
-        }
 
         return manifest;
     }
 
     /// <summary>
-    /// Save manifest to JSON file.
+    ///     Save manifest to JSON file.
     /// </summary>
     public async Task SaveManifestAsync(SceneManifest manifest, string outputPath, CancellationToken ct = default)
     {
@@ -73,7 +71,7 @@ public class SceneManifestService
     }
 
     /// <summary>
-    /// Load manifest from JSON file.
+    ///     Load manifest from JSON file.
     /// </summary>
     public async Task<SceneManifest?> LoadManifestAsync(string path, CancellationToken ct = default)
     {
@@ -84,7 +82,7 @@ public class SceneManifestService
     }
 
     /// <summary>
-    /// Export complete manifest with keyframe images.
+    ///     Export complete manifest with keyframe images.
     /// </summary>
     public async Task ExportAsync(
         string videoPath,
@@ -103,7 +101,7 @@ public class SceneManifestService
         progress?.Report(("Saving keyframe images...", 0.1));
 
         // Save keyframe images
-        for (int i = 0; i < keyframes.Count; i++)
+        for (var i = 0; i < keyframes.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -113,7 +111,7 @@ public class SceneManifestService
 
             await kf.Image.SaveAsPngAsync(imagePath, ct);
 
-            progress?.Report(($"Saved {i + 1}/{keyframes.Count} images...", 0.1 + (0.7 * (i + 1) / keyframes.Count)));
+            progress?.Report(($"Saved {i + 1}/{keyframes.Count} images...", 0.1 + 0.7 * (i + 1) / keyframes.Count));
         }
 
         progress?.Report(("Creating manifest...", 0.9));

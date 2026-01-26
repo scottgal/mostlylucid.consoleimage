@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace ConsoleImage.Core.Tests;
 
 /// <summary>
-/// Tests for cross-platform compatibility
+///     Tests for cross-platform compatibility
 /// </summary>
 public class CrossPlatformTests
 {
@@ -17,10 +17,7 @@ public class CrossPlatformTests
         Assert.EndsWith("calibration.json", path);
 
         // Should use proper path separator for the current platform
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            Assert.Contains('\\', path);
-        }
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) Assert.Contains('\\', path);
     }
 
     [Fact]

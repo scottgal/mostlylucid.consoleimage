@@ -4,26 +4,25 @@ using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Video.Core;
+using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.Formats.Gif;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Metadata;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using SixLabors.Fonts;
 
 namespace ConsoleImage.Cli.Handlers;
 
 /// <summary>
-/// Handles video file processing with FFmpeg.
+///     Handles video file processing with FFmpeg.
 /// </summary>
 public static class VideoHandler
 {
     /// <summary>
-    /// Handle video file playback, info, and output.
+    ///     Handle video file playback, info, and output.
     /// </summary>
     /// <param name="inputPath">Path to video file or URL (FFmpeg can stream from URLs)</param>
     /// <param name="inputInfo">FileInfo for metadata (can be dummy for URLs)</param>
@@ -61,9 +60,9 @@ public static class VideoHandler
 
         // Check for FFmpeg with progress reporting
         using var ffmpeg = new FFmpegService(
-            ffprobePath: ffprobePath,
-            ffmpegPath: ffmpegExe,
-            useHardwareAcceleration: !opts.NoHwAccel);
+            ffprobePath,
+            ffmpegExe,
+            !opts.NoHwAccel);
 
         // Check FFmpeg availability with interactive prompt
         if (!FFmpegProvider.IsAvailable(opts.FfmpegPath))
@@ -168,7 +167,8 @@ public static class VideoHandler
     }
 
     private static async Task<int> HandleGifOutput(
-        FFmpegService ffmpeg, string inputPath, FileInfo inputInfo, VideoHandlerOptions opts, double? end, CancellationToken ct)
+        FFmpegService ffmpeg, string inputPath, FileInfo inputInfo, VideoHandlerOptions opts, double? end,
+        CancellationToken ct)
     {
         var videoInfo = await ffmpeg.GetVideoInfoAsync(inputPath, ct);
         if (videoInfo == null)
@@ -197,8 +197,10 @@ public static class VideoHandler
         {
             ".gif" => await HandleRawGifOutput(ffmpeg, inputPath, videoInfo, opts, end, ct),
             ".webp" => await HandleRawWebpOutput(ffmpeg, inputPath, videoInfo, opts, end, ct),
-            ".png" or ".jpg" or ".jpeg" or ".bmp" => await HandleRawImageOutput(ffmpeg, inputPath, videoInfo, opts, end, ct),
-            ".mp4" or ".webm" or ".mkv" or ".avi" or ".mov" => await HandleRawVideoOutput(ffmpeg, inputPath, opts, end, ct),
+            ".png" or ".jpg" or ".jpeg" or ".bmp" => await HandleRawImageOutput(ffmpeg, inputPath, videoInfo, opts, end,
+                ct),
+            ".mp4" or ".webm" or ".mkv" or ".avi" or ".mov" => await HandleRawVideoOutput(ffmpeg, inputPath, opts, end,
+                ct),
             _ => await HandleRawGifOutput(ffmpeg, inputPath, videoInfo, opts, end, ct) // Default to GIF
         };
     }
@@ -209,7 +211,8 @@ public static class VideoHandler
     {
         // Raw mode uses original video dimensions unless explicitly overridden
         var targetWidth = opts.RawWidth ?? opts.Width ?? videoInfo.Width;
-        var targetHeight = opts.RawHeight ?? opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+        var targetHeight = opts.RawHeight ??
+                           opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
 
         // Only limit frames when --gif-frames is explicitly specified
         // Otherwise extract all frames for the specified duration
@@ -239,9 +242,11 @@ public static class VideoHandler
             {
                 var first = opts.Subtitles.Entries.First();
                 var last = opts.Subtitles.Entries.Last();
-                Console.WriteLine($"  Subtitle range: {first.StartTime.TotalSeconds:F1}s - {last.EndTime.TotalSeconds:F1}s");
+                Console.WriteLine(
+                    $"  Subtitle range: {first.StartTime.TotalSeconds:F1}s - {last.EndTime.TotalSeconds:F1}s");
             }
         }
+
         Console.WriteLine("  Memory: streaming (1 frame at a time)");
 
         await using var streamingGif = new FFmpegGifWriter(
@@ -280,19 +285,12 @@ public static class VideoHandler
                 // Use fuzzy lookup - finds subtitle active within ±tolerance of current time
                 SubtitleEntry? entry = null;
                 if (opts.Subtitles != null)
-                {
-                    entry = opts.Subtitles.GetActiveAtWithTolerance(currentTime, toleranceSeconds);
-                }
+                    entry = opts.Subtitles.GetActiveAtWithTolerance(currentTime);
                 else if (opts.LiveSubtitleProvider != null)
-                {
                     entry = opts.LiveSubtitleProvider.Track.GetActiveAtWithTolerance(
-                        currentTime, toleranceSeconds);
-                }
+                        currentTime);
 
-                if (entry != null)
-                {
-                    BurnSubtitleOntoImage(frameImage, entry.Text);
-                }
+                if (entry != null) BurnSubtitleOntoImage(frameImage, entry.Text);
             }
 
             await streamingGif.AddFrameAsync(frameImage, ct);
@@ -316,7 +314,8 @@ public static class VideoHandler
     {
         // Raw mode uses original video dimensions unless explicitly overridden
         var targetWidth = opts.RawWidth ?? opts.Width ?? videoInfo.Width;
-        var targetHeight = opts.RawHeight ?? opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+        var targetHeight = opts.RawHeight ??
+                           opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
         var maxFrames = opts.GifFrames;
         var maxLength = opts.GifLength ?? opts.Duration ?? 10.0;
         var rawStartTime = opts.Start ?? 0;
@@ -369,8 +368,9 @@ public static class VideoHandler
     {
         // Raw mode uses original video dimensions unless explicitly overridden
         var targetWidth = opts.RawWidth ?? opts.Width ?? videoInfo.Width;
-        var targetHeight = opts.RawHeight ?? opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
-        var maxFrames = opts.GifFrames ?? 1;  // Still default to 1 for single image extraction
+        var targetHeight = opts.RawHeight ??
+                           opts.Height ?? (int)(targetWidth * videoInfo.Height / (double)videoInfo.Width);
+        var maxFrames = opts.GifFrames ?? 1; // Still default to 1 for single image extraction
         var rawStartTime = opts.Start ?? 0;
         var rawEndTime = end ?? rawStartTime + (opts.GifLength ?? opts.Duration ?? 10.0);
         var outputPath = opts.OutputGif!.FullName;
@@ -403,6 +403,7 @@ public static class VideoHandler
                         Console.WriteLine($"Saved {framePath}");
                     }
                 }
+
                 return 0;
             }
 
@@ -415,6 +416,7 @@ public static class VideoHandler
                 singleFrame.Dispose();
                 Console.WriteLine($"Saved to {outputPath}");
             }
+
             return 0;
         }
 
@@ -446,7 +448,8 @@ public static class VideoHandler
         return 0;
     }
 
-    private static async Task SaveImageAsync(Image<Rgba32> image, string path, string ext, int quality, CancellationToken ct)
+    private static async Task SaveImageAsync(Image<Rgba32> image, string path, string ext, int quality,
+        CancellationToken ct)
     {
         switch (ext)
         {
@@ -454,7 +457,8 @@ public static class VideoHandler
                 await image.SaveAsJpegAsync(path, new JpegEncoder { Quality = quality }, ct);
                 break;
             case ".png":
-                await image.SaveAsPngAsync(path, new PngEncoder { CompressionLevel = PngCompressionLevel.BestCompression }, ct);
+                await image.SaveAsPngAsync(path,
+                    new PngEncoder { CompressionLevel = PngCompressionLevel.BestCompression }, ct);
                 break;
             case ".bmp":
                 await image.SaveAsBmpAsync(path, ct);
@@ -576,19 +580,12 @@ public static class VideoHandler
                     // Use fuzzy lookup with tolerance for timing imprecision
                     SubtitleEntry? entry = null;
                     if (opts.Subtitles != null)
-                    {
                         entry = opts.Subtitles.GetActiveAtWithTolerance(timestamp, toleranceSeconds);
-                    }
                     else if (opts.LiveSubtitleProvider != null)
-                    {
                         entry = opts.LiveSubtitleProvider.Track.GetActiveAtWithTolerance(
                             timestamp, toleranceSeconds);
-                    }
 
-                    if (entry != null)
-                    {
-                        BurnSubtitleOntoImage(frameImage, entry.Text);
-                    }
+                    if (entry != null) BurnSubtitleOntoImage(frameImage, entry.Text);
                 }
 
                 var gifFrameMetadata = frameImage.Frames.RootFrame.Metadata.GetGifMetadata();
@@ -673,10 +670,7 @@ public static class VideoHandler
 
         // Create subtitle renderer if subtitles are available
         SubtitleRenderer? subtitleRenderer = null;
-        if (opts.Subtitles != null)
-        {
-            subtitleRenderer = new SubtitleRenderer(charWidth, 2, !opts.NoColor);
-        }
+        if (opts.Subtitles != null) subtitleRenderer = new SubtitleRenderer(charWidth, 2, !opts.NoColor);
 
         // For pixel modes (Braille/Blocks), we now support burning subtitles/status into the image
         // Keep statusRenderer for building status text even for pixel modes
@@ -706,14 +700,10 @@ public static class VideoHandler
             {
                 SubtitleEntry? entry = null;
                 if (opts.Subtitles != null)
-                {
                     entry = opts.Subtitles.GetActiveAt(currentTime);
-                }
                 else if (opts.LiveSubtitleProvider != null)
-                {
                     entry = opts.LiveSubtitleProvider.Track.GetActiveAtWithTolerance(
-                        currentTime.TotalSeconds, toleranceSeconds: 0.5);
-                }
+                        currentTime.TotalSeconds);
                 subtitleText = subtitleRenderer.GetPlainText(entry);
             }
 
@@ -781,15 +771,9 @@ public static class VideoHandler
                 var content = asciiFrame.ToAnsiString();
 
                 // For ASCII mode, append subtitle and status as text
-                if (!string.IsNullOrEmpty(subtitleText))
-                {
-                    content += "\n" + subtitleText;
-                }
+                if (!string.IsNullOrEmpty(subtitleText)) content += "\n" + subtitleText;
 
-                if (!string.IsNullOrEmpty(statusText))
-                {
-                    content += "\n" + statusText;
-                }
+                if (!string.IsNullOrEmpty(statusText)) content += "\n" + statusText;
 
                 gifWriter.AddFrame(content, frameDelayMs);
             }
@@ -895,7 +879,7 @@ public static class VideoHandler
             // NOTE: Subtitles are stored separately in document metadata, NOT embedded in frames
             // This avoids delta compression issues and allows subtitles to be toggled during playback
             await using (var docWriter = new StreamingDocumentWriter(
-                tempPath, renderModeName, jsonRenderOptions, inputPath))
+                             tempPath, renderModeName, jsonRenderOptions, inputPath))
             {
                 await docWriter.WriteHeaderAsync(ct);
 
@@ -915,7 +899,8 @@ public static class VideoHandler
                     var currentTime = TimeSpan.FromSeconds(currentSeconds);
 
                     // Render frame content using reusable renderer (much faster for streaming)
-                    var content = RenderFrameContentWithRenderer(frameImage, brailleRenderer, blockRenderer, asciiRenderer);
+                    var content =
+                        RenderFrameContentWithRenderer(frameImage, brailleRenderer, blockRenderer, asciiRenderer);
                     // Only add status line if requested - subtitles are stored separately
                     content = AppendOverlays(content, null, statusRenderer, opts,
                         inputPath, videoInfo, charWidth, charHeight, renderModeName,
@@ -934,10 +919,10 @@ public static class VideoHandler
             Console.Write("\rCompressing document...                         ");
             var optimized = await OptimizedDocument.FromNdjsonFileAsync(
                 tempPath,
-                keyframeInterval: 30,
-                enableStability: opts.Dejitter,
-                colorThreshold: opts.ColorThreshold ?? 15,
-                ct: ct);
+                30,
+                opts.Dejitter,
+                opts.ColorThreshold ?? 15,
+                ct);
 
             // Record subtitle metadata in document settings
             if (opts.Subtitles != null)
@@ -967,10 +952,14 @@ public static class VideoHandler
 
             // Cleanup temp file
             if (File.Exists(tempPath))
-            {
-                try { File.Delete(tempPath); }
-                catch { /* Ignore cleanup errors */ }
-            }
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch
+                {
+                    /* Ignore cleanup errors */
+                }
         }
 
         return 0;
@@ -996,9 +985,9 @@ public static class VideoHandler
             var vttFileName = baseName + ".vtt";
 
             docWriter.SetSubtitleMetadata(
-                subtitleFile: vttFileName,
-                language: opts.Subtitles.Language,
-                source: opts.Subtitles.SourceFile != null ? "file" : "auto");
+                vttFileName,
+                opts.Subtitles.Language,
+                opts.Subtitles.SourceFile != null ? "file" : "auto");
         }
 
         await docWriter.WriteHeaderAsync(ct);
@@ -1116,7 +1105,7 @@ public static class VideoHandler
 
         // Parse frame step option: "-f s" for smart, "-f 2" for uniform skip
         var (frameStep, smartMode) = opts.ParseFrameStep();
-        var samplingMode = smartMode ? Video.Core.FrameSamplingMode.Smart : Video.Core.FrameSamplingMode.Uniform;
+        var samplingMode = smartMode ? FrameSamplingMode.Smart : FrameSamplingMode.Uniform;
 
         var options = new VideoRenderOptions
         {
@@ -1220,8 +1209,8 @@ public static class VideoHandler
     }
 
     /// <summary>
-    /// Render a frame to string content based on render mode.
-    /// Creates a new renderer per call - use the overload with pre-created renderer for streaming.
+    ///     Render a frame to string content based on render mode.
+    ///     Creates a new renderer per call - use the overload with pre-created renderer for streaming.
     /// </summary>
     private static string RenderFrameContent(
         Image<Rgba32> frameImage, RenderOptions renderOptions, VideoHandlerOptions opts)
@@ -1244,8 +1233,8 @@ public static class VideoHandler
     }
 
     /// <summary>
-    /// Render a frame using pre-created renderers (for streaming - reuses buffers).
-    /// Pass the appropriate renderer based on mode.
+    ///     Render a frame using pre-created renderers (for streaming - reuses buffers).
+    ///     Pass the appropriate renderer based on mode.
     /// </summary>
     private static string RenderFrameContentWithRenderer(
         Image<Rgba32> frameImage,
@@ -1269,8 +1258,8 @@ public static class VideoHandler
     }
 
     /// <summary>
-    /// Create appropriate renderers for video streaming.
-    /// Returns disposable tuple - caller must dispose all non-null renderers.
+    ///     Create appropriate renderers for video streaming.
+    ///     Returns disposable tuple - caller must dispose all non-null renderers.
     /// </summary>
     private static (BrailleRenderer? braille, ColorBlockRenderer? block, AsciiRenderer? ascii)
         CreateStreamingRenderers(RenderOptions renderOptions, VideoHandlerOptions opts)
@@ -1285,7 +1274,7 @@ public static class VideoHandler
     }
 
     /// <summary>
-    /// Append subtitle and status overlays to frame content.
+    ///     Append subtitle and status overlays to frame content.
     /// </summary>
     private static string AppendOverlays(
         string content,
@@ -1306,39 +1295,30 @@ public static class VideoHandler
 
             // Try static subtitles first
             if (opts.Subtitles != null)
-            {
                 entry = opts.Subtitles.GetActiveAt(currentTime);
-            }
             // Fall back to live subtitle provider (chunked transcription)
             else if (opts.LiveSubtitleProvider != null)
-            {
                 entry = opts.LiveSubtitleProvider.Track.GetActiveAtWithTolerance(
-                    currentTime.TotalSeconds, toleranceSeconds: 0.5);
-            }
+                    currentTime.TotalSeconds);
 
             if (entry != null)
             {
                 var subtitleText = subtitleRenderer.RenderEntry(entry);
-                if (!string.IsNullOrEmpty(subtitleText))
-                {
-                    content += "\n" + subtitleText;
-                }
+                if (!string.IsNullOrEmpty(subtitleText)) content += "\n" + subtitleText;
             }
         }
 
         // Append status line if enabled
         if (statusRenderer != null)
-        {
             content += "\n" + statusRenderer.Render(BuildStatusInfo(
                 inputPath, videoInfo, charWidth, charHeight, renderModeName,
                 currentFrame, totalFrames, currentTime, totalDuration, fps));
-        }
 
         return content;
     }
 
     /// <summary>
-    /// Build a StatusLine.StatusInfo for the current frame.
+    ///     Build a StatusLine.StatusInfo for the current frame.
     /// </summary>
     private static StatusLine.StatusInfo BuildStatusInfo(
         string inputPath, VideoInfo videoInfo,
@@ -1363,8 +1343,8 @@ public static class VideoHandler
     }
 
     /// <summary>
-    /// Burn subtitle text onto an image frame.
-    /// Uses accessible sizing (approximately 5-8% of video height).
+    ///     Burn subtitle text onto an image frame.
+    ///     Uses accessible sizing (approximately 5-8% of video height).
     /// </summary>
     private static void BurnSubtitleOntoImage(Image<Rgba32> image, string subtitle)
     {
@@ -1393,7 +1373,7 @@ public static class VideoHandler
 
         // Horizontal margin (5% each side = 90% usable width)
         var horizontalMargin = image.Width * 0.05f;
-        var maxTextWidth = image.Width - (horizontalMargin * 2);
+        var maxTextWidth = image.Width - horizontalMargin * 2;
 
         // Find the longest line and scale font to fit
         var fontSize = baseFontSize;
@@ -1420,7 +1400,7 @@ public static class VideoHandler
 
         var bottomMargin = image.Height / 20;
         var lineHeight = fontSize + 4;
-        var startY = image.Height - bottomMargin - (lines.Length * lineHeight);
+        var startY = image.Height - bottomMargin - lines.Length * lineHeight;
 
         image.Mutate(ctx =>
         {
@@ -1437,7 +1417,8 @@ public static class VideoHandler
 
                 // Draw outline
                 var outlineOffset = Math.Max(1, fontSize / 10);
-                var offsets = new[] { (-outlineOffset, 0), (outlineOffset, 0), (0, -outlineOffset), (0, outlineOffset) };
+                var offsets = new[]
+                    { (-outlineOffset, 0), (outlineOffset, 0), (0, -outlineOffset), (0, outlineOffset) };
 
                 foreach (var (dx, dy) in offsets)
                 {
@@ -1457,7 +1438,7 @@ public static class VideoHandler
 }
 
 /// <summary>
-/// Options for video handling.
+///     Options for video handling.
 /// </summary>
 public class VideoHandlerOptions
 {
@@ -1487,29 +1468,7 @@ public class VideoHandlerOptions
     public double SceneThreshold { get; init; } = 0.4;
 
     /// <summary>
-    /// Parse the FrameStep option and return (frameStepValue, isSmartMode).
-    /// </summary>
-    public (int frameStep, bool smartMode) ParseFrameStep()
-    {
-        if (string.IsNullOrEmpty(FrameStep))
-            return (1, false);
-
-        var lower = FrameStep.ToLowerInvariant().Trim();
-
-        // Smart mode
-        if (lower == "s" || lower == "smart")
-            return (1, true);
-
-        // Numeric mode
-        if (int.TryParse(FrameStep, out var step))
-            return (Math.Max(1, step), false);
-
-        // Default fallback
-        return (1, false);
-    }
-
-    /// <summary>
-    /// Get the numeric frame step value (for FFmpeg).
+    ///     Get the numeric frame step value (for FFmpeg).
     /// </summary>
     public int FrameStepValue => ParseFrameStep().frameStep;
 
@@ -1576,11 +1535,33 @@ public class VideoHandlerOptions
     public SubtitleTrack? Subtitles { get; init; }
 
     /// <summary>
-    /// Live subtitle provider for streaming transcription during playback.
-    /// Takes precedence over static Subtitles when set.
+    ///     Live subtitle provider for streaming transcription during playback.
+    ///     Takes precedence over static Subtitles when set.
     /// </summary>
     public ILiveSubtitleProvider? LiveSubtitleProvider { get; init; }
 
     // Debug
     public bool DebugMode { get; init; }
+
+    /// <summary>
+    ///     Parse the FrameStep option and return (frameStepValue, isSmartMode).
+    /// </summary>
+    public (int frameStep, bool smartMode) ParseFrameStep()
+    {
+        if (string.IsNullOrEmpty(FrameStep))
+            return (1, false);
+
+        var lower = FrameStep.ToLowerInvariant().Trim();
+
+        // Smart mode
+        if (lower == "s" || lower == "smart")
+            return (1, true);
+
+        // Numeric mode
+        if (int.TryParse(FrameStep, out var step))
+            return (Math.Max(1, step), false);
+
+        // Default fallback
+        return (1, false);
+    }
 }

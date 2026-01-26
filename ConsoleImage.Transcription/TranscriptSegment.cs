@@ -1,7 +1,7 @@
 namespace ConsoleImage.Transcription;
 
 /// <summary>
-/// A single transcribed segment with timing information.
+///     A single transcribed segment with timing information.
 /// </summary>
 public record TranscriptSegment
 {
@@ -31,7 +31,7 @@ public record TranscriptSegment
 }
 
 /// <summary>
-/// Full transcription result.
+///     Full transcription result.
 /// </summary>
 public record TranscriptionResult
 {

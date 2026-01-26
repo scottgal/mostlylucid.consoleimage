@@ -9,12 +9,12 @@ using static ConsoleImage.Core.MarkdownRenderer;
 namespace ConsoleImage.Cli.Handlers;
 
 /// <summary>
-/// Handles image and GIF file processing.
+///     Handles image and GIF file processing.
 /// </summary>
 public static class ImageHandler
 {
     /// <summary>
-    /// Handle image files (JPG, PNG, GIF, etc.) directly without FFmpeg.
+    ///     Handle image files (JPG, PNG, GIF, etc.) directly without FFmpeg.
     /// </summary>
     public static async Task<int> HandleAsync(
         FileInfo input,
@@ -136,7 +136,8 @@ public static class ImageHandler
     {
         if (useMatrix)
         {
-            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet);
+            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed,
+                matrixAlphabet);
             using var renderer = new MatrixRenderer(options, matrixOpts);
             var frames = renderer.RenderGif(input.FullName);
             var totalFrames = frames.Count;
@@ -155,9 +156,11 @@ public static class ImageHandler
                 {
                     gifWriter.AddFrame(frame.Content, frame.DelayMs);
                 }
+
                 frameIndex++;
                 Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
             }
+
             Console.WriteLine();
         }
         else if (useBraille)
@@ -181,9 +184,11 @@ public static class ImageHandler
                 {
                     gifWriter.AddBrailleFrame(frame, frame.DelayMs);
                 }
+
                 frameIndex++;
                 Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
             }
+
             Console.WriteLine();
         }
         else if (useBlocks)
@@ -207,9 +212,11 @@ public static class ImageHandler
                 {
                     gifWriter.AddColorBlockFrame(frame, frame.DelayMs);
                 }
+
                 frameIndex++;
                 Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
             }
+
             Console.WriteLine();
         }
         else
@@ -228,12 +235,15 @@ public static class ImageHandler
                         input.Name, renderModeName, frameIndex + 1, totalFrames));
                     content += "\n" + statusText;
                 }
+
                 gifWriter.AddFrame(content, frame.DelayMs);
                 frameIndex++;
                 Console.Write($"\rRendering frames to GIF: {frameIndex}/{totalFrames}");
             }
+
             Console.WriteLine();
         }
+
         await Task.CompletedTask;
     }
 
@@ -258,7 +268,8 @@ public static class ImageHandler
         if (useMatrix)
         {
             // Matrix mode animates even on static images - generate 5 seconds of rain
-            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet);
+            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed,
+                matrixAlphabet);
             using var renderer = new MatrixRenderer(options, matrixOpts);
             using var image = Image.Load<Rgba32>(input.FullName);
 
@@ -272,8 +283,8 @@ public static class ImageHandler
                 frameIndex++;
                 Console.Write($"\rRendering Matrix frames to GIF: {frameIndex}/{frameCount}");
             }
+
             Console.WriteLine();
-            return;
         }
         else if (useBraille)
         {
@@ -307,7 +318,8 @@ public static class ImageHandler
 
         if (useMatrix)
         {
-            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet);
+            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed,
+                matrixAlphabet);
             using var renderer = new MatrixRenderer(options, matrixOpts);
             var frames = renderer.RenderGif(input.FullName);
             Console.Error.WriteLine($"Rendering {frames.Count} frames in Matrix mode...");
@@ -357,7 +369,8 @@ public static class ImageHandler
         List<IAnimationFrame> frames;
         if (useMatrix)
         {
-            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet);
+            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed,
+                matrixAlphabet);
             using var renderer = new MatrixRenderer(options, matrixOpts);
             frames = renderer.RenderGif(input.FullName).Cast<IAnimationFrame>().ToList();
         }
@@ -409,14 +422,15 @@ public static class ImageHandler
         {
             // Matrix mode always animates continuously, even on still images
             // This is the fun part - the rain keeps falling!
-            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed, matrixAlphabet);
+            var matrixOpts = RenderHelpers.BuildMatrixOptions(matrixColor, matrixFullColor, matrixDensity, matrixSpeed,
+                matrixAlphabet);
             using var renderer = new MatrixRenderer(options, matrixOpts);
             using var image = Image.Load<Rgba32>(input.FullName);
 
             // For JSON output, generate a fixed number of frames
             if (outputAsJson && !string.IsNullOrEmpty(jsonOutputPath))
             {
-                var frameCount = (int)(matrixOpts.TargetFps * 10); // 10 seconds of animation
+                var frameCount = matrixOpts.TargetFps * 10; // 10 seconds of animation
                 var frames = renderer.RenderContinuous(image, frameCount).ToList();
                 var doc = ConsoleImageDocument.FromMatrixFrames(frames, options, input.FullName);
                 await doc.SaveAsync(jsonOutputPath, ct);
@@ -502,7 +516,7 @@ public static class ImageHandler
     }
 
     /// <summary>
-    /// Common animation loop for Matrix rain playback with pause/resume support.
+    ///     Common animation loop for Matrix rain playback with pause/resume support.
     /// </summary>
     private static async Task PlayMatrixAnimationLoopAsync(
         Func<IEnumerable<MatrixFrame>> frameGenerator,
@@ -522,7 +536,7 @@ public static class ImageHandler
                 // Check for space to pause/resume at batch boundary
                 while (Console.KeyAvailable)
                 {
-                    var key = Console.ReadKey(intercept: true);
+                    var key = Console.ReadKey(true);
                     if (key.Key == ConsoleKey.Spacebar)
                         isPaused = !isPaused;
                     else if (key.Key == ConsoleKey.Q || key.Key == ConsoleKey.Escape)
@@ -543,7 +557,7 @@ public static class ImageHandler
                     // Check for pause during batch
                     while (Console.KeyAvailable)
                     {
-                        var key = Console.ReadKey(intercept: true);
+                        var key = Console.ReadKey(true);
                         if (key.Key == ConsoleKey.Spacebar)
                             isPaused = !isPaused;
                         else if (key.Key == ConsoleKey.Q || key.Key == ConsoleKey.Escape)
@@ -581,11 +595,12 @@ public static class ImageHandler
     }
 
     /// <summary>
-    /// Play continuous Matrix rain animation over an image until cancelled.
-    /// Space to pause, Q/Escape to quit.
+    ///     Play continuous Matrix rain animation over an image until cancelled.
+    ///     Space to pause, Q/Escape to quit.
     /// </summary>
     private static async Task PlayMatrixContinuousAsync(
-        MatrixRenderer renderer, MatrixOptions matrixOpts, Image<Rgba32> image, int loop, float speed, CancellationToken ct)
+        MatrixRenderer renderer, MatrixOptions matrixOpts, Image<Rgba32> image, int loop, float speed,
+        CancellationToken ct)
     {
         var delayMs = (int)(1000.0 / matrixOpts.TargetFps / speed);
         await PlayMatrixAnimationLoopAsync(
@@ -595,7 +610,7 @@ public static class ImageHandler
     }
 
     /// <summary>
-    /// Play pure Matrix rain effect with no image until cancelled.
+    ///     Play pure Matrix rain effect with no image until cancelled.
     /// </summary>
     public static async Task PlayPureMatrixAsync(
         RenderOptions options, MatrixOptions matrixOpts, int loop, float speed, CancellationToken ct)
@@ -609,7 +624,7 @@ public static class ImageHandler
     }
 
     /// <summary>
-    /// Render pure Matrix rain effect to an animated GIF.
+    ///     Render pure Matrix rain effect to an animated GIF.
     /// </summary>
     public static async Task<int> HandlePureMatrixGifAsync(
         RenderOptions options, MatrixOptions matrixOpts, FileInfo outputGif,
@@ -640,6 +655,7 @@ public static class ImageHandler
             frameIndex++;
             Console.Write($"\rRendering Matrix frames to GIF: {frameIndex}/{frameCount}");
         }
+
         Console.WriteLine();
 
         await gifWriter.SaveAsync(outputGif.FullName, ct);

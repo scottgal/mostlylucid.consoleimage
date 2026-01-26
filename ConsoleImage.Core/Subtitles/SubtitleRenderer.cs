@@ -3,39 +3,39 @@ using System.Text;
 namespace ConsoleImage.Core.Subtitles;
 
 /// <summary>
-/// Renders subtitles for console display below the main frame.
+///     Renders subtitles for console display below the main frame.
 /// </summary>
 public class SubtitleRenderer
 {
-    private readonly int _maxWidth;
-    private readonly int _maxLines;
-    private readonly bool _useColor;
-    private readonly SubtitleStyle _style;
-    private readonly Dictionary<string, SubtitleStyle> _speakerStyles = new();
-
-    // Pre-allocated reusable buffers (avoids per-frame allocations)
-    private readonly StringBuilder _renderSb = new(512);
-    private readonly StringBuilder _positionSb = new(512);
-    private readonly string _blankLine; // Cached blank line of _maxWidth spaces
-
     /// <summary>
-    /// Colors used for different speakers in diarization.
-    /// First speaker gets yellow (not white) to visually distinguish from non-diarized subtitles.
+    ///     Colors used for different speakers in diarization.
+    ///     First speaker gets yellow (not white) to visually distinguish from non-diarized subtitles.
     /// </summary>
     private static readonly (byte R, byte G, byte B)[] SpeakerColors =
     [
-        ((byte)255, (byte)255, (byte)100),  // Yellow (Speaker 1)
-        ((byte)100, (byte)255, (byte)255),  // Cyan (Speaker 2)
-        ((byte)255, (byte)150, (byte)150),  // Light red/pink (Speaker 3)
-        ((byte)150, (byte)255, (byte)150),  // Light green (Speaker 4)
-        ((byte)200, (byte)150, (byte)255),  // Light purple (Speaker 5)
-        ((byte)255, (byte)200, (byte)100),  // Orange (Speaker 6)
-        ((byte)150, (byte)200, (byte)255),  // Light blue (Speaker 7)
-        ((byte)255, (byte)255, (byte)255),  // White (Speaker 8)
+        (255, 255, 100), // Yellow (Speaker 1)
+        (100, 255, 255), // Cyan (Speaker 2)
+        (255, 150, 150), // Light red/pink (Speaker 3)
+        (150, 255, 150), // Light green (Speaker 4)
+        (200, 150, 255), // Light purple (Speaker 5)
+        (255, 200, 100), // Orange (Speaker 6)
+        (150, 200, 255), // Light blue (Speaker 7)
+        (255, 255, 255) // White (Speaker 8)
     ];
 
+    private readonly string _blankLine; // Cached blank line of _maxWidth spaces
+    private readonly int _maxLines;
+    private readonly int _maxWidth;
+    private readonly StringBuilder _positionSb = new(512);
+
+    // Pre-allocated reusable buffers (avoids per-frame allocations)
+    private readonly StringBuilder _renderSb = new(512);
+    private readonly Dictionary<string, SubtitleStyle> _speakerStyles = new();
+    private readonly SubtitleStyle _style;
+    private readonly bool _useColor;
+
     /// <summary>
-    /// Create a subtitle renderer.
+    ///     Create a subtitle renderer.
     /// </summary>
     /// <param name="maxWidth">Maximum width in characters for subtitle display.</param>
     /// <param name="maxLines">Maximum lines of subtitle text (default: 2).</param>
@@ -51,7 +51,7 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Render subtitle text for console output.
+    ///     Render subtitle text for console output.
     /// </summary>
     /// <param name="track">The subtitle track.</param>
     /// <param name="timestamp">Current playback timestamp.</param>
@@ -63,7 +63,7 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Render subtitle text for console output.
+    ///     Render subtitle text for console output.
     /// </summary>
     /// <param name="track">The subtitle track.</param>
     /// <param name="seconds">Current playback timestamp in seconds.</param>
@@ -74,7 +74,7 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Render a specific subtitle entry.
+    ///     Render a specific subtitle entry.
     /// </summary>
     /// <param name="entry">The subtitle entry to render, or null for blank lines.</param>
     /// <returns>Formatted subtitle lines.</returns>
@@ -91,6 +91,7 @@ public class SubtitleRenderer
                 if (i < _maxLines - 1)
                     _renderSb.AppendLine();
             }
+
             return _renderSb.ToString();
         }
 
@@ -147,7 +148,7 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Get style for a specific speaker, creating one if needed.
+    ///     Get style for a specific speaker, creating one if needed.
     /// </summary>
     private SubtitleStyle GetStyleForSpeaker(string? speakerId)
     {
@@ -172,7 +173,7 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Get display name for a speaker ID.
+    ///     Get display name for a speaker ID.
     /// </summary>
     private static string GetSpeakerDisplayName(string speakerId)
     {
@@ -183,11 +184,12 @@ public class SubtitleRenderer
             if (int.TryParse(numPart, out var num))
                 return $"Speaker {num + 1}";
         }
+
         return speakerId;
     }
 
     /// <summary>
-    /// Render subtitle at a specific cursor position.
+    ///     Render subtitle at a specific cursor position.
     /// </summary>
     /// <param name="entry">The subtitle entry.</param>
     /// <param name="row">Starting row (1-based).</param>
@@ -203,7 +205,6 @@ public class SubtitleRenderer
         var start = 0;
 
         for (var i = 0; i <= content.Length; i++)
-        {
             if (i == content.Length || content[i] == '\n')
             {
                 var end = i;
@@ -219,13 +220,12 @@ public class SubtitleRenderer
                 lineIdx++;
                 start = i + 1;
             }
-        }
 
         return _positionSb.ToString();
     }
 
     /// <summary>
-    /// Render arbitrary text (useful for status messages like "Transcribing...").
+    ///     Render arbitrary text (useful for status messages like "Transcribing...").
     /// </summary>
     /// <param name="text">The text to render.</param>
     /// <returns>Formatted subtitle-style output.</returns>
@@ -245,7 +245,7 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Get plain text representation of the subtitle (for GIF burning).
+    ///     Get plain text representation of the subtitle (for GIF burning).
     /// </summary>
     public string GetPlainText(SubtitleEntry? entry)
     {
@@ -257,7 +257,7 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Get plain text lines for the subtitle (for GIF burning).
+    ///     Get plain text lines for the subtitle (for GIF burning).
     /// </summary>
     public string[] GetPlainTextLines(SubtitleEntry? entry)
     {
@@ -268,8 +268,8 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Format subtitle text with word wrapping and line limits.
-    /// Uses balanced wrapping to distribute text evenly across lines.
+    ///     Format subtitle text with word wrapping and line limits.
+    ///     Uses balanced wrapping to distribute text evenly across lines.
     /// </summary>
     private string[] FormatText(string text)
     {
@@ -297,6 +297,7 @@ public class SubtitleRenderer
 
                 result.Add(trimmed);
             }
+
             return result.ToArray();
         }
 
@@ -356,10 +357,7 @@ public class SubtitleRenderer
                     }
                 }
 
-                if (!string.IsNullOrEmpty(currentLine) && result.Count < _maxLines)
-                {
-                    result.Add(currentLine);
-                }
+                if (!string.IsNullOrEmpty(currentLine) && result.Count < _maxLines) result.Add(currentLine);
             }
         }
 
@@ -367,7 +365,7 @@ public class SubtitleRenderer
     }
 
     /// <summary>
-    /// Balance text across 2 lines by splitting at a word boundary near the middle.
+    ///     Balance text across 2 lines by splitting at a word boundary near the middle.
     /// </summary>
     private static string[] BalanceText(string text, int maxWidth)
     {
@@ -405,29 +403,29 @@ public class SubtitleRenderer
 }
 
 /// <summary>
-/// Visual style options for subtitle rendering.
+///     Visual style options for subtitle rendering.
 /// </summary>
 public class SubtitleStyle
 {
     private string? _cachedAnsiPrefix;
 
     /// <summary>
-    /// Bold text.
+    ///     Bold text.
     /// </summary>
     public bool Bold { get; set; } = true;
 
     /// <summary>
-    /// Foreground color RGB (null = white).
+    ///     Foreground color RGB (null = white).
     /// </summary>
     public (byte R, byte G, byte B)? ForegroundColor { get; set; }
 
     /// <summary>
-    /// Background color RGB (null = transparent).
+    ///     Background color RGB (null = transparent).
     /// </summary>
     public (byte R, byte G, byte B)? BackgroundColor { get; set; }
 
     /// <summary>
-    /// Default style: bold white text.
+    ///     Default style: bold white text.
     /// </summary>
     public static SubtitleStyle Default => new()
     {
@@ -436,7 +434,7 @@ public class SubtitleStyle
     };
 
     /// <summary>
-    /// Yellow subtitle style (common in video players).
+    ///     Yellow subtitle style (common in video players).
     /// </summary>
     public static SubtitleStyle Yellow => new()
     {
@@ -445,7 +443,7 @@ public class SubtitleStyle
     };
 
     /// <summary>
-    /// Cached ANSI prefix codes for this style. Computed once on first access.
+    ///     Cached ANSI prefix codes for this style. Computed once on first access.
     /// </summary>
     public string AnsiPrefix => _cachedAnsiPrefix ??= BuildAnsiPrefix();
 

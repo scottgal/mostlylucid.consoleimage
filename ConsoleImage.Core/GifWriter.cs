@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
@@ -6,8 +7,6 @@ using SixLabors.ImageSharp.Formats.Gif;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Processing.Processors.Quantization;
-
-using ConsoleImage.Core.Subtitles;
 
 namespace ConsoleImage.Core;
 
@@ -101,7 +100,7 @@ public class GifWriter : IDisposable
 
         // Split subtitle into lines and center each
         var subtitleLines = subtitle.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var sb = new System.Text.StringBuilder(asciiContent);
+        var sb = new StringBuilder(asciiContent);
 
         // Add separator line
         sb.AppendLine();
@@ -188,7 +187,7 @@ public class GifWriter : IDisposable
         // Calculate positions - center text at bottom of image
         var bottomMargin = image.Height / 20;
         var lineHeight = fontSize + 4;
-        var startY = image.Height - bottomMargin - (lines.Length * lineHeight);
+        var startY = image.Height - bottomMargin - lines.Length * lineHeight;
 
         image.Mutate(ctx =>
         {
@@ -206,7 +205,8 @@ public class GifWriter : IDisposable
 
                 // Draw outline (4 offsets)
                 var outlineOffset = Math.Max(1, fontSize / 10);
-                var offsets = new[] {
+                var offsets = new[]
+                {
                     (-outlineOffset, 0), (outlineOffset, 0),
                     (0, -outlineOffset), (0, outlineOffset)
                 };
@@ -270,7 +270,7 @@ public class GifWriter : IDisposable
         var statusY = image.Height - bottomMargin - (hasStatus ? statusLineHeight : 0);
 
         // Subtitle above status
-        var subtitleStartY = statusY - (subtitleLines.Length * lineHeight) - (hasStatus ? 4 : 0);
+        var subtitleStartY = statusY - subtitleLines.Length * lineHeight - (hasStatus ? 4 : 0);
 
         image.Mutate(ctx =>
         {
@@ -288,7 +288,8 @@ public class GifWriter : IDisposable
 
                 // Draw outline
                 var outlineOffset = Math.Max(1, fontSize / 10);
-                var offsets = new[] {
+                var offsets = new[]
+                {
                     (-outlineOffset, 0), (outlineOffset, 0),
                     (0, -outlineOffset), (0, outlineOffset)
                 };
@@ -320,7 +321,8 @@ public class GifWriter : IDisposable
 
                 // Draw outline for status
                 var statusOutlineOffset = Math.Max(1, statusFontSize / 12);
-                var offsets = new[] {
+                var offsets = new[]
+                {
                     (-statusOutlineOffset, 0), (statusOutlineOffset, 0),
                     (0, -statusOutlineOffset), (0, statusOutlineOffset)
                 };
@@ -404,7 +406,8 @@ public class GifWriter : IDisposable
     /// <param name="scale">Scale factor for output (default: 1.0).</param>
     /// <param name="backgroundColor">Background color (default: black).</param>
     /// <returns>The rendered image.</returns>
-    public static Image<Rgba32> RenderBrailleFrameToImage(BrailleFrame frame, float scale = 1.0f, Color? backgroundColor = null)
+    public static Image<Rgba32> RenderBrailleFrameToImage(BrailleFrame frame, float scale = 1.0f,
+        Color? backgroundColor = null)
     {
         var lines = frame.Content.Split('\n');
         var charWidth = lines.Max(l => StripAnsi(l).Length);
@@ -450,7 +453,8 @@ public class GifWriter : IDisposable
     /// <param name="scale">Scale factor for output (default: 1.0).</param>
     /// <param name="backgroundColor">Background color (default: black).</param>
     /// <returns>The rendered image.</returns>
-    public static Image<Rgba32> RenderColorBlockFrameToImage(ColorBlockFrame frame, float scale = 1.0f, Color? backgroundColor = null)
+    public static Image<Rgba32> RenderColorBlockFrameToImage(ColorBlockFrame frame, float scale = 1.0f,
+        Color? backgroundColor = null)
     {
         var lines = frame.Content.Split('\n');
         var width = lines.Max(l => StripAnsi(l).Length);
@@ -491,7 +495,8 @@ public class GifWriter : IDisposable
     /// <param name="scale">Scale factor for output (default: 1.0).</param>
     /// <param name="backgroundColor">Background color (default: black).</param>
     /// <returns>The rendered image.</returns>
-    public static Image<Rgba32> RenderAnsiTextToImage(string ansiContent, int fontSize = 10, float scale = 1.0f, Color? backgroundColor = null)
+    public static Image<Rgba32> RenderAnsiTextToImage(string ansiContent, int fontSize = 10, float scale = 1.0f,
+        Color? backgroundColor = null)
     {
         var options = new GifWriterOptions
         {
@@ -691,13 +696,17 @@ public class GifWriter : IDisposable
     ///     Render ColorBlockFrame to an image (2 pixels per character cell vertically).
     /// </summary>
     private Image<Rgba32> RenderColorBlocksToImage(ColorBlockFrame frame)
-        => RenderColorBlockFrameToImage(frame, _options.Scale, _options.BackgroundColor);
+    {
+        return RenderColorBlockFrameToImage(frame, _options.Scale, _options.BackgroundColor);
+    }
 
     /// <summary>
     ///     Render BrailleFrame to an image (2x4 dots per character cell).
     /// </summary>
     private Image<Rgba32> RenderBrailleToImage(BrailleFrame frame)
-        => RenderBrailleFrameToImage(frame, _options.Scale, _options.BackgroundColor);
+    {
+        return RenderBrailleFrameToImage(frame, _options.Scale, _options.BackgroundColor);
+    }
 
     /// <summary>
     ///     Render MatrixFrame to an image with actual text characters (like ASCII mode).

@@ -582,5 +582,4 @@ public class ResizableAnimationPlayer
 
         return false;
     }
-
 }

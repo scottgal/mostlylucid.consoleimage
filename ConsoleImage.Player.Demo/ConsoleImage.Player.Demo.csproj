@@ -14,8 +14,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\ConsoleImage.Player\ConsoleImage.Player.csproj" />
-        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
+        <ProjectReference Include="..\ConsoleImage.Player\ConsoleImage.Player.csproj"/>
+        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj"/>
     </ItemGroup>
 
 </Project>

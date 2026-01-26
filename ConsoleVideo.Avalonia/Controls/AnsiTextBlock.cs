@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -6,14 +7,11 @@ using ConsoleVideo.Avalonia.Services;
 namespace ConsoleVideo.Avalonia.Controls;
 
 /// <summary>
-/// A control that renders ANSI-colored text with proper monospace formatting.
-/// Parses ANSI escape codes and displays colored text.
+///     A control that renders ANSI-colored text with proper monospace formatting.
+///     Parses ANSI escape codes and displays colored text.
 /// </summary>
 public class AnsiTextBlock : Control
 {
-    private readonly AsciiPreviewService _previewService = new();
-    private List<AnsiSegment>? _segments;
-
     public static readonly StyledProperty<string?> AnsiTextProperty =
         AvaloniaProperty.Register<AnsiTextBlock, string?>(nameof(AnsiText));
 
@@ -23,6 +21,15 @@ public class AnsiTextBlock : Control
     public static readonly StyledProperty<FontFamily> FontFamilyProperty =
         AvaloniaProperty.Register<AnsiTextBlock, FontFamily>(nameof(FontFamily),
             new FontFamily("Cascadia Mono, Consolas, Courier New, monospace"));
+
+    private readonly AsciiPreviewService _previewService = new();
+    private List<AnsiSegment>? _segments;
+
+    static AnsiTextBlock()
+    {
+        AffectsRender<AnsiTextBlock>(AnsiTextProperty, FontSizeProperty, FontFamilyProperty);
+        AffectsMeasure<AnsiTextBlock>(AnsiTextProperty, FontSizeProperty, FontFamilyProperty);
+    }
 
     public string? AnsiText
     {
@@ -42,12 +49,6 @@ public class AnsiTextBlock : Control
         set => SetValue(FontFamilyProperty, value);
     }
 
-    static AnsiTextBlock()
-    {
-        AffectsRender<AnsiTextBlock>(AnsiTextProperty, FontSizeProperty, FontFamilyProperty);
-        AffectsMeasure<AnsiTextBlock>(AnsiTextProperty, FontSizeProperty, FontFamilyProperty);
-    }
-
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -62,10 +63,7 @@ public class AnsiTextBlock : Control
 
     private void EnsureParsed()
     {
-        if (_segments == null && AnsiText != null)
-        {
-            _segments = _previewService.ParseAnsiToSegments(AnsiText);
-        }
+        if (_segments == null && AnsiText != null) _segments = _previewService.ParseAnsiToSegments(AnsiText);
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -86,7 +84,7 @@ public class AnsiTextBlock : Control
         {
             var formatted = new FormattedText(
                 line,
-                System.Globalization.CultureInfo.CurrentCulture,
+                CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 typeface,
                 FontSize,
@@ -137,7 +135,7 @@ public class AnsiTextBlock : Control
                 {
                     var formatted = new FormattedText(
                         parts[i],
-                        System.Globalization.CultureInfo.CurrentCulture,
+                        CultureInfo.CurrentCulture,
                         FlowDirection.LeftToRight,
                         typeface,
                         FontSize,

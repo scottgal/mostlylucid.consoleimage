@@ -1,58 +1,20 @@
+using System.Diagnostics;
 using ConsoleImage.Transcription;
 
 namespace ConsoleImage.Cli.Handlers;
 
 /// <summary>
-/// Handles transcription operations - generates VTT/SRT from video/audio.
-/// Usage: consoleimage transcribe input.mp4 -o output.vtt
-///        consoleimage input.mp4 --transcript (streams to stdout)
+///     Handles transcription operations - generates VTT/SRT from video/audio.
+///     Usage: consoleimage transcribe input.mp4 -o output.vtt
+///     consoleimage input.mp4 --transcript (streams to stdout)
 /// </summary>
 public static class TranscriptionHandler
 {
-    public class TranscriptionOptions
-    {
-        public string InputPath { get; set; } = "";
-        public string? OutputPath { get; set; }
-        public string ModelSize { get; set; } = "base";
-        public string Language { get; set; } = "en";
-        public bool Diarize { get; set; } = false;
-        public int? Threads { get; set; }
-
-        /// <summary>
-        /// Start time in seconds (for time-limited transcription).
-        /// </summary>
-        public double? StartTime { get; set; }
-
-        /// <summary>
-        /// Duration in seconds (for time-limited transcription).
-        /// </summary>
-        public double? Duration { get; set; }
-
-        /// <summary>
-        /// Stream transcribed text to stdout as it's generated (for tool/pipe usage).
-        /// </summary>
-        public bool StreamToStdout { get; set; } = false;
-
-        /// <summary>
-        /// Quiet mode - suppress progress messages (only output transcribed text).
-        /// </summary>
-        public bool Quiet { get; set; } = false;
-
-        /// <summary>
-        /// Apply FFmpeg audio preprocessing filters for better speech recognition.
-        /// Default: true. Disable with --no-enhance for recordings where filtering hurts quality.
-        /// </summary>
-        public bool EnhanceAudio { get; set; } = true;
-    }
-
     public static async Task<int> HandleAsync(TranscriptionOptions opts, CancellationToken ct)
     {
         // Determine output path - default to VTT
         var outputPath = opts.OutputPath;
-        if (string.IsNullOrEmpty(outputPath))
-        {
-            outputPath = Path.ChangeExtension(opts.InputPath, ".vtt");
-        }
+        if (string.IsNullOrEmpty(outputPath)) outputPath = Path.ChangeExtension(opts.InputPath, ".vtt");
 
         return await GenerateSubtitlesAsync(opts, outputPath, ct);
     }
@@ -80,10 +42,7 @@ public static class TranscriptionHandler
             .WithModel(opts.ModelSize)
             .WithLanguage(opts.Language);
 
-        if (opts.Threads.HasValue)
-        {
-            whisper.WithThreads(opts.Threads.Value);
-        }
+        if (opts.Threads.HasValue) whisper.WithThreads(opts.Threads.Value);
 
         // Progress for model download (always show on stderr)
         var downloadProgress = new Progress<(long downloaded, long total, string status)>(p =>
@@ -102,9 +61,8 @@ public static class TranscriptionHandler
         var transcribeProgress = new Progress<(int segments, double seconds, string status)>(p =>
         {
             if (!quiet)
-            {
-                Console.Error.Write($"\rSegments: {p.segments} | Time: {p.seconds:F1}s | {TruncateText(p.status, 40)}          ");
-            }
+                Console.Error.Write(
+                    $"\rSegments: {p.segments} | Time: {p.seconds:F1}s | {TruncateText(p.status, 40)}          ");
         });
 
         try
@@ -127,7 +85,8 @@ public static class TranscriptionHandler
                 if (!quiet)
                     Console.Error.WriteLine("Extracting audio...");
                 tempAudioPath = Path.Combine(Path.GetTempPath(), $"consoleimage_audio_{Guid.NewGuid():N}.wav");
-                await ExtractAudioAsync(opts.InputPath, tempAudioPath, opts.StartTime, opts.Duration, opts.EnhanceAudio, ct);
+                await ExtractAudioAsync(opts.InputPath, tempAudioPath, opts.StartTime, opts.Duration, opts.EnhanceAudio,
+                    ct);
                 audioPath = tempAudioPath;
                 if (!quiet)
                     Console.Error.WriteLine("Audio extracted.");
@@ -139,9 +98,8 @@ public static class TranscriptionHandler
                 var streamingProgress = new Progress<(int segments, double seconds, string status)>(p =>
                 {
                     if (!quiet)
-                    {
-                        Console.Error.Write($"\rSegments: {p.segments} | Time: {p.seconds:F1}s | {TruncateText(p.status, 40)}          ");
-                    }
+                        Console.Error.Write(
+                            $"\rSegments: {p.segments} | Time: {p.seconds:F1}s | {TruncateText(p.status, 40)}          ");
                 });
 
                 // Transcribe
@@ -149,7 +107,6 @@ public static class TranscriptionHandler
 
                 // Stream output to stdout if requested
                 if (opts.StreamToStdout)
-                {
                     foreach (var seg in result.Segments)
                     {
                         // Output format: [timestamp] text
@@ -157,25 +114,22 @@ public static class TranscriptionHandler
                         var endTime = FormatTime(seg.EndTime);
                         Console.WriteLine($"[{startTime} --> {endTime}] {seg.Text.Trim()}");
                     }
-                }
 
                 if (!quiet)
                 {
                     Console.Error.WriteLine();
-                    Console.Error.WriteLine($"Transcription complete: {result.Segments.Count} segments in {result.ProcessingTimeMs}ms");
+                    Console.Error.WriteLine(
+                        $"Transcription complete: {result.Segments.Count} segments in {result.ProcessingTimeMs}ms");
                     Console.Error.WriteLine($"Audio duration: {result.AudioDurationSeconds:F1}s");
-                    Console.Error.WriteLine($"Speed: {result.AudioDurationSeconds / (result.ProcessingTimeMs / 1000.0):F1}x realtime");
+                    Console.Error.WriteLine(
+                        $"Speed: {result.AudioDurationSeconds / (result.ProcessingTimeMs / 1000.0):F1}x realtime");
                 }
 
                 // Write output file (VTT or SRT)
                 if (isVtt)
-                {
-                    await VttFormatter.WriteAsync(outputPath, result.Segments, includeSpeakerIds: opts.Diarize, ct);
-                }
+                    await VttFormatter.WriteAsync(outputPath, result.Segments, opts.Diarize, ct);
                 else
-                {
-                    await SrtFormatter.WriteAsync(outputPath, result.Segments, includeSpeakerIds: opts.Diarize, ct);
-                }
+                    await SrtFormatter.WriteAsync(outputPath, result.Segments, opts.Diarize, ct);
 
                 if (!quiet)
                     Console.Error.WriteLine($"Saved: {outputPath}");
@@ -186,18 +140,19 @@ public static class TranscriptionHandler
             {
                 // Cleanup temp audio
                 if (tempAudioPath != null && File.Exists(tempAudioPath))
-                {
-                    try { File.Delete(tempAudioPath); } catch { }
-                }
+                    try
+                    {
+                        File.Delete(tempAudioPath);
+                    }
+                    catch
+                    {
+                    }
             }
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"\nTranscription failed: {ex.Message}");
-            if (ex.InnerException != null)
-            {
-                Console.Error.WriteLine($"  Inner: {ex.InnerException.Message}");
-            }
+            if (ex.InnerException != null) Console.Error.WriteLine($"  Inner: {ex.InnerException.Message}");
             // Debug: show full exception type
             Console.Error.WriteLine($"  Exception type: {ex.GetType().FullName}");
             return 1;
@@ -227,14 +182,13 @@ public static class TranscriptionHandler
                path.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task ExtractAudioAsync(string inputPath, string audioPath, double? startTime, double? duration, bool enhanceAudio, CancellationToken ct)
+    private static async Task ExtractAudioAsync(string inputPath, string audioPath, double? startTime, double? duration,
+        bool enhanceAudio, CancellationToken ct)
     {
         // Use FFmpeg to extract audio
         var ffmpegPath = FindFFmpeg();
         if (ffmpegPath == null)
-        {
             throw new InvalidOperationException("FFmpeg not found. Install FFmpeg or use --ffmpeg-path");
-        }
 
         // Build FFmpeg arguments - handle URLs with proper quoting
         // For URLs, we need to handle special characters and add timeout/reconnect options
@@ -262,7 +216,7 @@ public static class TranscriptionHandler
         // Extract audio: 16kHz mono WAV (required for Whisper)
         var args = $"{timeArgs}{inputArg} -vn {audioFilter}-ar 16000 -ac 1 -acodec pcm_s16le -y \"{audioPath}\"";
 
-        var psi = new System.Diagnostics.ProcessStartInfo
+        var psi = new ProcessStartInfo
         {
             FileName = ffmpegPath,
             Arguments = args,
@@ -272,7 +226,7 @@ public static class TranscriptionHandler
             CreateNoWindow = true
         };
 
-        using var process = System.Diagnostics.Process.Start(psi);
+        using var process = Process.Start(psi);
         if (process == null)
             throw new InvalidOperationException("Failed to start FFmpeg");
 
@@ -301,8 +255,8 @@ public static class TranscriptionHandler
             // Extract just the error message, not the full FFmpeg banner
             var errorLines = stderr.Split('\n')
                 .Where(l => l.Contains("Error", StringComparison.OrdinalIgnoreCase) ||
-                           l.Contains("Invalid", StringComparison.OrdinalIgnoreCase) ||
-                           l.Contains("failed", StringComparison.OrdinalIgnoreCase))
+                            l.Contains("Invalid", StringComparison.OrdinalIgnoreCase) ||
+                            l.Contains("failed", StringComparison.OrdinalIgnoreCase))
                 .Take(3);
             var errorMsg = string.Join("\n", errorLines);
             if (string.IsNullOrEmpty(errorMsg))
@@ -312,9 +266,7 @@ public static class TranscriptionHandler
 
         // Verify output file exists
         if (!File.Exists(audioPath))
-        {
             throw new InvalidOperationException("FFmpeg completed but audio file was not created");
-        }
     }
 
     private static string? FindFFmpeg()
@@ -324,7 +276,8 @@ public static class TranscriptionHandler
         {
             "ffmpeg",
             "ffmpeg.exe",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "consoleimage", "ffmpeg", "ffmpeg.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "consoleimage",
+                "ffmpeg", "ffmpeg.exe"),
             "/usr/bin/ffmpeg",
             "/usr/local/bin/ffmpeg"
         };
@@ -337,7 +290,7 @@ public static class TranscriptionHandler
             // Check if it's in PATH
             try
             {
-                var psi = new System.Diagnostics.ProcessStartInfo
+                var psi = new ProcessStartInfo
                 {
                     FileName = candidate,
                     Arguments = "-version",
@@ -347,7 +300,7 @@ public static class TranscriptionHandler
                     CreateNoWindow = true
                 };
 
-                using var process = System.Diagnostics.Process.Start(psi);
+                using var process = Process.Start(psi);
                 if (process != null)
                 {
                     process.WaitForExit(1000);
@@ -355,7 +308,9 @@ public static class TranscriptionHandler
                         return candidate;
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         return null;
@@ -366,5 +321,41 @@ public static class TranscriptionHandler
         if (string.IsNullOrEmpty(text)) return "";
         if (text.Length <= maxLength) return text;
         return text[..(maxLength - 3)] + "...";
+    }
+
+    public class TranscriptionOptions
+    {
+        public string InputPath { get; set; } = "";
+        public string? OutputPath { get; set; }
+        public string ModelSize { get; set; } = "base";
+        public string Language { get; set; } = "en";
+        public bool Diarize { get; set; } = false;
+        public int? Threads { get; set; }
+
+        /// <summary>
+        ///     Start time in seconds (for time-limited transcription).
+        /// </summary>
+        public double? StartTime { get; set; }
+
+        /// <summary>
+        ///     Duration in seconds (for time-limited transcription).
+        /// </summary>
+        public double? Duration { get; set; }
+
+        /// <summary>
+        ///     Stream transcribed text to stdout as it's generated (for tool/pipe usage).
+        /// </summary>
+        public bool StreamToStdout { get; set; } = false;
+
+        /// <summary>
+        ///     Quiet mode - suppress progress messages (only output transcribed text).
+        /// </summary>
+        public bool Quiet { get; set; } = false;
+
+        /// <summary>
+        ///     Apply FFmpeg audio preprocessing filters for better speech recognition.
+        ///     Default: true. Disable with --no-enhance for recordings where filtering hurts quality.
+        /// </summary>
+        public bool EnhanceAudio { get; set; } = true;
     }
 }

@@ -3,16 +3,14 @@ using System.Text.Json.Serialization;
 namespace ConsoleVideo.Avalonia.Models;
 
 /// <summary>
-/// Scene manifest containing keyframes and metadata.
-/// JSON-LD compatible format.
+///     Scene manifest containing keyframes and metadata.
+///     JSON-LD compatible format.
 /// </summary>
 public class SceneManifest
 {
-    [JsonPropertyName("@context")]
-    public string Context { get; set; } = "https://schema.org/";
+    [JsonPropertyName("@context")] public string Context { get; set; } = "https://schema.org/";
 
-    [JsonPropertyName("@type")]
-    public string Type { get; set; } = "SceneManifest";
+    [JsonPropertyName("@type")] public string Type { get; set; } = "SceneManifest";
 
     public string Version { get; set; } = "1.0";
     public DateTime Created { get; set; } = DateTime.UtcNow;
@@ -48,27 +46,27 @@ public class KeyframeEntry
     public int Index { get; set; }
 
     /// <summary>
-    /// Timestamp in seconds from video start - use this to seek to this position.
+    ///     Timestamp in seconds from video start - use this to seek to this position.
     /// </summary>
     public double Timestamp { get; set; }
 
     /// <summary>
-    /// Human-readable timestamp (e.g., "01:23.4") for display.
+    ///     Human-readable timestamp (e.g., "01:23.4") for display.
     /// </summary>
     public string? TimestampFormatted { get; set; }
 
     /// <summary>
-    /// Percentage position in video (0-100) for quick positioning.
+    ///     Percentage position in video (0-100) for quick positioning.
     /// </summary>
     public double? PositionPercent { get; set; }
 
     /// <summary>
-    /// Source/extraction method that selected this frame.
+    ///     Source/extraction method that selected this frame.
     /// </summary>
     public string? Source { get; set; }
 
     /// <summary>
-    /// Whether this frame is at a scene boundary.
+    ///     Whether this frame is at a scene boundary.
     /// </summary>
     public bool? IsSceneBoundary { get; set; }
 
@@ -78,7 +76,7 @@ public class KeyframeEntry
 }
 
 /// <summary>
-/// JSON source generation context for AOT compatibility.
+///     JSON source generation context for AOT compatibility.
 /// </summary>
 [JsonSourceGenerationOptions(
     WriteIndented = true,

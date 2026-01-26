@@ -1,5 +1,4 @@
 using System.Text.Json;
-using ConsoleImage.Player;
 using Xunit;
 
 namespace ConsoleImage.Player.Tests;
@@ -10,26 +9,26 @@ public class PlayerDocumentTests
     public void FromJson_ParsesSimpleDocument()
     {
         var json = """
-        {
-            "Version": "2.0",
-            "RenderMode": "ASCII",
-            "Settings": {
-                "MaxWidth": 80,
-                "MaxHeight": 24,
-                "UseColor": true,
-                "AnimationSpeedMultiplier": 1.0,
-                "LoopCount": 0
-            },
-            "Frames": [
-                {
-                    "Content": "Hello World",
-                    "DelayMs": 100,
-                    "Width": 11,
-                    "Height": 1
-                }
-            ]
-        }
-        """;
+                   {
+                       "Version": "2.0",
+                       "RenderMode": "ASCII",
+                       "Settings": {
+                           "MaxWidth": 80,
+                           "MaxHeight": 24,
+                           "UseColor": true,
+                           "AnimationSpeedMultiplier": 1.0,
+                           "LoopCount": 0
+                       },
+                       "Frames": [
+                           {
+                               "Content": "Hello World",
+                               "DelayMs": 100,
+                               "Width": 11,
+                               "Height": 1
+                           }
+                       ]
+                   }
+                   """;
 
         var doc = PlayerDocument.FromJson(json);
 
@@ -46,20 +45,20 @@ public class PlayerDocumentTests
     public void FromJson_ParsesAnimatedDocument()
     {
         var json = """
-        {
-            "Version": "2.0",
-            "RenderMode": "ColorBlocks",
-            "Settings": {
-                "AnimationSpeedMultiplier": 2.0,
-                "LoopCount": 3
-            },
-            "Frames": [
-                { "Content": "Frame 1", "DelayMs": 100, "Width": 7, "Height": 1 },
-                { "Content": "Frame 2", "DelayMs": 100, "Width": 7, "Height": 1 },
-                { "Content": "Frame 3", "DelayMs": 100, "Width": 7, "Height": 1 }
-            ]
-        }
-        """;
+                   {
+                       "Version": "2.0",
+                       "RenderMode": "ColorBlocks",
+                       "Settings": {
+                           "AnimationSpeedMultiplier": 2.0,
+                           "LoopCount": 3
+                       },
+                       "Frames": [
+                           { "Content": "Frame 1", "DelayMs": 100, "Width": 7, "Height": 1 },
+                           { "Content": "Frame 2", "DelayMs": 100, "Width": 7, "Height": 1 },
+                           { "Content": "Frame 3", "DelayMs": 100, "Width": 7, "Height": 1 }
+                       ]
+                   }
+                   """;
 
         var doc = PlayerDocument.FromJson(json);
 
@@ -74,13 +73,13 @@ public class PlayerDocumentTests
     public void FromJson_ParsesJsonLdFields()
     {
         var json = """
-        {
-            "@context": "https://schema.org/",
-            "@type": "ConsoleImageDocument",
-            "Version": "2.0",
-            "Frames": []
-        }
-        """;
+                   {
+                       "@context": "https://schema.org/",
+                       "@type": "ConsoleImageDocument",
+                       "Version": "2.0",
+                       "Frames": []
+                   }
+                   """;
 
         var doc = PlayerDocument.FromJson(json);
 
@@ -92,25 +91,25 @@ public class PlayerDocumentTests
     public void FromJson_ParsesExpandedSettings()
     {
         var json = """
-        {
-            "Version": "2.0",
-            "Settings": {
-                "Width": 80,
-                "Height": 24,
-                "MaxWidth": 120,
-                "MaxHeight": 60,
-                "CharacterAspectRatio": 0.45,
-                "ContrastPower": 3.0,
-                "Gamma": 0.7,
-                "UseColor": true,
-                "Invert": false,
-                "CharacterSetPreset": "extended",
-                "AnimationSpeedMultiplier": 1.5,
-                "LoopCount": 2
-            },
-            "Frames": []
-        }
-        """;
+                   {
+                       "Version": "2.0",
+                       "Settings": {
+                           "Width": 80,
+                           "Height": 24,
+                           "MaxWidth": 120,
+                           "MaxHeight": 60,
+                           "CharacterAspectRatio": 0.45,
+                           "ContrastPower": 3.0,
+                           "Gamma": 0.7,
+                           "UseColor": true,
+                           "Invert": false,
+                           "CharacterSetPreset": "extended",
+                           "AnimationSpeedMultiplier": 1.5,
+                           "LoopCount": 2
+                       },
+                       "Frames": []
+                   }
+                   """;
 
         var doc = PlayerDocument.FromJson(json);
 
@@ -205,11 +204,11 @@ public class PlayerDocumentTests
     public void FromJson_HandlesEmptyFrames()
     {
         var json = """
-        {
-            "Version": "2.0",
-            "Frames": []
-        }
-        """;
+                   {
+                       "Version": "2.0",
+                       "Frames": []
+                   }
+                   """;
 
         var doc = PlayerDocument.FromJson(json);
 
@@ -230,10 +229,10 @@ public class PlayerDocumentTests
     public void FromJson_HandlesNullFrames()
     {
         var json = """
-        {
-            "Version": "2.0"
-        }
-        """;
+                   {
+                       "Version": "2.0"
+                   }
+                   """;
 
         var doc = PlayerDocument.FromJson(json);
 
@@ -245,10 +244,9 @@ public class PlayerDocumentTests
     [Fact]
     public async Task LoadAsync_ThrowsFileNotFound()
     {
-        var nonExistentPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".json");
+        var nonExistentPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
 
-        await Assert.ThrowsAsync<FileNotFoundException>(
-            () => PlayerDocument.LoadAsync(nonExistentPath));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => PlayerDocument.LoadAsync(nonExistentPath));
     }
 
     [Fact]
@@ -258,14 +256,14 @@ public class PlayerDocumentTests
         try
         {
             var json = """
-            {
-                "Version": "2.0",
-                "RenderMode": "Braille",
-                "Frames": [
-                    { "Content": "Test", "DelayMs": 50, "Width": 4, "Height": 1 }
-                ]
-            }
-            """;
+                       {
+                           "Version": "2.0",
+                           "RenderMode": "Braille",
+                           "Frames": [
+                               { "Content": "Test", "DelayMs": 50, "Width": 4, "Height": 1 }
+                           ]
+                       }
+                       """;
             await File.WriteAllTextAsync(tempFile, json);
 
             var doc = await PlayerDocument.LoadAsync(tempFile);
@@ -288,11 +286,11 @@ public class PlayerDocumentTests
         {
             // NDJSON format - each line is valid JSON
             var ndjson = """
-            {"@type":"ConsoleImageDocumentHeader","Version":"2.0","RenderMode":"ASCII","Created":"2024-01-01T00:00:00Z","Settings":{"MaxWidth":80}}
-            {"@type":"Frame","Index":0,"Content":"Frame A","DelayMs":100,"Width":7,"Height":1}
-            {"@type":"Frame","Index":1,"Content":"Frame B","DelayMs":100,"Width":7,"Height":1}
-            {"@type":"ConsoleImageDocumentFooter","FrameCount":2,"TotalDurationMs":200,"IsComplete":true}
-            """;
+                         {"@type":"ConsoleImageDocumentHeader","Version":"2.0","RenderMode":"ASCII","Created":"2024-01-01T00:00:00Z","Settings":{"MaxWidth":80}}
+                         {"@type":"Frame","Index":0,"Content":"Frame A","DelayMs":100,"Width":7,"Height":1}
+                         {"@type":"Frame","Index":1,"Content":"Frame B","DelayMs":100,"Width":7,"Height":1}
+                         {"@type":"ConsoleImageDocumentFooter","FrameCount":2,"TotalDurationMs":200,"IsComplete":true}
+                         """;
             await File.WriteAllTextAsync(tempFile, ndjson);
 
             var doc = await PlayerDocument.LoadAsync(tempFile);
@@ -314,10 +312,10 @@ public class PlayerDocumentTests
     public void FromJson_ParsesStreamingNdjsonString()
     {
         var ndjson = """
-            {"@type":"ConsoleImageDocumentHeader","Version":"2.0","RenderMode":"Matrix"}
-            {"@type":"Frame","Index":0,"Content":"X","DelayMs":50,"Width":1,"Height":1}
-            {"@type":"Frame","Index":1,"Content":"Y","DelayMs":50,"Width":1,"Height":1}
-            """;
+                     {"@type":"ConsoleImageDocumentHeader","Version":"2.0","RenderMode":"Matrix"}
+                     {"@type":"Frame","Index":0,"Content":"X","DelayMs":50,"Width":1,"Height":1}
+                     {"@type":"Frame","Index":1,"Content":"Y","DelayMs":50,"Width":1,"Height":1}
+                     """;
 
         var doc = PlayerDocument.FromJson(ndjson);
 

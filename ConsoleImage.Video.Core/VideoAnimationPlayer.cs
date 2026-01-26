@@ -1,70 +1,59 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace ConsoleImage.Video.Core;
 
 /// <summary>
-/// Streaming video player that renders ASCII frames on-the-fly.
-/// Uses a small lookahead buffer to avoid loading entire video into memory.
+///     Streaming video player that renders ASCII frames on-the-fly.
+///     Uses a small lookahead buffer to avoid loading entire video into memory.
 /// </summary>
 public class VideoAnimationPlayer : IDisposable
 {
-    private readonly FFmpegService _ffmpeg;
-    private readonly VideoRenderOptions _options;
-    private readonly string _videoPath;
-    private readonly StatusLine? _statusLine;
-
-    private VideoInfo? _videoInfo;
-    private int _renderWidth;
-    private int _renderHeight;
-    private int _lastConsoleWidth;
-    private int _lastConsoleHeight;
-    private int _currentFrame;
-    private int _currentLoop;
-    private int _totalFramesEstimate;
-
-    // Delta rendering support for braille mode
-    private CellData[,]? _previousBrailleCells;
-
-    // Smart frame sampling
-    private SmartFrameSampler? _smartSampler;
-
-    // Subtitle rendering
-    private SubtitleRenderer? _subtitleRenderer;
-    private string? _lastSubtitleContent;
-
-    // Keyboard controls
-    private bool _isPaused;
-    private bool _requestQuit;
-    private double? _seekRequest; // Requested seek position in seconds (null = no seek)
-    private double _currentPosition; // Current playback position in seconds
-
-    // Snapshot support ('r' = raw frame, 's' = ANSI text as image)
-    private readonly object _rawFrameLock = new();
-    private Image<Rgba32>? _lastRawFrame;
-    private string? _lastFrameContent;
-    private string? _lastSubtitlePlainText;
-    private int _snapshotCounter;
-
     // Pre-allocated strings to avoid allocations in render loop
     private static readonly string BlankLine120 = new(' ', 120);
     private static readonly string[] CursorMoveCache = BuildCursorMoveCache(200);
+    private readonly FFmpegService _ffmpeg;
+    private readonly VideoRenderOptions _options;
 
-    /// <summary>
-    /// Event raised when playback state changes (pause/resume).
-    /// </summary>
-    public event Action<bool>? OnPausedChanged;
+    // Snapshot support ('r' = raw frame, 's' = ANSI text as image)
+    private readonly object _rawFrameLock = new();
+    private readonly StatusLine? _statusLine;
+    private readonly string _videoPath;
+    private int _currentFrame;
+    private int _currentLoop;
+    private double _currentPosition; // Current playback position in seconds
 
-    /// <summary>
-    /// Seek step in seconds for arrow key navigation.
-    /// </summary>
-    public double SeekStepSeconds { get; set; } = 10.0;
+    // Keyboard controls
+    private bool _isPaused;
+    private int _lastConsoleHeight;
+    private int _lastConsoleWidth;
+    private string? _lastFrameContent;
+    private Image<Rgba32>? _lastRawFrame;
+    private string? _lastSubtitleContent;
+    private string? _lastSubtitlePlainText;
+
+    // Delta rendering support for braille mode
+    private CellData[,]? _previousBrailleCells;
+    private int _renderHeight;
+    private int _renderWidth;
+    private bool _requestQuit;
+    private double? _seekRequest; // Requested seek position in seconds (null = no seek)
+
+    // Smart frame sampling
+    private SmartFrameSampler? _smartSampler;
+    private int _snapshotCounter;
+
+    // Subtitle rendering
+    private SubtitleRenderer? _subtitleRenderer;
+    private int _totalFramesEstimate;
+
+    private VideoInfo? _videoInfo;
 
     public VideoAnimationPlayer(string videoPath, VideoRenderOptions? options = null)
     {
@@ -76,17 +65,43 @@ public class VideoAnimationPlayer : IDisposable
         if (_options.ShowStatus)
         {
             // Use explicit width if provided, otherwise auto-detect
-            int statusWidth = _options.StatusWidth ?? 120;
+            var statusWidth = _options.StatusWidth ?? 120;
             if (!_options.StatusWidth.HasValue)
-            {
-                try { statusWidth = Console.WindowWidth - 1; } catch { }
-            }
+                try
+                {
+                    statusWidth = Console.WindowWidth - 1;
+                }
+                catch
+                {
+                }
+
             _statusLine = new StatusLine(statusWidth, _options.RenderOptions.UseColor);
         }
     }
 
     /// <summary>
-    /// Play the video with streaming frame rendering.
+    ///     Seek step in seconds for arrow key navigation.
+    /// </summary>
+    public double SeekStepSeconds { get; set; } = 10.0;
+
+    public void Dispose()
+    {
+        lock (_rawFrameLock)
+        {
+            _lastRawFrame?.Dispose();
+            _lastRawFrame = null;
+        }
+
+        _ffmpeg.Dispose();
+    }
+
+    /// <summary>
+    ///     Event raised when playback state changes (pause/resume).
+    /// </summary>
+    public event Action<bool>? OnPausedChanged;
+
+    /// <summary>
+    ///     Play the video with streaming frame rendering.
     /// </summary>
     public async Task PlayAsync(CancellationToken cancellationToken = default)
     {
@@ -111,14 +126,11 @@ public class VideoAnimationPlayer : IDisposable
         _totalFramesEstimate = (int)(effectiveDuration * effectiveFps);
 
         // Enter alternate screen and initialize clean state
-        Console.Write("\x1b[0m");   // Reset all attributes first
-        if (_options.UseAltScreen)
-        {
-            Console.Write("\x1b[?1049h"); // Enter alt screen
-        }
+        Console.Write("\x1b[0m"); // Reset all attributes first
+        if (_options.UseAltScreen) Console.Write("\x1b[?1049h"); // Enter alt screen
         Console.Write("\x1b[?25l"); // Hide cursor
-        Console.Write("\x1b[2J");   // Clear screen (ED2 - entire screen)
-        Console.Write("\x1b[H");    // Home cursor
+        Console.Write("\x1b[2J"); // Clear screen (ED2 - entire screen)
+        Console.Write("\x1b[H"); // Home cursor
         Console.Out.Flush();
 
         // Initialize subtitle renderer if subtitles are available
@@ -126,14 +138,12 @@ public class VideoAnimationPlayer : IDisposable
 
         // Initialize smart frame sampler if enabled
         if (_options.SamplingMode == FrameSamplingMode.Smart)
-        {
             _smartSampler = new SmartFrameSampler(_options.SmartSkipThreshold)
             {
                 DebugMode = _options.DebugMode
             };
-        }
 
-        int loopsDone = 0;
+        var loopsDone = 0;
         _currentLoop = 1;
 
         // Effective start time (can be modified by seeking)
@@ -179,7 +189,9 @@ public class VideoAnimationPlayer : IDisposable
                     break;
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
         finally
         {
             Console.Write("\x1b[?25h"); // Show cursor
@@ -190,7 +202,7 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Stream and render frames with lookahead buffer.
+    ///     Stream and render frames with lookahead buffer.
     /// </summary>
     private async Task PlayStreamAsync(int frameDelayMs, double effectiveFps, double startTime, CancellationToken ct)
     {
@@ -214,31 +226,26 @@ public class VideoAnimationPlayer : IDisposable
             try
             {
                 await foreach (var image in _ffmpeg.StreamFramesAsync(
-                    _videoPath,
-                    _renderWidth,
-                    _renderHeight,
-                    startTime,
-                    _options.EndTime,
-                    _options.FrameStep,
-                    _options.TargetFps,
-                    _videoInfo?.VideoCodec,
-                    streamCt))
-                {
+                                   _videoPath,
+                                   _renderWidth,
+                                   _renderHeight,
+                                   startTime,
+                                   _options.EndTime,
+                                   _options.FrameStep,
+                                   _options.TargetFps,
+                                   _videoInfo?.VideoCodec,
+                                   streamCt))
                     using (image)
                     {
                         string frameContent;
 
                         // Use smart sampling if enabled
                         if (_smartSampler != null)
-                        {
                             // Clone image for the render func since original is disposed
                             frameContent = _smartSampler.ProcessFrame(image, img => RenderFrame(renderer, img));
-                        }
                         else
-                        {
                             // Standard rendering
                             frameContent = RenderFrame(renderer, image);
-                        }
 
                         // Store raw frame clone for snapshot feature ('r' key)
                         var cloned = image.Clone();
@@ -250,17 +257,16 @@ public class VideoAnimationPlayer : IDisposable
 
                         // Wait if buffer is full
                         while (frameBuffer.Count >= _options.BufferAheadFrames && !streamCt.IsCancellationRequested)
-                        {
                             await Task.Delay(5, streamCt);
-                        }
 
                         if (streamCt.IsCancellationRequested) break;
 
                         frameBuffer.Enqueue(frameContent);
                     }
-                }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+            }
             catch (Exception ex)
             {
                 renderException = ex;
@@ -297,6 +303,7 @@ public class VideoAnimationPlayer : IDisposable
                     var key = Console.ReadKey(true);
                     HandleKeyPress(key);
                 }
+
                 await Task.Delay(1, ct);
             }
 
@@ -311,7 +318,7 @@ public class VideoAnimationPlayer : IDisposable
 
                 // Calculate absolute video time (includes seek position)
                 // frameIndex is 1-based after increment; frame 1 represents time 0
-                var absoluteTime = startTime + ((frameIndex - 1) / effectiveFps);
+                var absoluteTime = startTime + (frameIndex - 1) / effectiveFps;
                 _currentPosition = absoluteTime; // Track for seeking
 
                 // Adaptive frame skipping: drop display when behind schedule
@@ -324,7 +331,6 @@ public class VideoAnimationPlayer : IDisposable
                 string? statusContent = null;
                 if (_statusLine != null && _videoInfo != null)
                 {
-
                     // Clip duration for progress bar calculation
                     var clipDuration = _options.GetEffectiveDuration(_videoInfo.Duration);
                     var clipProgress = frameIndex / effectiveFps;
@@ -366,12 +372,13 @@ public class VideoAnimationPlayer : IDisposable
                     {
                         // Show "Transcribing..." indicator while waiting
                         subtitleContent = _subtitleRenderer.RenderText("\u23F3 Transcribing...");
-                        var waitingBuffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent, subtitleContent, _lastSubtitleContent);
+                        var waitingBuffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1,
+                            statusContent, subtitleContent, _lastSubtitleContent);
                         Console.Write(waitingBuffer);
                         Console.Out.Flush();
 
                         var waitResult = await _options.LiveSubtitleProvider.WaitForTranscriptionAsync(
-                            absoluteTime, timeoutMs: 15000, ct);
+                            absoluteTime, 15000, ct);
 
                         // Kick off transcription for upcoming frames
                         _ = _options.LiveSubtitleProvider.EnsureTranscribedUpToAsync(absoluteTime + 30, ct);
@@ -388,16 +395,15 @@ public class VideoAnimationPlayer : IDisposable
                 // RenderEntry(null) returns padded blank lines (non-empty), so we must
                 // check the entry first to allow BuildFrameBuffer's clearing logic to work.
                 if (activeSubEntry != null && _subtitleRenderer != null)
-                {
                     subtitleContent = _subtitleRenderer.RenderEntry(activeSubEntry);
-                }
 
                 // Store for snapshot features ('r' and 's' keys)
                 _lastFrameContent = frameContent;
                 _lastSubtitlePlainText = activeSubEntry?.Text?.Trim();
 
                 // Build optimized frame buffer with status line and subtitles included
-                var buffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent, subtitleContent, _lastSubtitleContent);
+                var buffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent,
+                    subtitleContent, _lastSubtitleContent);
                 previousFrame = frameContent;
                 _lastSubtitleContent = subtitleContent;
 
@@ -417,10 +423,8 @@ public class VideoAnimationPlayer : IDisposable
 
                 // Check for resize during playback
                 if (CheckForResize())
-                {
                     // Abort current stream and restart with new dimensions
                     break;
-                }
             }
             else if (renderingComplete)
             {
@@ -435,15 +439,17 @@ public class VideoAnimationPlayer : IDisposable
         {
             await renderTask;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
 
         if (renderException != null)
             throw renderException;
     }
 
     /// <summary>
-    /// Create appropriate renderer based on mode.
-    /// For blocks/braille, we set exact dimensions to prevent double-resize.
+    ///     Create appropriate renderer based on mode.
+    ///     For blocks/braille, we set exact dimensions to prevent double-resize.
     /// </summary>
     private IDisposable CreateRenderer()
     {
@@ -455,10 +461,11 @@ public class VideoAnimationPlayer : IDisposable
             opts.Height = _renderHeight / 2; // Height in lines (2 pixels per line)
             return new ColorBlockRenderer(opts);
         }
-        else if (_options.RenderMode == VideoRenderMode.Braille)
+
+        if (_options.RenderMode == VideoRenderMode.Braille)
         {
             var opts = _options.RenderOptions.Clone();
-            opts.Width = _renderWidth / 2;  // Width in chars (2 pixels per char)
+            opts.Width = _renderWidth / 2; // Width in chars (2 pixels per char)
             opts.Height = _renderHeight / 4; // Height in chars (4 pixels per char)
             return new BrailleRenderer(opts);
         }
@@ -473,7 +480,7 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Render a single frame to ASCII string.
+    ///     Render a single frame to ASCII string.
     /// </summary>
     private string RenderFrame(IDisposable renderer, Image<Rgba32> image)
     {
@@ -486,7 +493,7 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Render braille frame with optional delta optimization.
+    ///     Render braille frame with optional delta optimization.
     /// </summary>
     private string RenderBrailleFrame(BrailleRenderer renderer, Image<Rgba32> image)
     {
@@ -504,7 +511,7 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Render ASCII frame with color support.
+    ///     Render ASCII frame with color support.
     /// </summary>
     private string RenderAsciiFrame(AsciiRenderer renderer, Image<Rgba32> image)
     {
@@ -526,25 +533,24 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Build optimized frame buffer with diff-based rendering.
+    ///     Build optimized frame buffer with diff-based rendering.
     /// </summary>
     /// <summary>
-    /// Count newlines in a string without allocating an array.
+    ///     Count newlines in a string without allocating an array.
     /// </summary>
     private static int CountLines(string content)
     {
         if (string.IsNullOrEmpty(content)) return 0;
         var count = 1;
         foreach (var c in content)
-        {
-            if (c == '\n') count++;
-        }
+            if (c == '\n')
+                count++;
         return count;
     }
 
     /// <summary>
-    /// Get a line from content by index without allocating the entire split array.
-    /// Returns empty span if index is out of range.
+    ///     Get a line from content by index without allocating the entire split array.
+    ///     Returns empty span if index is out of range.
     /// </summary>
     private static ReadOnlySpan<char> GetLineSpan(string content, int lineIndex)
     {
@@ -554,7 +560,6 @@ public class VideoAnimationPlayer : IDisposable
         var lineStart = 0;
 
         for (var i = 0; i < content.Length; i++)
-        {
             if (content[i] == '\n')
             {
                 if (currentLine == lineIndex)
@@ -564,10 +569,10 @@ public class VideoAnimationPlayer : IDisposable
                     if (end > lineStart && content[end - 1] == '\r') end--;
                     return content.AsSpan(lineStart, end - lineStart);
                 }
+
                 currentLine++;
                 lineStart = i + 1;
             }
-        }
 
         // Last line (no trailing newline)
         if (currentLine == lineIndex && lineStart < content.Length)
@@ -609,7 +614,7 @@ public class VideoAnimationPlayer : IDisposable
             var changedLines = 0;
 
             // First pass: count changes (using spans)
-            for (int i = 0; i < maxLines; i++)
+            for (var i = 0; i < maxLines; i++)
             {
                 var currLine = GetLineSpan(content, i);
                 var prevLine = GetLineSpan(previousContent, i);
@@ -625,7 +630,7 @@ public class VideoAnimationPlayer : IDisposable
             else
             {
                 // Only update changed lines
-                for (int i = 0; i < maxLines; i++)
+                for (var i = 0; i < maxLines; i++)
                 {
                     var currLine = GetLineSpan(content, i);
                     var prevLine = GetLineSpan(previousContent, i);
@@ -644,6 +649,7 @@ public class VideoAnimationPlayer : IDisposable
                             // Use subspan of pre-allocated blank line to avoid allocation
                             sb.Append(BlankLine120.AsSpan(0, Math.Min(padding, BlankLine120.Length)));
                         }
+
                         sb.Append("\x1b[0m"); // Reset colors
                     }
                 }
@@ -662,17 +668,14 @@ public class VideoAnimationPlayer : IDisposable
             {
                 sb.Append(GetCursorMove(frameLines + i)); // Move to subtitle row (cached)
                 if (i < subtitleLineCount)
-                {
                     // Write subtitle line (already padded to width by SubtitleRenderer)
                     sb.Append(GetLineSpan(subtitleContent, i));
-                }
                 else
-                {
                     // Blank line for unused subtitle rows - use cached blank line
                     sb.Append(BlankLine120);
-                }
                 sb.Append("\x1b[0m"); // Reset colors after each line
             }
+
             extraRows = maxSubtitleLines;
         }
         else if (!string.IsNullOrEmpty(previousSubtitle))
@@ -699,20 +702,22 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Get visible character count (excluding ANSI sequences).
+    ///     Get visible character count (excluding ANSI sequences).
     /// </summary>
-    private static int GetVisibleLength(string line) => GetVisibleLength(line.AsSpan());
+    private static int GetVisibleLength(string line)
+    {
+        return GetVisibleLength(line.AsSpan());
+    }
 
     /// <summary>
-    /// Get visible character count (excluding ANSI sequences) - span version.
+    ///     Get visible character count (excluding ANSI sequences) - span version.
     /// </summary>
     private static int GetVisibleLength(ReadOnlySpan<char> line)
     {
-        int len = 0;
-        bool inEscape = false;
+        var len = 0;
+        var inEscape = false;
 
-        foreach (char c in line)
-        {
+        foreach (var c in line)
             if (c == '\x1b')
             {
                 inEscape = true;
@@ -725,13 +730,12 @@ public class VideoAnimationPlayer : IDisposable
             {
                 len++;
             }
-        }
 
         return len;
     }
 
     /// <summary>
-    /// Update render dimensions based on console size and options.
+    ///     Update render dimensions based on console size and options.
     /// </summary>
     private void UpdateRenderDimensions()
     {
@@ -767,9 +771,9 @@ public class VideoAnimationPlayer : IDisposable
                 // ColorBlockRenderer: each char = 1 pixel wide, 2 pixels tall (half-blocks)
                 // Visual container: chars are charAspect wide x 1.0 tall
                 // So visual width = maxWidth * charAspect, visual height = maxHeight
-                float visualContainerWidth = maxWidth * charAspect;
+                var visualContainerWidth = maxWidth * charAspect;
                 float visualContainerHeight = maxHeight;
-                float containerVisualAspect = visualContainerWidth / visualContainerHeight;
+                var containerVisualAspect = visualContainerWidth / visualContainerHeight;
 
                 float outputVisualWidth, outputVisualHeight;
                 if (videoAspect > containerVisualAspect)
@@ -798,9 +802,9 @@ public class VideoAnimationPlayer : IDisposable
             {
                 // BrailleRenderer: each char = 2 pixels wide, 4 pixels tall
                 // Visual container: chars are charAspect wide x 1.0 tall
-                float visualContainerWidth = maxWidth * charAspect;
+                var visualContainerWidth = maxWidth * charAspect;
                 float visualContainerHeight = maxHeight;
-                float containerVisualAspect = visualContainerWidth / visualContainerHeight;
+                var containerVisualAspect = visualContainerWidth / visualContainerHeight;
 
                 float outputVisualWidth, outputVisualHeight;
                 if (videoAspect > containerVisualAspect)
@@ -817,12 +821,12 @@ public class VideoAnimationPlayer : IDisposable
                 // Convert visual to pixels:
                 // Horizontal: 2 pixels per char, chars = visualWidth / charAspect, pixels = chars * 2
                 // Vertical: 4 pixels per char height, pixels = visualHeight * 4
-                _renderWidth = Math.Max(2, (int)((outputVisualWidth / charAspect) * 2));
+                _renderWidth = Math.Max(2, (int)(outputVisualWidth / charAspect * 2));
                 _renderHeight = Math.Max(4, (int)(outputVisualHeight * 4));
 
                 // Ensure dimensions are multiples of 2x4 for braille
-                _renderWidth = (_renderWidth / 2) * 2;
-                _renderHeight = (_renderHeight / 4) * 4;
+                _renderWidth = _renderWidth / 2 * 2;
+                _renderHeight = _renderHeight / 4 * 4;
             }
             else
             {
@@ -849,7 +853,7 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Check for console resize.
+    ///     Check for console resize.
     /// </summary>
     private bool CheckForResize()
     {
@@ -864,13 +868,15 @@ public class VideoAnimationPlayer : IDisposable
                 return true;
             }
         }
-        catch { }
+        catch
+        {
+        }
 
         return false;
     }
 
     /// <summary>
-    /// Create or update the subtitle renderer based on current render dimensions.
+    ///     Create or update the subtitle renderer based on current render dimensions.
     /// </summary>
     private void UpdateSubtitleRenderer()
     {
@@ -881,7 +887,7 @@ public class VideoAnimationPlayer : IDisposable
         if (!hasStaticSubtitles && !hasLiveSubtitles)
             return;
 
-        int subtitleWidth = _renderWidth;
+        var subtitleWidth = _renderWidth;
         // For blocks/braille, convert pixel width to char width
         if (_options.RenderMode == VideoRenderMode.ColorBlocks)
             subtitleWidth = _renderWidth;
@@ -893,7 +899,7 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Responsive delay with cancellation checks and keyboard handling.
+    ///     Responsive delay with cancellation checks and keyboard handling.
     /// </summary>
     private async Task ResponsiveDelayAsync(int totalMs, CancellationToken ct)
     {
@@ -925,12 +931,13 @@ public class VideoAnimationPlayer : IDisposable
             {
                 break;
             }
+
             remaining -= delay;
         }
     }
 
     /// <summary>
-    /// Handle keyboard input during playback.
+    ///     Handle keyboard input during playback.
     /// </summary>
     private void HandleKeyPress(ConsoleKeyInfo key)
     {
@@ -954,6 +961,7 @@ public class VideoAnimationPlayer : IDisposable
                     Console.Write("        "); // Clear pause indicator
                     Console.Write("\x1b[u"); // Restore cursor
                 }
+
                 Console.Out.Flush();
                 break;
 
@@ -996,10 +1004,7 @@ public class VideoAnimationPlayer : IDisposable
                 SaveRawSnapshot();
                 break;
             case ConsoleKey.S:
-                if (key.Key == ConsoleKey.S && !key.Modifiers.HasFlag(ConsoleModifiers.Control))
-                {
-                    SaveAnsiSnapshot();
-                }
+                if (key.Key == ConsoleKey.S && !key.Modifiers.HasFlag(ConsoleModifiers.Control)) SaveAnsiSnapshot();
                 break;
 
             // Seek step adjustment
@@ -1026,7 +1031,7 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Safely check if a key is available (handles non-terminal scenarios).
+    ///     Safely check if a key is available (handles non-terminal scenarios).
     /// </summary>
     private static bool IsKeyAvailable()
     {
@@ -1041,30 +1046,27 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Build cache of cursor move escape sequences to avoid allocations in render loop.
+    ///     Build cache of cursor move escape sequences to avoid allocations in render loop.
     /// </summary>
     private static string[] BuildCursorMoveCache(int maxLines)
     {
         var cache = new string[maxLines];
-        for (var i = 0; i < maxLines; i++)
-        {
-            cache[i] = $"\x1b[{i + 1};1H";
-        }
+        for (var i = 0; i < maxLines; i++) cache[i] = $"\x1b[{i + 1};1H";
         return cache;
     }
 
     /// <summary>
-    /// Get cached cursor move sequence, or generate if beyond cache.
+    ///     Get cached cursor move sequence, or generate if beyond cache.
     /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string GetCursorMove(int line)
     {
         return line < CursorMoveCache.Length ? CursorMoveCache[line] : $"\x1b[{line + 1};1H";
     }
 
     /// <summary>
-    /// Save a raw frame snapshot with burned-in subtitles as PNG.
-    /// Triggered by pressing 'r' during playback.
+    ///     Save a raw frame snapshot with burned-in subtitles as PNG.
+    ///     Triggered by pressing 'r' during playback.
     /// </summary>
     private void SaveRawSnapshot()
     {
@@ -1100,8 +1102,8 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Save the current ANSI text rendering as a PNG image.
-    /// Triggered by pressing 's' during playback.
+    ///     Save the current ANSI text rendering as a PNG image.
+    ///     Triggered by pressing 's' during playback.
     /// </summary>
     private void SaveAnsiSnapshot()
     {
@@ -1118,20 +1120,14 @@ public class VideoAnimationPlayer : IDisposable
 
             // Render based on current mode
             if (_options.RenderMode == VideoRenderMode.Braille)
-            {
                 image = GifWriter.RenderBrailleFrameToImage(
-                    new BrailleFrame(content, 0), scale: 2.0f);
-            }
+                    new BrailleFrame(content, 0), 2.0f);
             else if (_options.RenderMode == VideoRenderMode.ColorBlocks)
-            {
                 image = GifWriter.RenderColorBlockFrameToImage(
-                    new ColorBlockFrame(content, 0), scale: 2.0f);
-            }
+                    new ColorBlockFrame(content, 0), 2.0f);
             else
-            {
                 // ASCII mode - render text to image
-                image = GifWriter.RenderAnsiTextToImage(content, fontSize: 14, scale: 1.5f);
-            }
+                image = GifWriter.RenderAnsiTextToImage(content, 14, 1.5f);
 
             try
             {
@@ -1154,24 +1150,14 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
-    /// Generate a snapshot file path with sequential numbering.
+    ///     Generate a snapshot file path with sequential numbering.
     /// </summary>
     private string GetSnapshotPath(string prefix)
     {
-        _snapshotCounter++;
+        var counter = Interlocked.Increment(ref _snapshotCounter);
         var baseName = Path.GetFileNameWithoutExtension(_options.SourceFileName ?? _videoPath);
         var timeStr = TimeSpan.FromSeconds(_currentPosition).ToString(@"hh\.mm\.ss");
         var dir = Path.GetDirectoryName(Path.GetFullPath(_videoPath)) ?? ".";
-        return Path.Combine(dir, $"{baseName}_{prefix}_{timeStr}_{_snapshotCounter:D3}.png");
-    }
-
-    public void Dispose()
-    {
-        lock (_rawFrameLock)
-        {
-            _lastRawFrame?.Dispose();
-            _lastRawFrame = null;
-        }
-        _ffmpeg.Dispose();
+        return Path.Combine(dir, $"{baseName}_{prefix}_{timeStr}_{counter:D3}.png");
     }
 }

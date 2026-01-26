@@ -1,3 +1,4 @@
+using System.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using ConsoleImage.Core;
@@ -14,20 +15,20 @@ namespace ConsoleImage.Benchmarks;
 [SimpleJob(RuntimeMoniker.Net90)]
 public class BrailleRendererBenchmarks
 {
-    private Image<Rgba32> _smallImage = null!;
-    private Image<Rgba32> _mediumImage = null!;
     private Image<Rgba32> _largeImage = null!;
+    private Image<Rgba32> _mediumImage = null!;
+    private CellData[,]? _previousCells;
     private BrailleRenderer _renderer = null!;
     private BrailleRenderer _rendererNoColor = null!;
-    private CellData[,]? _previousCells;
+    private Image<Rgba32> _smallImage = null!;
 
     [GlobalSetup]
     public void Setup()
     {
         // Create test images of various sizes
-        _smallImage = CreateTestImage(160, 90);    // 80x23 chars
-        _mediumImage = CreateTestImage(320, 180);  // 160x45 chars
-        _largeImage = CreateTestImage(640, 360);   // 320x90 chars
+        _smallImage = CreateTestImage(160, 90); // 80x23 chars
+        _mediumImage = CreateTestImage(320, 180); // 160x45 chars
+        _largeImage = CreateTestImage(640, 360); // 320x90 chars
 
         _renderer = new BrailleRenderer(new RenderOptions
         {
@@ -132,8 +133,8 @@ public class BrailleRendererBenchmarks
 [SimpleJob(RuntimeMoniker.Net90)]
 public class BrightnessCalculationBenchmarks
 {
-    private float[] _smallBuffer = null!;
     private float[] _largeBuffer = null!;
+    private float[] _smallBuffer = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -183,6 +184,7 @@ public class BrightnessCalculationBenchmarks
             if (buffer[i] < min) min = buffer[i];
             if (buffer[i] > max) max = buffer[i];
         }
+
         return (min, max);
     }
 
@@ -249,18 +251,16 @@ public class AnsiEscapeBenchmarks
     [Benchmark(Baseline = true)]
     public string InterpolatedStrings()
     {
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         for (var i = 0; i < _colors.Length; i += 3)
-        {
             sb.Append($"\x1b[38;2;{_colors[i]};{_colors[i + 1]};{_colors[i + 2]}m");
-        }
         return sb.ToString();
     }
 
     [Benchmark]
     public string ManualAppend()
     {
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         for (var i = 0; i < _colors.Length; i += 3)
         {
             sb.Append("\x1b[38;2;");
@@ -271,13 +271,14 @@ public class AnsiEscapeBenchmarks
             sb.Append(_colors[i + 2]);
             sb.Append('m');
         }
+
         return sb.ToString();
     }
 
     [Benchmark]
     public string CachedGreyscale()
     {
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         for (var i = 0; i < _colors.Length; i += 3)
         {
             var r = _colors[i];
@@ -299,6 +300,7 @@ public class AnsiEscapeBenchmarks
                 sb.Append('m');
             }
         }
+
         return sb.ToString();
     }
 }

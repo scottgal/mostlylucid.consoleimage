@@ -22,12 +22,14 @@ if (args.Length > 0)
         await GenerateSamples(sampleDir);
         return 0;
     }
-    else if (args[0] == "benchmark")
+
+    if (args[0] == "benchmark")
     {
         await RunBenchmark(sampleDir);
         return 0;
     }
-    else if (args[0] == "play" && args.Length > 1)
+
+    if (args[0] == "play" && args.Length > 1)
     {
         await PlayDocument(args[1]);
         return 0;
@@ -51,25 +53,25 @@ async Task QuickDemo()
     Console.WriteLine("Quick Demo - Loading inline document...\n");
 
     var json = """
-    {
-        "@context": "https://schema.org/",
-        "@type": "ConsoleImageDocument",
-        "Version": "2.0",
-        "RenderMode": "ASCII",
-        "Settings": {
-            "MaxWidth": 40,
-            "MaxHeight": 10,
-            "UseColor": true,
-            "AnimationSpeedMultiplier": 1.0,
-            "LoopCount": 3
-        },
-        "Frames": [
-            { "Content": "\u001b[32m  *  \u001b[0m\n\u001b[32m ***\u001b[0m\n\u001b[32m*****\u001b[0m\n  |  ", "DelayMs": 200, "Width": 5, "Height": 4 },
-            { "Content": "\u001b[33m  *  \u001b[0m\n\u001b[33m ***\u001b[0m\n\u001b[33m*****\u001b[0m\n  |  ", "DelayMs": 200, "Width": 5, "Height": 4 },
-            { "Content": "\u001b[31m  *  \u001b[0m\n\u001b[31m ***\u001b[0m\n\u001b[31m*****\u001b[0m\n  |  ", "DelayMs": 200, "Width": 5, "Height": 4 }
-        ]
-    }
-    """;
+               {
+                   "@context": "https://schema.org/",
+                   "@type": "ConsoleImageDocument",
+                   "Version": "2.0",
+                   "RenderMode": "ASCII",
+                   "Settings": {
+                       "MaxWidth": 40,
+                       "MaxHeight": 10,
+                       "UseColor": true,
+                       "AnimationSpeedMultiplier": 1.0,
+                       "LoopCount": 3
+                   },
+                   "Frames": [
+                       { "Content": "\u001b[32m  *  \u001b[0m\n\u001b[32m ***\u001b[0m\n\u001b[32m*****\u001b[0m\n  |  ", "DelayMs": 200, "Width": 5, "Height": 4 },
+                       { "Content": "\u001b[33m  *  \u001b[0m\n\u001b[33m ***\u001b[0m\n\u001b[33m*****\u001b[0m\n  |  ", "DelayMs": 200, "Width": 5, "Height": 4 },
+                       { "Content": "\u001b[31m  *  \u001b[0m\n\u001b[31m ***\u001b[0m\n\u001b[31m*****\u001b[0m\n  |  ", "DelayMs": 200, "Width": 5, "Height": 4 }
+                   ]
+               }
+               """;
 
     // Benchmark parsing
     var sw = Stopwatch.StartNew();
@@ -85,7 +87,11 @@ async Task QuickDemo()
     Console.WriteLine("\nPlaying animation (3 loops)...\n");
 
     using var cts = new CancellationTokenSource();
-    Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+    Console.CancelKeyPress += (s, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
 
     await player.PlayAsync(cts.Token);
 
@@ -131,7 +137,8 @@ async Task GenerateSamples(string outputDir)
             var doc = ConsoleImageDocument.FromAsciiFrames(frames, options, baseName + ".gif");
             var jsonPath = Path.Combine(outputDir, $"{baseName}_ascii.json");
             await doc.SaveAsync(jsonPath);
-            Console.WriteLine($"OK ({sw.ElapsedMilliseconds}ms, {doc.FrameCount} frames, {new FileInfo(jsonPath).Length / 1024}KB)");
+            Console.WriteLine(
+                $"OK ({sw.ElapsedMilliseconds}ms, {doc.FrameCount} frames, {new FileInfo(jsonPath).Length / 1024}KB)");
         }
 
         // Generate Braille version (higher resolution)
@@ -143,7 +150,8 @@ async Task GenerateSamples(string outputDir)
             var doc = ConsoleImageDocument.FromBrailleFrames(frames, options, baseName + ".gif");
             var jsonPath = Path.Combine(outputDir, $"{baseName}_braille.json");
             await doc.SaveAsync(jsonPath);
-            Console.WriteLine($"OK ({sw.ElapsedMilliseconds}ms, {doc.FrameCount} frames, {new FileInfo(jsonPath).Length / 1024}KB)");
+            Console.WriteLine(
+                $"OK ({sw.ElapsedMilliseconds}ms, {doc.FrameCount} frames, {new FileInfo(jsonPath).Length / 1024}KB)");
         }
 
         // Generate Blocks version
@@ -155,7 +163,8 @@ async Task GenerateSamples(string outputDir)
             var doc = ConsoleImageDocument.FromColorBlockFrames(frames, options, baseName + ".gif");
             var jsonPath = Path.Combine(outputDir, $"{baseName}_blocks.json");
             await doc.SaveAsync(jsonPath);
-            Console.WriteLine($"OK ({sw.ElapsedMilliseconds}ms, {doc.FrameCount} frames, {new FileInfo(jsonPath).Length / 1024}KB)");
+            Console.WriteLine(
+                $"OK ({sw.ElapsedMilliseconds}ms, {doc.FrameCount} frames, {new FileInfo(jsonPath).Length / 1024}KB)");
         }
 
         Console.WriteLine();
@@ -204,7 +213,8 @@ async Task RunBenchmark(string sampleDir)
             ? loadTime.TotalMicroseconds / doc.FrameCount
             : 0;
 
-        Console.WriteLine($"| {name,-30} | {sizeKb,4}KB | {doc.FrameCount,6} | {loadTime.TotalMilliseconds,7:F2}ms | {perFrame,9:F1}µs |");
+        Console.WriteLine(
+            $"| {name,-30} | {sizeKb,4}KB | {doc.FrameCount,6} | {loadTime.TotalMilliseconds,7:F2}ms | {perFrame,9:F1}µs |");
     }
 
     Console.WriteLine();
@@ -220,10 +230,11 @@ async Task RunBenchmark(string sampleDir)
     var memBefore = GC.GetTotalMemory(true);
 
     var sw2 = Stopwatch.StartNew();
-    for (int i = 0; i < 1000; i++)
+    for (var i = 0; i < 1000; i++)
     {
         var _ = PlayerDocument.FromJson(testJson);
     }
+
     sw2.Stop();
 
     GC.Collect();
@@ -256,7 +267,11 @@ async Task PlayDocument(string path)
     {
         Console.WriteLine("\nPress Ctrl+C to stop\n");
         using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (s, e) => { e.Cancel = true; cts.Cancel(); };
+        Console.CancelKeyPress += (s, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
 
         await player.PlayAsync(cts.Token);
         Console.WriteLine("\n");

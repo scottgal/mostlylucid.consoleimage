@@ -6,17 +6,18 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
+using ConsoleImage.Video.Core;
+using ConsoleVideo.Avalonia.Models;
 using ConsoleVideo.Avalonia.Services;
 using ConsoleVideo.Avalonia.ViewModels;
 using FluentAvalonia.Styling;
-using FluentAvalonia.UI.Controls;
 using FluentAvalonia.UI.Windowing;
 
 namespace ConsoleVideo.Avalonia.Views;
 
 public partial class MainWindow : AppWindow
 {
-    private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
+    private WindowState _previousWindowState = WindowState.Normal;
 
     public MainWindow()
     {
@@ -26,6 +27,8 @@ public partial class MainWindow : AppWindow
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
     }
+
+    private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
@@ -37,10 +40,7 @@ public partial class MainWindow : AppWindow
     private void VideoPreview_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         // Only open file dialog when no video is loaded
-        if (!ViewModel.HasVideo)
-        {
-            OpenVideo_Click(sender, e);
-        }
+        if (!ViewModel.HasVideo) OpenVideo_Click(sender, e);
     }
 
     private async void OnDrop(object? sender, DragEventArgs e)
@@ -54,13 +54,8 @@ public partial class MainWindow : AppWindow
             {
                 var path = storageFile.Path.LocalPath;
                 if (IsVideoFile(path))
-                {
                     await ViewModel.LoadVideoAsync(path);
-                }
-                else if (IsImageFile(path))
-                {
-                    await ViewModel.LoadImageAsync(path);
-                }
+                else if (IsImageFile(path)) await ViewModel.LoadImageAsync(path);
             }
         }
     }
@@ -78,7 +73,11 @@ public partial class MainWindow : AppWindow
             [
                 new FilePickerFileType("All Media")
                 {
-                    Patterns = ["*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm", "*.wmv", "*.flv", "*.gif", "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.webp"]
+                    Patterns =
+                    [
+                        "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm", "*.wmv", "*.flv", "*.gif", "*.png", "*.jpg",
+                        "*.jpeg", "*.bmp", "*.webp"
+                    ]
                 },
                 new FilePickerFileType("Video Files")
                 {
@@ -99,13 +98,8 @@ public partial class MainWindow : AppWindow
         {
             var path = files[0].Path.LocalPath;
             if (IsVideoFile(path))
-            {
                 await ViewModel.LoadVideoAsync(path);
-            }
-            else if (IsImageFile(path))
-            {
-                await ViewModel.LoadImageAsync(path);
-            }
+            else if (IsImageFile(path)) await ViewModel.LoadImageAsync(path);
         }
     }
 
@@ -161,7 +155,7 @@ public partial class MainWindow : AppWindow
         // Convert KeyframeViewModels to CoreKeyframes
         var coreKeyframes = ViewModel.Keyframes
             .Where(kf => kf.OriginalImage != null)
-            .Select(kf => new ConsoleImage.Video.Core.ExtractedKeyframe
+            .Select(kf => new ExtractedKeyframe
             {
                 Index = kf.Index,
                 Timestamp = kf.Timestamp,
@@ -172,7 +166,7 @@ public partial class MainWindow : AppWindow
             .ToList();
 
         // Create extraction settings from ViewModel state
-        var settings = new Models.ExtractionSettings
+        var settings = new ExtractionSettings
         {
             TargetKeyframeCount = ViewModel.TargetKeyframeCount,
             StartTime = ViewModel.RangeStart > 0 ? ViewModel.RangeStart : null,
@@ -229,9 +223,7 @@ public partial class MainWindow : AppWindow
     private async void TimelineThumbnail_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Button button && button.DataContext is TimelineThumbnail thumb)
-        {
             await ViewModel.SeekToThumbnailAsync(thumb);
-        }
     }
 
     private void Keyframe_PointerPressed(object? sender, PointerPressedEventArgs e)
@@ -274,8 +266,6 @@ public partial class MainWindow : AppWindow
         ToggleFullscreen();
     }
 
-    private WindowState _previousWindowState = WindowState.Normal;
-
     private void ToggleFullscreen()
     {
         if (WindowState == WindowState.FullScreen)
@@ -299,10 +289,7 @@ public partial class MainWindow : AppWindow
                 int.TryParse(parts[1], out var height))
             {
                 // Exit fullscreen first if needed
-                if (WindowState == WindowState.FullScreen)
-                {
-                    WindowState = WindowState.Normal;
-                }
+                if (WindowState == WindowState.FullScreen) WindowState = WindowState.Normal;
 
                 Width = width;
                 Height = height;
@@ -312,8 +299,8 @@ public partial class MainWindow : AppWindow
                 {
                     var screen = Screens.Primary.WorkingArea;
                     Position = new PixelPoint(
-                        (int)(screen.X + (screen.Width - width) / 2),
-                        (int)(screen.Y + (screen.Height - height) / 2));
+                        screen.X + (screen.Width - width) / 2,
+                        screen.Y + (screen.Height - height) / 2);
                 }
             }
         }
@@ -369,7 +356,8 @@ public partial class MainWindow : AppWindow
                     },
                     new TextBlock
                     {
-                        Text = "Video keyframe extraction and ASCII art preview tool.\n\nPart of the ConsoleImage suite.",
+                        Text =
+                            "Video keyframe extraction and ASCII art preview tool.\n\nPart of the ConsoleImage suite.",
                         TextWrapping = TextWrapping.Wrap
                     },
                     new Button
@@ -383,9 +371,7 @@ public partial class MainWindow : AppWindow
         };
 
         if (dialog.Content is StackPanel panel && panel.Children.LastOrDefault() is Button okButton)
-        {
             okButton.Click += (_, _) => dialog.Close();
-        }
 
         await dialog.ShowDialog(this);
     }

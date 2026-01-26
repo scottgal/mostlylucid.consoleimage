@@ -4,7 +4,6 @@
 using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -25,6 +24,39 @@ public class BrailleRenderer : IDisposable
     // Full braille block (all 8 dots on) - ⣿
     private const char BrailleFull = '\u28FF';
 
+    // Braille bit positions (standard Unicode encoding):
+    // Pos:  1  4    Bits: 0x01  0x08
+    //       2  5          0x02  0x10
+    //       3  6          0x04  0x20
+    //       7  8          0x40  0x80
+    // Full block (⣿) = 0xFF
+
+    // Row/column masks
+    private const int MaskTopRow = 0x09; // positions 1,4
+    private const int MaskRow2 = 0x12; // positions 2,5
+    private const int MaskRow3 = 0x24; // positions 3,6
+    private const int MaskBottomRow = 0xC0; // positions 7,8
+    private const int MaskLeftCol = 0x47; // positions 1,2,3,7
+    private const int MaskRightCol = 0xB8; // positions 4,5,6,8
+    private const int MaskTopHalf = 0x1B; // rows 1-2
+    private const int MaskBottomHalf = 0xE4; // rows 3-4
+
+    // 6-dot patterns (missing one row or column - 2 holes)
+    private const int PatternTopFilled = 0xFF ^ MaskBottomRow; // ⠿ 0x3F - bottom row empty
+    private const int PatternBottomFilled = 0xFF ^ MaskTopRow; // ⣶ 0xF6 - top row empty
+    private const int PatternLeftFilled = 0xFF ^ MaskRightCol; // ⡇ 0x47 - right col empty
+    private const int PatternRightFilled = 0xFF ^ MaskLeftCol; // ⢸ 0xB8 - left col empty
+
+    // 7-dot patterns (single corner missing - 1 hole) - minimal black
+    private const int PatternNoTL = 0xFE; // ⣾ missing top-left (pos 1)
+    private const int PatternNoTR = 0xF7; // ⣷ missing top-right (pos 4)
+    private const int PatternNoBL = 0xBF; // ⢿ missing bottom-left (pos 7)
+    private const int PatternNoBR = 0x7F; // ⡿ missing bottom-right (pos 8)
+
+    // 6-dot diagonal patterns (two opposite corners missing)
+    private const int PatternDiagTLBR = 0xFF ^ 0x01 ^ 0x80; // ⢾ missing TL and BR
+    private const int PatternDiagTRBL = 0xFF ^ 0x08 ^ 0x40; // ⡷ missing TR and BL
+
     // Dot bit positions in braille character
     // Pattern:  1 4
     //           2 5
@@ -32,26 +64,51 @@ public class BrailleRenderer : IDisposable
     //           7 8
     // Index = dy * 2 + dx, so: [0,0]=0, [0,1]=1, [1,0]=2, [1,1]=3, [2,0]=4, [2,1]=5, [3,0]=6, [3,1]=7
     private static readonly int[] DotBits = { 0x01, 0x08, 0x02, 0x10, 0x04, 0x20, 0x40, 0x80 };
-    private readonly RenderOptions _options;
-    private bool _disposed;
-
-    // Reusable buffers to reduce GC pressure during video playback
-    private float[]? _brightnessBuffer;
-    private Rgba32[]? _colorsBuffer;
-    private float[]? _ditheringBuffer;
-    private int _lastBufferSize;
 
     // Pre-computed ANSI escape sequences for common greyscale values (0-255)
     // Saves string allocations for repeated colors
     private static readonly string[] GreyscaleEscapes = InitGreyscaleEscapes();
 
-    private static string[] InitGreyscaleEscapes()
+    // Braille patterns for different edge directions
+    // Each pattern shows the "visible" side of an edge
+    private static readonly int[] EdgePatterns =
     {
-        var escapes = new string[256];
-        for (var i = 0; i < 256; i++)
-            escapes[i] = $"\x1b[38;2;{i};{i};{i}m";
-        return escapes;
-    }
+        0xFF, // No edge - full block
+        0x1B, // Horizontal edge, top half: ⠛
+        0xE4, // Horizontal edge, bottom half: ⣤
+        0x49, // Vertical edge, left half: ⡉
+        0xB6, // Vertical edge, right half: ⢶
+        0x09, // Diagonal /, top-left: ⠉
+        0xC0, // Diagonal /, bottom-right: ⣀
+        0x06, // Diagonal \, top-right: ⠆
+        0x90 // Diagonal \, bottom-left: ⢐
+    };
+
+    // Pre-computed braille density patterns for smooth gradients
+    // Each pattern has a specific number of dots arranged aesthetically
+    // Pattern[0] = 0 dots (empty), Pattern[8] = 8 dots (full)
+    // Designed to create visually smooth transitions
+    private static readonly int[] DensityPatterns =
+    {
+        0x00, // 0 dots: ⠀ (empty)
+        0x40, // 1 dot:  ⡀ (bottom-left, least intrusive)
+        0x44, // 2 dots: ⡄ (left column bottom half)
+        0x64, // 3 dots: ⡤ (bottom half minus one)
+        0xE4, // 4 dots: ⣤ (bottom half - symmetric)
+        0xE5, // 5 dots: ⣥ (bottom half + top-left)
+        0xF5, // 6 dots: ⣵ (missing top-right and one)
+        0xFD, // 7 dots: ⣽ (missing one corner)
+        0xFF // 8 dots: ⣿ (full block)
+    };
+
+    private readonly RenderOptions _options;
+
+    // Reusable buffers to reduce GC pressure during video playback
+    private float[]? _brightnessBuffer;
+    private Rgba32[]? _colorsBuffer;
+    private bool _disposed;
+    private float[]? _ditheringBuffer;
+    private int _lastBufferSize;
 
     public BrailleRenderer(RenderOptions? options = null)
     {
@@ -69,11 +126,13 @@ public class BrailleRenderer : IDisposable
             ArrayPool<float>.Shared.Return(_brightnessBuffer);
             _brightnessBuffer = null;
         }
+
         if (_colorsBuffer != null)
         {
             ArrayPool<Rgba32>.Shared.Return(_colorsBuffer);
             _colorsBuffer = null;
         }
+
         if (_ditheringBuffer != null)
         {
             ArrayPool<float>.Shared.Return(_ditheringBuffer);
@@ -81,6 +140,14 @@ public class BrailleRenderer : IDisposable
         }
 
         GC.SuppressFinalize(this);
+    }
+
+    private static string[] InitGreyscaleEscapes()
+    {
+        var escapes = new string[256];
+        for (var i = 0; i < 256; i++)
+            escapes[i] = $"\x1b[38;2;{i};{i};{i}m";
+        return escapes;
     }
 
     /// <summary>
@@ -210,9 +277,7 @@ public class BrailleRenderer : IDisposable
         if (previousCells == null ||
             previousCells.GetLength(0) != height ||
             previousCells.GetLength(1) != width)
-        {
             return (RenderCellsToString(cells), cells);
-        }
 
         // Delta render - only output changed cells
         // Optimized: batch consecutive changed cells on same row with same color
@@ -334,10 +399,7 @@ public class BrailleRenderer : IDisposable
                 }
             }
 
-            if (y < height - 1)
-            {
-                sb.Append("\x1b[0m\n");
-            }
+            if (y < height - 1) sb.Append("\x1b[0m\n");
         }
 
         sb.Append("\x1b[0m");
@@ -393,17 +455,13 @@ public class BrailleRenderer : IDisposable
         // For MONOCHROME mode: use Otsu's method for optimal separation
         float threshold;
         if (_options.UseColor)
-        {
             // Color mode: use generous threshold to show most content
             // In invert mode (dark terminal): only hide very dark pixels (< 15%)
             // In normal mode (light terminal): only hide very bright pixels (> 85%)
             threshold = invertMode ? 0.15f : 0.85f;
-        }
         else
-        {
             // Monochrome: use Otsu's method for best separation
             threshold = CalculateOtsuThreshold(brightness);
-        }
 
         // Apply Atkinson dithering for smooth gradients
         brightness = ApplyAtkinsonDithering(brightness, pixelWidth, pixelHeight, threshold);
@@ -655,21 +713,6 @@ public class BrailleRenderer : IDisposable
         return sb.ToString();
     }
 
-    // Braille patterns for different edge directions
-    // Each pattern shows the "visible" side of an edge
-    private static readonly int[] EdgePatterns =
-    {
-        0xFF,  // No edge - full block
-        0x1B,  // Horizontal edge, top half: ⠛
-        0xE4,  // Horizontal edge, bottom half: ⣤
-        0x49,  // Vertical edge, left half: ⡉
-        0xB6,  // Vertical edge, right half: ⢶
-        0x09,  // Diagonal /, top-left: ⠉
-        0xC0,  // Diagonal /, bottom-right: ⣀
-        0x06,  // Diagonal \, top-right: ⠆
-        0x90   // Diagonal \, bottom-left: ⢐
-    };
-
     /// <summary>
     ///     Get braille pattern for an edge based on angle.
     ///     Maps edge angle to appropriate half-block pattern.
@@ -691,25 +734,19 @@ public class BrailleRenderer : IDisposable
         var absAngle = MathF.Abs(angle);
 
         if (absAngle < MathF.PI / 8 || absAngle > 7 * MathF.PI / 8)
-        {
             // Near 0 or PI - vertical edge
             return showTopOrLeft ? EdgePatterns[3] : EdgePatterns[4];
-        }
-        else if (absAngle > 3 * MathF.PI / 8 && absAngle < 5 * MathF.PI / 8)
-        {
+
+        if (absAngle > 3 * MathF.PI / 8 && absAngle < 5 * MathF.PI / 8)
             // Near PI/2 - horizontal edge
             return showTopOrLeft ? EdgePatterns[1] : EdgePatterns[2];
-        }
-        else if (angle > 0)
-        {
+
+        if (angle > 0)
             // Positive angles - diagonal /
             return showTopOrLeft ? EdgePatterns[5] : EdgePatterns[6];
-        }
-        else
-        {
-            // Negative angles - diagonal \
-            return showTopOrLeft ? EdgePatterns[7] : EdgePatterns[8];
-        }
+
+        // Negative angles - diagonal \
+        return showTopOrLeft ? EdgePatterns[7] : EdgePatterns[8];
     }
 
     /// <summary>
@@ -773,13 +810,11 @@ public class BrailleRenderer : IDisposable
 
                     // Apply color quantization for palette reduction
                     if (quantize && quantStep > 1)
-                    {
                         pixel = new Rgba32(
                             (byte)(pixel.R / quantStep * quantStep),
                             (byte)(pixel.G / quantStep * quantStep),
                             (byte)(pixel.B / quantStep * quantStep),
                             pixel.A);
-                    }
 
                     brightness[rowOffset + x] = BrightnessHelper.GetBrightness(pixel);
                     colors[rowOffset + x] = pixel;
@@ -811,10 +846,7 @@ public class BrailleRenderer : IDisposable
         var len = brightness.Length;
 
         // Use SIMD if available and buffer is large enough
-        if (Vector.IsHardwareAccelerated && len >= Vector<float>.Count * 2)
-        {
-            return GetBrightnessRangeSimd(brightness);
-        }
+        if (Vector.IsHardwareAccelerated && len >= Vector<float>.Count * 2) return GetBrightnessRangeSimd(brightness);
 
         // Fallback: unrolled scalar loop
         var min = brightness[0];
@@ -853,7 +885,7 @@ public class BrailleRenderer : IDisposable
     {
         var vectorSize = Vector<float>.Count;
         var len = brightness.Length;
-        var vectorizedLength = len - (len % vectorSize);
+        var vectorizedLength = len - len % vectorSize;
 
         // Initialize with first vector
         var minVec = new Vector<float>(brightness);
@@ -896,9 +928,9 @@ public class BrailleRenderer : IDisposable
     private static (byte r, byte g, byte b) BoostBrailleColor(byte r, byte g, byte b, float gamma)
     {
         // Convert to float for processing
-        float rf = r / 255f;
-        float gf = g / 255f;
-        float bf = b / 255f;
+        var rf = r / 255f;
+        var gf = g / 255f;
+        var bf = b / 255f;
 
         // Apply gamma correction first
         if (gamma != 1.0f)
@@ -1061,6 +1093,7 @@ public class BrailleRenderer : IDisposable
                     if (x + 1 < width)
                         result[nextRowIdx + 1] += error;
                 }
+
                 if (hasNextNextRow)
                     result[idx + nextNextRowOffset] += error;
             }
@@ -1226,56 +1259,6 @@ public class BrailleRenderer : IDisposable
         return (Math.Max(2, width), Math.Max(4, height));
     }
 
-    // Pre-computed braille density patterns for smooth gradients
-    // Each pattern has a specific number of dots arranged aesthetically
-    // Pattern[0] = 0 dots (empty), Pattern[8] = 8 dots (full)
-    // Designed to create visually smooth transitions
-    private static readonly int[] DensityPatterns =
-    {
-        0x00,  // 0 dots: ⠀ (empty)
-        0x40,  // 1 dot:  ⡀ (bottom-left, least intrusive)
-        0x44,  // 2 dots: ⡄ (left column bottom half)
-        0x64,  // 3 dots: ⡤ (bottom half minus one)
-        0xE4,  // 4 dots: ⣤ (bottom half - symmetric)
-        0xE5,  // 5 dots: ⣥ (bottom half + top-left)
-        0xF5,  // 6 dots: ⣵ (missing top-right and one)
-        0xFD,  // 7 dots: ⣽ (missing one corner)
-        0xFF   // 8 dots: ⣿ (full block)
-    };
-
-    // Braille bit positions (standard Unicode encoding):
-    // Pos:  1  4    Bits: 0x01  0x08
-    //       2  5          0x02  0x10
-    //       3  6          0x04  0x20
-    //       7  8          0x40  0x80
-    // Full block (⣿) = 0xFF
-
-    // Row/column masks
-    private const int MaskTopRow = 0x09;      // positions 1,4
-    private const int MaskRow2 = 0x12;        // positions 2,5
-    private const int MaskRow3 = 0x24;        // positions 3,6
-    private const int MaskBottomRow = 0xC0;   // positions 7,8
-    private const int MaskLeftCol = 0x47;     // positions 1,2,3,7
-    private const int MaskRightCol = 0xB8;    // positions 4,5,6,8
-    private const int MaskTopHalf = 0x1B;     // rows 1-2
-    private const int MaskBottomHalf = 0xE4;  // rows 3-4
-
-    // 6-dot patterns (missing one row or column - 2 holes)
-    private const int PatternTopFilled = 0xFF ^ MaskBottomRow;     // ⠿ 0x3F - bottom row empty
-    private const int PatternBottomFilled = 0xFF ^ MaskTopRow;     // ⣶ 0xF6 - top row empty
-    private const int PatternLeftFilled = 0xFF ^ MaskRightCol;     // ⡇ 0x47 - right col empty
-    private const int PatternRightFilled = 0xFF ^ MaskLeftCol;     // ⢸ 0xB8 - left col empty
-
-    // 7-dot patterns (single corner missing - 1 hole) - minimal black
-    private const int PatternNoTL = 0xFE;     // ⣾ missing top-left (pos 1)
-    private const int PatternNoTR = 0xF7;     // ⣷ missing top-right (pos 4)
-    private const int PatternNoBL = 0xBF;     // ⢿ missing bottom-left (pos 7)
-    private const int PatternNoBR = 0x7F;     // ⡿ missing bottom-right (pos 8)
-
-    // 6-dot diagonal patterns (two opposite corners missing)
-    private const int PatternDiagTLBR = 0xFF ^ 0x01 ^ 0x80;  // ⢾ missing TL and BR
-    private const int PatternDiagTRBL = 0xFF ^ 0x08 ^ 0x40;  // ⡷ missing TR and BL
-
     /// <summary>
     ///     Calculate braille code for colored output.
     ///     Strategy: Keep 6-7 dots always (minimal black), but WHICH dots are removed
@@ -1302,37 +1285,28 @@ public class BrailleRenderer : IDisposable
             if (b < minCell) minCell = b;
             if (b > maxCell) maxCell = b;
         }
+
         var cellRange = maxCell - minCell;
 
         // Very uniform - full block
-        if (cellRange < 0.15f)
-        {
-            return 0xFF;
-        }
+        if (cellRange < 0.15f) return 0xFF;
 
         // Find the 1-2 darkest pixels (in invert mode) or brightest (normal mode)
         // These become the "missing" dots, showing edge detail
 
         // Find indices sorted by brightness
         Span<(float bright, int idx)> pixels = stackalloc (float, int)[colorCount];
-        for (var i = 0; i < colorCount; i++)
-        {
-            pixels[i] = (cellBrightness[i], cellIndices[i]);
-        }
+        for (var i = 0; i < colorCount; i++) pixels[i] = (cellBrightness[i], cellIndices[i]);
 
         // Sort by brightness (ascending)
         for (var i = 0; i < colorCount - 1; i++)
-        {
-            for (var j = i + 1; j < colorCount; j++)
+        for (var j = i + 1; j < colorCount; j++)
+            if (pixels[j].bright < pixels[i].bright)
             {
-                if (pixels[j].bright < pixels[i].bright)
-                {
-                    var tmp = pixels[i];
-                    pixels[i] = pixels[j];
-                    pixels[j] = tmp;
-                }
+                var tmp = pixels[i];
+                pixels[i] = pixels[j];
+                pixels[j] = tmp;
             }
-        }
 
         // Start with full block
         var brailleCode = 0xFF;
@@ -1341,24 +1315,16 @@ public class BrailleRenderer : IDisposable
         // In normal mode: remove brightest 1-2 dots
         // This shows edge detail while keeping most dots visible
 
-        int dotsToRemove = cellRange > 0.3f ? 2 : 1;
+        var dotsToRemove = cellRange > 0.3f ? 2 : 1;
 
         if (invertMode)
-        {
             // Remove darkest pixels (they blend with terminal)
             for (var i = 0; i < dotsToRemove && i < colorCount; i++)
-            {
                 brailleCode &= ~DotBits[pixels[i].idx];
-            }
-        }
         else
-        {
             // Remove brightest pixels (they blend with terminal)
             for (var i = 0; i < dotsToRemove && i < colorCount; i++)
-            {
                 brailleCode &= ~DotBits[pixels[colorCount - 1 - i].idx];
-            }
-        }
 
         return brailleCode;
     }
@@ -1374,6 +1340,7 @@ public class BrailleRenderer : IDisposable
             count += n & 1;
             n >>= 1;
         }
+
         return count;
     }
 }

@@ -9,10 +9,10 @@ Real-time video to ASCII art rendering using FFmpeg for .NET 10.
 
 ## Video Render Modes
 
-| ASCII | ColorBlocks | Braille |
-|:-----:|:-----------:|:-------:|
+|                                                     ASCII                                                     |                                                   ColorBlocks                                                   |                                                      Braille                                                      |
+|:-------------------------------------------------------------------------------------------------------------:|:---------------------------------------------------------------------------------------------------------------:|:-----------------------------------------------------------------------------------------------------------------:|
 | ![ASCII](https://raw.githubusercontent.com/scottgal/mostlylucid.consoleimage/master/samples/wiggum_ascii.gif) | ![Blocks](https://raw.githubusercontent.com/scottgal/mostlylucid.consoleimage/master/samples/wiggum_blocks.gif) | ![Braille](https://raw.githubusercontent.com/scottgal/mostlylucid.consoleimage/master/samples/wiggum_braille.gif) |
-| Shape-matched characters | Unicode half-blocks (2x res) | 2x4 dot patterns (highest res) |
+|                                           Shape-matched characters                                            |                                          Unicode half-blocks (2x res)                                           |                                          2x4 dot patterns (highest res)                                           |
 
 ## Features
 
@@ -102,12 +102,14 @@ FFmpeg downloads automatically on first use:
 - **macOS**: From [evermeet.cx/ffmpeg](https://evermeet.cx/ffmpeg/)
 
 **Cache location:**
+
 - Windows: `%LOCALAPPDATA%\consoleimage\ffmpeg`
 - Linux/macOS: `~/.local/share/consoleimage/ffmpeg`
 
 ## Hardware Acceleration
 
 Auto-detected per platform:
+
 - **Windows**: DXVA2, CUDA (NVIDIA)
 - **macOS**: VideoToolbox
 - **Linux**: VAAPI, CUDA
@@ -119,8 +121,10 @@ Auto-detected per platform:
 
 ## Related Packages
 
-- [mostlylucid.consoleimage](https://www.nuget.org/packages/mostlylucid.consoleimage/) - Core image rendering (dependency)
-- [mostlylucid.consoleimage.spectre](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/) - Spectre.Console integration
+- [mostlylucid.consoleimage](https://www.nuget.org/packages/mostlylucid.consoleimage/) - Core image rendering (
+  dependency)
+- [mostlylucid.consoleimage.spectre](https://www.nuget.org/packages/mostlylucid.consoleimage.spectre/) - Spectre.Console
+  integration
 
 ## License
 

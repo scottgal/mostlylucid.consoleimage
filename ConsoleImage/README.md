@@ -19,26 +19,26 @@
 
 ### Example Output
 
-| ASCII Mode | ColorBlocks Mode | Braille Mode |
-|------------|------------------|--------------|
+| ASCII Mode                                                                                                                   | ColorBlocks Mode                                                                                                               | Braille Mode                                                                                                                     |
+|------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="200" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="200" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="200" alt="Braille"> |
 
 ## Installation
 
 Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
 
-| Platform | Download |
-|----------|----------|
-| Windows x64 | `consoleimage-win-x64.zip` |
-| Linux x64 | `consoleimage-linux-x64.tar.gz` |
+| Platform    | Download                          |
+|-------------|-----------------------------------|
+| Windows x64 | `consoleimage-win-x64.zip`        |
+| Linux x64   | `consoleimage-linux-x64.tar.gz`   |
 | Linux ARM64 | `consoleimage-linux-arm64.tar.gz` |
-| macOS ARM64 | `consoleimage-osx-arm64.tar.gz` |
+| macOS ARM64 | `consoleimage-osx-arm64.tar.gz`   |
 
 ## Requirements
 
 - **Terminal with ANSI support** - Windows Terminal, iTerm2, any modern terminal
 - **FFmpeg** - Only needed for video files (auto-downloads on first video use)
-  - Images, GIFs, and cidz documents work without FFmpeg
+    - Images, GIFs, and cidz documents work without FFmpeg
 
 ## Quick Start
 
@@ -76,77 +76,78 @@ consoleimage movie.cidz -o movie.gif      # Document to GIF
 
 ## Render Modes
 
-| Mode | CLI Option | Description | Best For |
-|------|------------|-------------|----------|
-| **Braille** | (default) | Braille patterns (2×4 dots/cell) | **DEFAULT** - Maximum resolution |
-| **ASCII** | `-a, --ascii` | Shape-matched ASCII characters | Widest compatibility |
-| **ColorBlocks** | `-b, --blocks` | Unicode half-blocks (▀▄) | High fidelity, photos |
-| **Matrix** | `-M, --matrix` | Digital rain effect | Stylized output |
+| Mode            | CLI Option     | Description                      | Best For                         |
+|-----------------|----------------|----------------------------------|----------------------------------|
+| **Braille**     | (default)      | Braille patterns (2×4 dots/cell) | **DEFAULT** - Maximum resolution |
+| **ASCII**       | `-a, --ascii`  | Shape-matched ASCII characters   | Widest compatibility             |
+| **ColorBlocks** | `-b, --blocks` | Unicode half-blocks (▀▄)         | High fidelity, photos            |
+| **Matrix**      | `-M, --matrix` | Digital rain effect              | Stylized output                  |
 
 ## CLI Options
 
 ### Input/Output
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `input` | Image, GIF, video, or cidz/json document | Required |
-| `-o, --output` | Output file (.gif, .cidz, .json) | Console |
+| Option         | Description                              | Default  |
+|----------------|------------------------------------------|----------|
+| `input`        | Image, GIF, video, or cidz/json document | Required |
+| `-o, --output` | Output file (.gif, .cidz, .json)         | Console  |
 
 ### Dimensions
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-w, --width` | Output width in characters | Auto (console width) |
-| `-h, --height` | Output height in characters | Auto |
-| `--max-width` | Maximum output width | Console width |
-| `--max-height` | Maximum output height | Console height |
+| Option         | Description                 | Default              |
+|----------------|-----------------------------|----------------------|
+| `-w, --width`  | Output width in characters  | Auto (console width) |
+| `-h, --height` | Output height in characters | Auto                 |
+| `--max-width`  | Maximum output width        | Console width        |
+| `--max-height` | Maximum output height       | Console height       |
 
 ### Render Mode
 
-| Option | Description |
-|--------|-------------|
-| `-a, --ascii` | Use classic ASCII characters (v2.x default) |
-| `-b, --blocks` | Use colored Unicode half-blocks |
-| `-B, --braille` | Use braille characters (DEFAULT) |
-| `-M, --matrix` | Use Matrix digital rain effect |
-| `--no-color` | Disable color output |
+| Option          | Description                                 |
+|-----------------|---------------------------------------------|
+| `-a, --ascii`   | Use classic ASCII characters (v2.x default) |
+| `-b, --blocks`  | Use colored Unicode half-blocks             |
+| `-B, --braille` | Use braille characters (DEFAULT)            |
+| `-M, --matrix`  | Use Matrix digital rain effect              |
+| `--no-color`    | Disable color output                        |
 
 ### Playback Control
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-s, --speed` | Playback speed multiplier | 1.0 |
-| `-l, --loop` | Loop count (0 = infinite) | 0 |
-| `-S, --status` | Show status line with progress | OFF |
-| `--no-animate` | Show first frame only | OFF |
-| `--dejitter` | Reduce color flickering in animations | OFF |
+| Option         | Description                           | Default |
+|----------------|---------------------------------------|---------|
+| `-s, --speed`  | Playback speed multiplier             | 1.0     |
+| `-l, --loop`   | Loop count (0 = infinite)             | 0       |
+| `-S, --status` | Show status line with progress        | OFF     |
+| `--no-animate` | Show first frame only                 | OFF     |
+| `--dejitter`   | Reduce color flickering in animations | OFF     |
 
 ### Video Options (requires FFmpeg)
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--start, --ss` | Start time in seconds | 0 |
-| `-t, --duration` | Duration to play | Full video |
-| `--end` | End time in seconds | Video end |
-| `-r, --fps` | Target framerate | Video native |
-| `--frame-step` | Skip frames (2 = every 2nd) | 1 |
-| `--no-hw` | Disable hardware acceleration | HW enabled |
-| `--ffmpeg-path` | Path to FFmpeg installation | Auto-download |
+| Option           | Description                   | Default       |
+|------------------|-------------------------------|---------------|
+| `--start, --ss`  | Start time in seconds         | 0             |
+| `-t, --duration` | Duration to play              | Full video    |
+| `--end`          | End time in seconds           | Video end     |
+| `-r, --fps`      | Target framerate              | Video native  |
+| `--frame-step`   | Skip frames (2 = every 2nd)   | 1             |
+| `--no-hw`        | Disable hardware acceleration | HW enabled    |
+| `--ffmpeg-path`  | Path to FFmpeg installation   | Auto-download |
 
 ### Raw Frame Extraction
 
 Extract actual video/GIF frames without ASCII rendering. Supports multiple output formats:
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--raw` | Extract raw frames (no ASCII) | OFF |
-| `--raw-width` | Output width in pixels | 320 |
-| `--raw-height` | Output height in pixels | Auto |
-| `--smart-keyframes` | Use scene detection | OFF |
-| `--scene-threshold` | Scene sensitivity (0.0-1.0) | 0.4 |
-| `-q, --quality` | Output quality 1-100 | 85 |
+| Option              | Description                   | Default |
+|---------------------|-------------------------------|---------|
+| `--raw`             | Extract raw frames (no ASCII) | OFF     |
+| `--raw-width`       | Output width in pixels        | 320     |
+| `--raw-height`      | Output height in pixels       | Auto    |
+| `--smart-keyframes` | Use scene detection           | OFF     |
+| `--scene-threshold` | Scene sensitivity (0.0-1.0)   | 0.4     |
+| `-q, --quality`     | Output quality 1-100          | 85      |
 
 **Supported output formats:**
+
 - `.gif` - Animated GIF (default)
 - `.webp` - Animated WebP
 - `.png`, `.jpg`, `.bmp` - Image sequence (frame_001.png, etc.)
@@ -171,21 +172,21 @@ consoleimage movie.mp4 --raw -o clip.mp4 --ss 30 -t 5 --raw-width 480
 
 ### GIF Output Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--gif-fps` | GIF framerate | 10 |
-| `--gif-colors` | Palette size (16-256) | 64 |
-| `--gif-font-size` | Font size in pixels | 10 |
-| `--gif-scale` | Scale factor | 1.0 |
+| Option            | Description           | Default |
+|-------------------|-----------------------|---------|
+| `--gif-fps`       | GIF framerate         | 10      |
+| `--gif-colors`    | Palette size (16-256) | 64      |
+| `--gif-font-size` | Font size in pixels   | 10      |
+| `--gif-scale`     | Scale factor          | 1.0     |
 
 ### Image Adjustment
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--contrast` | Contrast power (1.0 = none) | 2.5 |
-| `--gamma` | Gamma correction (<1 brighter) | 0.85 |
-| `-a, --aspect-ratio` | Character aspect ratio | 0.5 |
-| `--colors` | Color palette size (4, 16, 256) | Full |
+| Option               | Description                     | Default |
+|----------------------|---------------------------------|---------|
+| `--contrast`         | Contrast power (1.0 = none)     | 2.5     |
+| `--gamma`            | Gamma correction (<1 brighter)  | 0.85    |
+| `-a, --aspect-ratio` | Character aspect ratio          | 0.5     |
+| `--colors`           | Color palette size (4, 16, 256) | Full    |
 
 ### Calibration
 
@@ -319,18 +320,22 @@ consoleimage photo.png --matrix --matrix-fullcolor
 ## Troubleshooting
 
 ### Choppy video playback
+
 - Try `--no-hw` to disable hardware acceleration
 - Reduce dimensions with `-w 80 -h 40`
 - Skip frames with `--frame-step 2`
 
 ### Colors look wrong
+
 - Ensure terminal supports 24-bit color
 - Try `--blocks` mode for best color support
 
 ### Video stretched/squashed
+
 - Run calibration: `consoleimage --calibrate --save`
 
 ### cidz file won't load
+
 - Ensure it was created with a recent version
 - Try uncompressed JSON: `-o output.json`
 

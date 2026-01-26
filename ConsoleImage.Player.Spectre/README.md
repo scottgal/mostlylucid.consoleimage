@@ -1,6 +1,7 @@
 # ConsoleImage.Player.Spectre
 
-Spectre.Console integration for ConsoleImage.Player. Display pre-rendered ASCII art documents as `IRenderable` objects within Spectre.Console layouts.
+Spectre.Console integration for ConsoleImage.Player. Display pre-rendered ASCII art documents as `IRenderable` objects
+within Spectre.Console layouts.
 
 ## Installation
 

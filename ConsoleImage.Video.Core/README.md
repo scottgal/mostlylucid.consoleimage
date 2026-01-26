@@ -168,6 +168,7 @@ consolevideo video.mp4 --info
 ```
 
 Output:
+
 ```
 File: video.mp4
 Duration: 00:22:45.123
@@ -264,6 +265,7 @@ for img in *.jpg; do consolevideo "$img" -g "${img%.jpg}_ascii.gif" -B; done
 ```
 
 **Supported formats:**
+
 - **Images:** JPG, JPEG, PNG, BMP, GIF (animated), WebP, TIFF
 - **Videos:** MP4, MKV, AVI, MOV, WebM, and any format FFmpeg supports
 
@@ -298,10 +300,12 @@ await ffmpeg.InitializeAsync(new Progress<(string Status, double Progress)>(p =>
 ```
 
 **Download sources:**
+
 - Windows/Linux: [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) (GitHub)
 - macOS: [evermeet.cx/ffmpeg](https://evermeet.cx/ffmpeg/)
 
 **Cache location:**
+
 - Windows: `%LOCALAPPDATA%\consoleimage\ffmpeg`
 - Linux/macOS: `~/.local/share/consoleimage/ffmpeg`
 
@@ -388,6 +392,7 @@ await VideoPlayer.PlayAsync("https://example.com/video.mp4", options);
 ### Hardware Acceleration
 
 Auto-detected per platform:
+
 - **Windows**: DXVA2, CUDA (NVIDIA)
 - **macOS**: VideoToolbox
 - **Linux**: VAAPI, CUDA

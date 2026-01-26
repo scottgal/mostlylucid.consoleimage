@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Text;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace ConsoleImage.Core;
@@ -13,11 +14,35 @@ namespace ConsoleImage.Core;
 /// </summary>
 public sealed class RendererBuffers : IDisposable
 {
+    private Rgba32[]? _colorBuffer;
+    private bool _disposed;
     private float[]? _floatBuffer1;
     private float[]? _floatBuffer2;
-    private Rgba32[]? _colorBuffer;
     private int _lastSize;
-    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_floatBuffer1 != null)
+        {
+            ArrayPool<float>.Shared.Return(_floatBuffer1);
+            _floatBuffer1 = null;
+        }
+
+        if (_floatBuffer2 != null)
+        {
+            ArrayPool<float>.Shared.Return(_floatBuffer2);
+            _floatBuffer2 = null;
+        }
+
+        if (_colorBuffer != null)
+        {
+            ArrayPool<Rgba32>.Shared.Return(_colorBuffer);
+            _colorBuffer = null;
+        }
+    }
 
     /// <summary>
     ///     Get or create a float buffer of at least the specified size.
@@ -72,28 +97,6 @@ public sealed class RendererBuffers : IDisposable
 
         return (_floatBuffer1!, _colorBuffer!);
     }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        if (_floatBuffer1 != null)
-        {
-            ArrayPool<float>.Shared.Return(_floatBuffer1);
-            _floatBuffer1 = null;
-        }
-        if (_floatBuffer2 != null)
-        {
-            ArrayPool<float>.Shared.Return(_floatBuffer2);
-            _floatBuffer2 = null;
-        }
-        if (_colorBuffer != null)
-        {
-            ArrayPool<Rgba32>.Shared.Return(_colorBuffer);
-            _colorBuffer = null;
-        }
-    }
 }
 
 /// <summary>
@@ -117,7 +120,7 @@ public static class ColorHelper
     ///     Uses cached string for greyscale colors.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void AppendColorCode(System.Text.StringBuilder sb, byte r, byte g, byte b)
+    public static void AppendColorCode(StringBuilder sb, byte r, byte g, byte b)
     {
         if (r == g && g == b)
         {

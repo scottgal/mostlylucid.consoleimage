@@ -12,7 +12,8 @@ GIFs, and analyze media files.
 
 ### Option 1: Download Pre-built Binary (Recommended)
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
+Download the latest release for your platform
+from [GitHub Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases):
 
 | Platform    | Download                              |
 |-------------|---------------------------------------|
@@ -149,12 +150,12 @@ Add to VS Code settings (`settings.json`):
 ASCII art with ANSI color codes can generate large outputs that consume significant context window space. Here are
 strategies to minimize context usage:
 
-| Strategy               | How                                  | When to Use                                          |
-|------------------------|--------------------------------------|------------------------------------------------------|
-| **Save to file**       | Use `outputPath` parameter           | When you want to see the image but not waste context |
+| Strategy               | How                                  | When to Use                                                      |
+|------------------------|--------------------------------------|------------------------------------------------------------------|
+| **Save to file**       | Use `outputPath` parameter           | When you want to see the image but not waste context             |
 | **Braille + no color** | `mode: "braille"`, `useColor: false` | Quick preview with maximum detail, minimal output (DEFAULT mode) |
-| **Reduce size**        | Lower `maxWidth`/`maxHeight`         | When rough preview is sufficient                     |
-| **ASCII mode**         | Use `mode: "ascii"`                  | Widest compatibility, fewer bytes than blocks mode   |
+| **Reduce size**        | Lower `maxWidth`/`maxHeight`         | When rough preview is sufficient                                 |
+| **ASCII mode**         | Use `mode: "ascii"`                  | Widest compatibility, fewer bytes than blocks mode               |
 
 **Quick preview (minimal context):**
 
@@ -292,7 +293,8 @@ Returns comprehensive metadata about any image file. Useful for understanding an
 
 ### extract_frames
 
-Extracts raw video frames to an animated GIF file. No ASCII rendering - preserves actual video frames. Useful for creating thumbnails, previews, or scene slideshows.
+Extracts raw video frames to an animated GIF file. No ASCII rendering - preserves actual video frames. Useful for
+creating thumbnails, previews, or scene slideshows.
 
 **Parameters:**
 | Parameter | Type | Default | Description |

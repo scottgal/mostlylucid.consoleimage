@@ -6,17 +6,17 @@ using SixLabors.ImageSharp.PixelFormats;
 namespace ConsoleImage.Cli.Utilities;
 
 /// <summary>
-/// Simple IAnimationFrame implementation for generic frames.
+///     Simple IAnimationFrame implementation for generic frames.
 /// </summary>
 public record SimpleFrame(string Content, int DelayMs) : IAnimationFrame;
 
 /// <summary>
-/// Helper methods for rendering operations.
+///     Helper methods for rendering operations.
 /// </summary>
 public static class RenderHelpers
 {
     /// <summary>
-    /// Build MatrixOptions from CLI parameters.
+    ///     Build MatrixOptions from CLI parameters.
     /// </summary>
     public static MatrixOptions BuildMatrixOptions(
         string? colorName,
@@ -65,7 +65,7 @@ public static class RenderHelpers
     }
 
     /// <summary>
-    /// Simple frame-by-frame animation playback.
+    ///     Simple frame-by-frame animation playback.
     /// </summary>
     public static async Task PlayFramesAsync(
         List<IAnimationFrame> frames,
@@ -111,7 +111,7 @@ public static class RenderHelpers
     }
 
     /// <summary>
-    /// Get effective aspect ratio from explicit value, saved calibration, or default.
+    ///     Get effective aspect ratio from explicit value, saved calibration, or default.
     /// </summary>
     public static float GetEffectiveAspectRatio(
         float? explicitAspect,
@@ -124,8 +124,8 @@ public static class RenderHelpers
     }
 
     /// <summary>
-    /// Determine render mode from boolean CLI flags.
-    /// Priority: Matrix > Braille > Blocks > ASCII (default)
+    ///     Determine render mode from boolean CLI flags.
+    ///     Priority: Matrix > Braille > Blocks > ASCII (default)
     /// </summary>
     public static RenderMode GetRenderMode(bool useBraille, bool useBlocks, bool useMatrix)
     {
@@ -136,18 +136,21 @@ public static class RenderHelpers
     }
 
     /// <summary>
-    /// Get display name for render mode.
+    ///     Get display name for render mode.
     /// </summary>
-    public static string GetRenderModeName(RenderMode mode) => mode switch
+    public static string GetRenderModeName(RenderMode mode)
     {
-        RenderMode.Braille => "Braille",
-        RenderMode.ColorBlocks => "Blocks",
-        RenderMode.Matrix => "Matrix",
-        _ => "ASCII"
-    };
+        return mode switch
+        {
+            RenderMode.Braille => "Braille",
+            RenderMode.ColorBlocks => "Blocks",
+            RenderMode.Matrix => "Matrix",
+            _ => "ASCII"
+        };
+    }
 
     /// <summary>
-    /// Get effective gamma from explicit value, saved calibration, or default.
+    ///     Get effective gamma from explicit value, saved calibration, or default.
     /// </summary>
     public static float GetEffectiveGamma(
         float? explicitGamma,

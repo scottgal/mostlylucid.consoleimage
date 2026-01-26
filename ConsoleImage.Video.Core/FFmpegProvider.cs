@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 namespace ConsoleImage.Video.Core;
 
 /// <summary>
-/// Provides FFmpeg binaries - either bundled, from PATH, or auto-downloaded.
+///     Provides FFmpeg binaries - either bundled, from PATH, or auto-downloaded.
 /// </summary>
 public static class FFmpegProvider
 {
@@ -15,17 +15,21 @@ public static class FFmpegProvider
     // FFmpeg download URLs for different platforms (GPL builds with all codecs)
     private static readonly Dictionary<string, string> DownloadUrls = new()
     {
-        ["win-x64"] = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-        ["win-arm64"] = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip", // Use x64 on ARM Windows
-        ["linux-x64"] = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",
-        ["linux-arm64"] = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+        ["win-x64"] =
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+        ["win-arm64"] =
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip", // Use x64 on ARM Windows
+        ["linux-x64"] =
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",
+        ["linux-arm64"] =
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
         ["osx-x64"] = "https://evermeet.cx/ffmpeg/getrelease/zip",
         ["osx-arm64"] = "https://evermeet.cx/ffmpeg/getrelease/zip"
     };
 
     /// <summary>
-    /// Get the local cache directory for FFmpeg binaries.
-    /// Cross-platform: uses LocalApplicationData on Windows/macOS, ~/.local/share on Linux.
+    ///     Get the local cache directory for FFmpeg binaries.
+    ///     Cross-platform: uses LocalApplicationData on Windows/macOS, ~/.local/share on Linux.
     /// </summary>
     public static string CacheDirectory
     {
@@ -47,7 +51,7 @@ public static class FFmpegProvider
     }
 
     /// <summary>
-    /// Gets path to ffmpeg executable, downloading if necessary.
+    ///     Gets path to ffmpeg executable, downloading if necessary.
     /// </summary>
     public static async Task<string> GetFFmpegPathAsync(
         string? customPath = null,
@@ -78,7 +82,11 @@ public static class FFmpegProvider
         var bundled = FindBundled("ffmpeg");
         if (bundled != null)
         {
-            lock (_lock) { _resolvedPath = bundled; }
+            lock (_lock)
+            {
+                _resolvedPath = bundled;
+            }
+
             return bundled;
         }
 
@@ -86,7 +94,11 @@ public static class FFmpegProvider
         var inPath = FindInPath("ffmpeg");
         if (inPath != null)
         {
-            lock (_lock) { _resolvedPath = inPath; }
+            lock (_lock)
+            {
+                _resolvedPath = inPath;
+            }
+
             return inPath;
         }
 
@@ -94,19 +106,27 @@ public static class FFmpegProvider
         var cached = FindInCache("ffmpeg");
         if (cached != null)
         {
-            lock (_lock) { _resolvedPath = cached; }
+            lock (_lock)
+            {
+                _resolvedPath = cached;
+            }
+
             return cached;
         }
 
         // 6. Download
         progress?.Report(("FFmpeg not found, downloading...", 0));
         var downloaded = await DownloadFFmpegAsync(progress, ct);
-        lock (_lock) { _resolvedPath = downloaded; }
+        lock (_lock)
+        {
+            _resolvedPath = downloaded;
+        }
+
         return downloaded;
     }
 
     /// <summary>
-    /// Gets path to ffprobe executable, downloading if necessary.
+    ///     Gets path to ffprobe executable, downloading if necessary.
     /// </summary>
     public static async Task<string> GetFFprobePathAsync(
         string? customPath = null,
@@ -126,7 +146,7 @@ public static class FFmpegProvider
     }
 
     /// <summary>
-    /// Check if FFmpeg is available without downloading.
+    ///     Check if FFmpeg is available without downloading.
     /// </summary>
     public static bool IsAvailable(string? customPath = null)
     {
@@ -143,7 +163,7 @@ public static class FFmpegProvider
     }
 
     /// <summary>
-    /// Get FFmpeg location status for display.
+    ///     Get FFmpeg location status for display.
     /// </summary>
     public static string GetStatus(string? customPath = null)
     {
@@ -170,7 +190,7 @@ public static class FFmpegProvider
     }
 
     /// <summary>
-    /// Pre-download FFmpeg (useful for setup).
+    ///     Pre-download FFmpeg (useful for setup).
     /// </summary>
     public static async Task EnsureDownloadedAsync(
         IProgress<(string Status, double Progress)>? progress = null,
@@ -181,52 +201,51 @@ public static class FFmpegProvider
     }
 
     /// <summary>
-    /// Check if FFmpeg needs to be downloaded and return status information.
+    ///     Check if FFmpeg needs to be downloaded and return status information.
     /// </summary>
     /// <returns>Tuple of (needsDownload, statusMessage, downloadUrl)</returns>
     public static (bool NeedsDownload, string StatusMessage, string? DownloadUrl) GetDownloadStatus()
     {
-        if (IsAvailable())
-        {
-            return (false, GetStatus(), null);
-        }
+        if (IsAvailable()) return (false, GetStatus(), null);
 
         var rid = GetRuntimeIdentifier();
         if (!DownloadUrls.TryGetValue(rid, out var url))
-        {
             return (false, $"No auto-download available for {rid}. Please install FFmpeg manually.", null);
-        }
 
         return (true, $"FFmpeg not found. Can auto-download (~100MB) to: {CacheDirectory}", url);
     }
 
     /// <summary>
-    /// Download FFmpeg with explicit user confirmation (non-interactive).
-    /// Call this after checking GetDownloadStatus() and confirming with user.
+    ///     Download FFmpeg with explicit user confirmation (non-interactive).
+    ///     Call this after checking GetDownloadStatus() and confirming with user.
     /// </summary>
     public static async Task<string> DownloadAsync(
         IProgress<(string Status, double Progress)>? progress = null,
         CancellationToken ct = default)
     {
-        if (IsAvailable())
-        {
-            return (await GetFFmpegPathAsync(null, null, ct))!;
-        }
+        if (IsAvailable()) return (await GetFFmpegPathAsync(null, null, ct))!;
 
         return await DownloadFFmpegAsync(progress, ct);
     }
 
     /// <summary>
-    /// Clear downloaded FFmpeg from cache.
+    ///     Clear downloaded FFmpeg from cache.
     /// </summary>
     public static void ClearCache()
     {
         if (Directory.Exists(CacheDirectory))
+            try
+            {
+                Directory.Delete(CacheDirectory, true);
+            }
+            catch
+            {
+            }
+
+        lock (_lock)
         {
-            try { Directory.Delete(CacheDirectory, true); }
-            catch { }
+            _resolvedPath = null;
         }
-        lock (_lock) { _resolvedPath = null; }
     }
 
     private static string GetExecutableName(string name)
@@ -279,15 +298,15 @@ public static class FFmpegProvider
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Microsoft", "WinGet", "Packages");
         if (Directory.Exists(wingetBase))
-        {
             try
             {
                 var found = Directory.GetFiles(wingetBase, exeName, SearchOption.AllDirectories)
                     .FirstOrDefault();
                 if (found != null) return found;
             }
-            catch { }
-        }
+            catch
+            {
+            }
 
         return null;
     }
@@ -319,9 +338,11 @@ public static class FFmpegProvider
         {
             yield return @"C:\ffmpeg\bin";
             yield return @"C:\Program Files\ffmpeg\bin";
-            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ffmpeg", "bin");
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ffmpeg",
+                "bin");
             yield return @"C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin";
-            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "ffmpeg", "current", "bin");
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps",
+                "ffmpeg", "current", "bin");
         }
         else if (OperatingSystem.IsLinux())
         {
@@ -342,16 +363,15 @@ public static class FFmpegProvider
     {
         var rid = GetRuntimeIdentifier();
         if (!DownloadUrls.TryGetValue(rid, out var url))
-        {
-            throw new PlatformNotSupportedException($"No FFmpeg download available for {rid}. Please install FFmpeg manually.");
-        }
+            throw new PlatformNotSupportedException(
+                $"No FFmpeg download available for {rid}. Please install FFmpeg manually.");
 
         Directory.CreateDirectory(CacheDirectory);
 
         // Determine file type from URL
         var isZip = url.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
         var isTarXz = url.EndsWith(".tar.xz", StringComparison.OrdinalIgnoreCase);
-        var extension = isZip ? ".zip" : (isTarXz ? ".tar.xz" : ".tar.gz");
+        var extension = isZip ? ".zip" : isTarXz ? ".tar.xz" : ".tar.gz";
         var archivePath = Path.Combine(CacheDirectory, $"ffmpeg{extension}");
 
         progress?.Report(("Downloading FFmpeg...", 0.1));
@@ -388,23 +408,25 @@ public static class FFmpegProvider
 
         // Extract
         if (isZip)
-        {
-            ZipFile.ExtractToDirectory(archivePath, CacheDirectory, overwriteFiles: true);
-        }
+            ZipFile.ExtractToDirectory(archivePath, CacheDirectory, true);
         else
-        {
             // For tar.xz on Windows, use tar command if available
             await ExtractTarAsync(archivePath, CacheDirectory, ct);
-        }
 
         // Clean up archive
-        try { File.Delete(archivePath); } catch { }
+        try
+        {
+            File.Delete(archivePath);
+        }
+        catch
+        {
+        }
 
         progress?.Report(("Finding FFmpeg executable...", 0.9));
 
         // Find extracted ffmpeg
         var ffmpegPath = FindInCache("ffmpeg")
-            ?? throw new FileNotFoundException("FFmpeg extraction failed - executable not found");
+                         ?? throw new FileNotFoundException("FFmpeg extraction failed - executable not found");
 
         // Set executable permission on Unix
         if (!OperatingSystem.IsWindows())
@@ -442,9 +464,12 @@ public static class FFmpegProvider
                 if (process.ExitCode == 0) return;
             }
         }
-        catch { }
+        catch
+        {
+        }
 
-        throw new NotSupportedException("Cannot extract tar.xz archive. Please install FFmpeg manually or use Windows where zip archives are available.");
+        throw new NotSupportedException(
+            "Cannot extract tar.xz archive. Please install FFmpeg manually or use Windows where zip archives are available.");
     }
 
     private static async Task SetExecutablePermissionAsync(string path, CancellationToken ct)
@@ -462,7 +487,9 @@ public static class FFmpegProvider
             if (process != null)
                 await process.WaitForExitAsync(ct);
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private static string GetRuntimeIdentifier()

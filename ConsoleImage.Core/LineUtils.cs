@@ -21,14 +21,12 @@ internal static class LineUtils
         if (string.IsNullOrEmpty(content))
             return 0;
 
-        int count = 0;
+        var count = 0;
         starts[count++] = 0;
 
-        for (int i = 0; i < content.Length && count < starts.Length; i++)
-        {
+        for (var i = 0; i < content.Length && count < starts.Length; i++)
             if (content[i] == '\n')
                 starts[count++] = i + 1;
-        }
 
         return count;
     }
@@ -42,7 +40,7 @@ internal static class LineUtils
         if (lineIndex >= lineCount)
             return ReadOnlySpan<char>.Empty;
 
-        int start = starts[lineIndex];
+        var start = starts[lineIndex];
         int end;
 
         if (lineIndex + 1 < lineCount)

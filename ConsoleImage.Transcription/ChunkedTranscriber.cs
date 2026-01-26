@@ -1,64 +1,38 @@
-using System.Threading.Channels;
+using System.Diagnostics;
 using ConsoleImage.Core.Subtitles;
 using static ConsoleImage.Core.Subtitles.SubtitleSplitter;
 
 namespace ConsoleImage.Transcription;
 
 /// <summary>
-/// Transcribes video/audio in chunks for efficient streaming subtitle generation.
-/// Audio is extracted and transcribed ahead of playback position.
-/// Implements ILiveSubtitleProvider for integration with video playback.
+///     Transcribes video/audio in chunks for efficient streaming subtitle generation.
+///     Audio is extracted and transcribed ahead of playback position.
+///     Implements ILiveSubtitleProvider for integration with video playback.
 /// </summary>
 public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
 {
-    private readonly WhisperTranscriptionService _whisper;
-    private readonly string _inputPath;
-    private readonly double _chunkDurationSeconds;
-    private readonly double _bufferAheadSeconds;
-    private readonly double _startTimeOffset;
-    private readonly bool _enhanceAudio;
-
-    private readonly SubtitleTrack _track = new();
-    private readonly SemaphoreSlim _transcribeLock = new(1, 1);
-    private readonly CancellationTokenSource _cts = new();
-
-    private Task? _backgroundTask;
-    private double _lastTranscribedEndTime;
-    private int _entryIndex;
-    private bool _isComplete;
-    private string? _tempAudioDir;
-    private string? _lastChunkPrompt;
-
     // Overlap between chunks to prevent cutting words at boundaries
     private const double OverlapSeconds = 2.0;
+    private const int MaxExtractionRetries = 3;
+    private readonly double _bufferAheadSeconds;
+    private readonly double _chunkDurationSeconds;
+    private readonly CancellationTokenSource _cts = new();
+    private readonly bool _enhanceAudio;
+    private readonly string _inputPath;
+    private readonly double _startTimeOffset;
+
+    private readonly SemaphoreSlim _transcribeLock = new(1, 1);
+    private readonly WhisperTranscriptionService _whisper;
+
+    private Task? _backgroundTask;
+    private int _entryIndex;
+
+    private int _extractionFailures;
+    private string? _lastChunkPrompt;
+    private string? _tempAudioDir;
 
     /// <summary>
-    /// Event raised when transcription progress changes (for UI feedback).
-    /// </summary>
-    public event Action<double, string>? OnProgress;
-
-    /// <summary>
-    /// The subtitle track being populated with transcribed segments.
-    /// </summary>
-    public SubtitleTrack Track => _track;
-
-    /// <summary>
-    /// Whether all audio has been transcribed.
-    /// </summary>
-    public bool IsComplete => _isComplete;
-
-    /// <summary>
-    /// The furthest timestamp that has been transcribed.
-    /// </summary>
-    public double LastTranscribedTime => _lastTranscribedEndTime;
-
-    /// <summary>
-    /// Event raised when a new subtitle segment is available.
-    /// </summary>
-    public event Action<SubtitleEntry>? OnSubtitleReady;
-
-    /// <summary>
-    /// Create a chunked transcriber for a video/audio file.
+    ///     Create a chunked transcriber for a video/audio file.
     /// </summary>
     /// <param name="inputPath">Path to video or audio file (or URL).</param>
     /// <param name="modelSize">Whisper model size (tiny, base, small, medium, large).</param>
@@ -81,56 +55,79 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         _bufferAheadSeconds = bufferAheadSeconds;
         _startTimeOffset = startTimeOffset;
         _enhanceAudio = enhanceAudio;
-        _lastTranscribedEndTime = startTimeOffset; // Start from the offset position
+        LastTranscribedTime = startTimeOffset; // Start from the offset position
 
         _whisper = new WhisperTranscriptionService()
             .WithModel(modelSize)
             .WithLanguage(language);
     }
 
-    /// <summary>
-    /// Initialize the transcriber and start background processing.
-    /// </summary>
-    public async Task StartAsync(
-        IProgress<(long downloaded, long total, string status)>? downloadProgress = null,
-        CancellationToken ct = default)
+    public async ValueTask DisposeAsync()
     {
-        // Initialize whisper (downloads model if needed)
-        await _whisper.InitializeAsync(downloadProgress, ct);
+        _cts.Cancel();
 
-        // Create temp directory for audio chunks
-        _tempAudioDir = Path.Combine(Path.GetTempPath(), $"consoleimage_chunks_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_tempAudioDir);
+        if (_backgroundTask != null)
+            try
+            {
+                await _backgroundTask;
+            }
+            catch
+            {
+            }
 
-        _track.Language = _whisper.ToString(); // Will be updated with detected language
+        _whisper.Dispose();
+        _transcribeLock.Dispose();
+        _cts.Dispose();
+
+        // Cleanup temp directory
+        if (_tempAudioDir != null && Directory.Exists(_tempAudioDir))
+            try
+            {
+                Directory.Delete(_tempAudioDir, true);
+            }
+            catch
+            {
+            }
     }
 
     /// <summary>
-    /// Ensure transcription has processed up to the specified time.
-    /// Call this periodically during playback to keep subtitles buffered ahead.
+    ///     The subtitle track being populated with transcribed segments.
+    /// </summary>
+    public SubtitleTrack Track { get; } = new();
+
+    /// <summary>
+    ///     Whether all audio has been transcribed.
+    /// </summary>
+    public bool IsComplete { get; private set; }
+
+    /// <summary>
+    ///     The furthest timestamp that has been transcribed.
+    /// </summary>
+    public double LastTranscribedTime { get; private set; }
+
+    /// <summary>
+    ///     Ensure transcription has processed up to the specified time.
+    ///     Call this periodically during playback to keep subtitles buffered ahead.
     /// </summary>
     /// <param name="currentPlaybackTime">Current playback position in seconds.</param>
     /// <param name="ct">Cancellation token.</param>
     public async Task EnsureTranscribedUpToAsync(double currentPlaybackTime, CancellationToken ct = default)
     {
-        if (_isComplete) return;
+        if (IsComplete) return;
 
         var targetTime = currentPlaybackTime + _bufferAheadSeconds;
 
         // If we're already transcribed past the target, nothing to do
-        if (_lastTranscribedEndTime >= targetTime) return;
+        if (LastTranscribedTime >= targetTime) return;
 
         await _transcribeLock.WaitAsync(ct);
         try
         {
             // Double-check after acquiring lock
-            if (_lastTranscribedEndTime >= targetTime) return;
+            if (LastTranscribedTime >= targetTime) return;
 
             // Transcribe chunks until we reach the target
-            while (_lastTranscribedEndTime < targetTime && !_isComplete)
-            {
-                await TranscribeNextChunkAsync(ct);
-            }
+            while (LastTranscribedTime < targetTime && !IsComplete) await TranscribeNextChunkAsync(ct);
         }
         finally
         {
@@ -139,8 +136,8 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     }
 
     /// <summary>
-    /// Wait until transcription has caught up to at least the given playback time.
-    /// Use this to prevent subtitles from getting out of sync - playback pauses if needed.
+    ///     Wait until transcription has caught up to at least the given playback time.
+    ///     Use this to prevent subtitles from getting out of sync - playback pauses if needed.
     /// </summary>
     /// <param name="playbackTime">The playback timestamp we need subtitles for.</param>
     /// <param name="timeoutMs">Maximum time to wait before giving up (0 = wait forever).</param>
@@ -152,16 +149,16 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         CancellationToken ct = default)
     {
         // If complete, we have all subtitles (or as many as we'll get)
-        if (_isComplete) return true;
+        if (IsComplete) return true;
 
         // Already transcribed past this point
-        if (_lastTranscribedEndTime >= playbackTime) return true;
+        if (LastTranscribedTime >= playbackTime) return true;
 
         // Need to wait for transcription to catch up
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = Stopwatch.StartNew();
         var maxWait = timeoutMs > 0 ? timeoutMs : int.MaxValue;
 
-        while (_lastTranscribedEndTime < playbackTime && !_isComplete)
+        while (LastTranscribedTime < playbackTime && !IsComplete)
         {
             // Check timeout
             if (sw.ElapsedMilliseconds >= maxWait)
@@ -182,15 +179,42 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     }
 
     /// <summary>
-    /// Check if we have subtitles ready for the given time without blocking.
+    ///     Check if we have subtitles ready for the given time without blocking.
     /// </summary>
     public bool HasSubtitlesReadyFor(double playbackTime)
     {
-        return _isComplete || _lastTranscribedEndTime >= playbackTime;
+        return IsComplete || LastTranscribedTime >= playbackTime;
     }
 
     /// <summary>
-    /// Start background transcription that runs ahead of playback.
+    ///     Event raised when transcription progress changes (for UI feedback).
+    /// </summary>
+    public event Action<double, string>? OnProgress;
+
+    /// <summary>
+    ///     Event raised when a new subtitle segment is available.
+    /// </summary>
+    public event Action<SubtitleEntry>? OnSubtitleReady;
+
+    /// <summary>
+    ///     Initialize the transcriber and start background processing.
+    /// </summary>
+    public async Task StartAsync(
+        IProgress<(long downloaded, long total, string status)>? downloadProgress = null,
+        CancellationToken ct = default)
+    {
+        // Initialize whisper (downloads model if needed)
+        await _whisper.InitializeAsync(downloadProgress, ct);
+
+        // Create temp directory for audio chunks
+        _tempAudioDir = Path.Combine(Path.GetTempPath(), $"consoleimage_chunks_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_tempAudioDir);
+
+        Track.Language = _whisper.ToString(); // Will be updated with detected language
+    }
+
+    /// <summary>
+    ///     Start background transcription that runs ahead of playback.
     /// </summary>
     public void StartBackgroundTranscription()
     {
@@ -203,11 +227,19 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
 
             try
             {
-                while (!_isComplete && !_cts.Token.IsCancellationRequested)
-                {
+                while (!IsComplete && !_cts.Token.IsCancellationRequested)
                     try
                     {
-                        await TranscribeNextChunkAsync(_cts.Token);
+                        await _transcribeLock.WaitAsync(_cts.Token);
+                        try
+                        {
+                            await TranscribeNextChunkAsync(_cts.Token);
+                        }
+                        finally
+                        {
+                            _transcribeLock.Release();
+                        }
+
                         consecutiveErrors = 0; // Reset on success
 
                         // Small delay between chunks to not overwhelm CPU
@@ -219,14 +251,13 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                         if (consecutiveErrors >= maxConsecutiveErrors)
                         {
                             // Too many errors in a row - stop background transcription
-                            OnProgress?.Invoke(_lastTranscribedEndTime, "Transcription paused: too many errors");
+                            OnProgress?.Invoke(LastTranscribedTime, "Transcription paused: too many errors");
                             break;
                         }
 
                         // Wait a bit before retrying
                         await Task.Delay(1000, _cts.Token);
                     }
-                }
             }
             catch (OperationCanceledException)
             {
@@ -236,27 +267,24 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     }
 
     /// <summary>
-    /// Transcribe the entire input synchronously (for batch mode).
+    ///     Transcribe the entire input synchronously (for batch mode).
     /// </summary>
     public async Task TranscribeAllAsync(
         IProgress<(int segments, double seconds, string status)>? progress = null,
         CancellationToken ct = default)
     {
-        while (!_isComplete)
+        while (!IsComplete)
         {
             await TranscribeNextChunkAsync(ct);
-            progress?.Report((_track.Count, _lastTranscribedEndTime, $"Transcribed {_lastTranscribedEndTime:F1}s"));
+            progress?.Report((Track.Count, LastTranscribedTime, $"Transcribed {LastTranscribedTime:F1}s"));
         }
     }
 
-    private int _extractionFailures;
-    private const int MaxExtractionRetries = 3;
-
     private async Task TranscribeNextChunkAsync(CancellationToken ct)
     {
-        if (_isComplete) return;
+        if (IsComplete) return;
 
-        var startTime = _lastTranscribedEndTime;
+        var startTime = LastTranscribedTime;
         var endTime = startTime + _chunkDurationSeconds;
 
         // Report progress - extracting audio
@@ -282,10 +310,10 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
 
                 // Only mark complete if this is the first chunk (truly no audio)
                 // or if we've had multiple consecutive failures
-                if (_lastTranscribedEndTime == _startTimeOffset && _extractionFailures >= MaxExtractionRetries)
+                if (LastTranscribedTime == _startTimeOffset && _extractionFailures >= MaxExtractionRetries)
                 {
                     OnProgress?.Invoke(startTime, "No audio found at start position");
-                    _isComplete = true;
+                    IsComplete = true;
                     return;
                 }
 
@@ -294,7 +322,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                 if (_extractionFailures >= MaxExtractionRetries)
                 {
                     OnProgress?.Invoke(startTime, $"Skipping chunk after {_extractionFailures} failures");
-                    _lastTranscribedEndTime = startTime + _chunkDurationSeconds;
+                    LastTranscribedTime = startTime + _chunkDurationSeconds;
                     _extractionFailures = 0; // Reset for next chunk
                 }
 
@@ -308,7 +336,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
             if (actualDuration < 0.5)
             {
                 // Chunk too short - skip ahead
-                _lastTranscribedEndTime = startTime + _chunkDurationSeconds;
+                LastTranscribedTime = startTime + _chunkDurationSeconds;
                 return;
             }
 
@@ -317,19 +345,20 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
             if (!HasSpeechEnergy(chunkPath))
             {
                 OnProgress?.Invoke(startTime, $"Skipping silent chunk at {FormatTime(startTime)}");
-                _lastTranscribedEndTime = startTime + actualDuration - (isFirstChunk ? 0 : OverlapSeconds);
+                LastTranscribedTime = startTime + actualDuration - (isFirstChunk ? 0 : OverlapSeconds);
                 return;
             }
 
             // Report progress - transcribing
-            OnProgress?.Invoke(startTime, $"Transcribing {FormatTime(startTime)} - {FormatTime(startTime + actualDuration)}...");
+            OnProgress?.Invoke(startTime,
+                $"Transcribing {FormatTime(startTime)} - {FormatTime(startTime + actualDuration)}...");
 
             try
             {
                 // Verify the audio file is valid before sending to Whisper
                 if (!File.Exists(chunkPath))
                 {
-                    _lastTranscribedEndTime = startTime + actualDuration;
+                    LastTranscribedTime = startTime + actualDuration;
                     return;
                 }
 
@@ -339,7 +368,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                 // Filter hallucinations and convert segments to subtitle entries
                 var chunkTexts = new List<string>();
                 string? lastEmittedText = null;
-                int consecutiveRepeats = 0;
+                var consecutiveRepeats = 0;
 
                 foreach (var segment in result.Segments)
                 {
@@ -391,7 +420,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                     var splitEntries = Split(rawEntry, ref _entryIndex);
                     foreach (var splitEntry in splitEntries)
                     {
-                        _track.AddEntry(splitEntry);
+                        Track.AddEntry(splitEntry);
                         OnSubtitleReady?.Invoke(splitEntry);
                     }
                 }
@@ -414,60 +443,33 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
 
             // Advance past the actual new content (not the overlap)
             var newContentDuration = actualDuration - (isFirstChunk ? 0 : OverlapSeconds);
-            _lastTranscribedEndTime = startTime + Math.Max(newContentDuration, _chunkDurationSeconds * 0.3);
+            LastTranscribedTime = startTime + Math.Max(newContentDuration, _chunkDurationSeconds * 0.3);
 
             // Only mark complete if we got a very short chunk (likely at end of media)
             if (newContentDuration < _chunkDurationSeconds * 0.3)
             {
-                _isComplete = true;
-                OnProgress?.Invoke(_lastTranscribedEndTime, "Transcription complete");
+                IsComplete = true;
+                OnProgress?.Invoke(LastTranscribedTime, "Transcription complete");
             }
         }
         finally
         {
             // Cleanup chunk file
             if (File.Exists(chunkPath))
-            {
-                try { File.Delete(chunkPath); } catch { }
-            }
+                try
+                {
+                    File.Delete(chunkPath);
+                }
+                catch
+                {
+                }
         }
     }
 
-    /// <summary>
-    /// Detect text with repetitive hallucination patterns.
-    /// Returns true if the text contains the same short phrase repeated 3+ times.
-    /// </summary>
+    // Delegate to shared implementation in WhisperTranscriptionService
     private static bool IsRepetitiveText(string text)
     {
-        if (text.Length < 10) return false;
-
-        // Split into words and check for repeating n-gram patterns
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length < 6) return false;
-
-        // Check for repeating sequences of 1-4 words
-        for (int gramSize = 1; gramSize <= Math.Min(4, words.Length / 3); gramSize++)
-        {
-            int repeatCount = 1;
-            for (int i = gramSize; i + gramSize <= words.Length; i += gramSize)
-            {
-                bool match = true;
-                for (int j = 0; j < gramSize; j++)
-                {
-                    if (!string.Equals(words[i + j], words[i + j - gramSize], StringComparison.OrdinalIgnoreCase))
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match) repeatCount++;
-                else repeatCount = 1;
-
-                if (repeatCount >= 3) return true;
-            }
-        }
-
-        return false;
+        return WhisperTranscriptionService.IsRepetitiveText(text);
     }
 
     private static async Task<(bool success, double duration)> ExtractAudioChunkAsync(
@@ -480,9 +482,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     {
         var ffmpegPath = FindFFmpeg();
         if (ffmpegPath == null)
-        {
             throw new InvalidOperationException("FFmpeg not found. Install FFmpeg to use transcription.");
-        }
 
         // Build FFmpeg arguments
         var isUrl = inputPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
@@ -490,7 +490,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                     inputPath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase);
 
         var inputArgs = isUrl
-            ? $"-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+            ? "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
             : "";
 
         // Speech-optimized audio filters for better Whisper recognition:
@@ -505,19 +505,20 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         // -ss before -i for fast seeking (input seeking)
         // -t for duration limit
         // -vn to skip video, -ar 16000 -ac 1 for Whisper format
-        var args = $"{inputArgs} -ss {startTime:F3} -i \"{inputPath}\" -t {duration:F3} -vn {audioFilter}-ar 16000 -ac 1 -acodec pcm_s16le -y \"{outputPath}\"";
+        var args =
+            $"{inputArgs} -ss {startTime:F3} -i \"{inputPath}\" -t {duration:F3} -vn {audioFilter}-ar 16000 -ac 1 -acodec pcm_s16le -y \"{outputPath}\"";
 
-        var psi = new System.Diagnostics.ProcessStartInfo
+        var psi = new ProcessStartInfo
         {
             FileName = ffmpegPath,
             Arguments = args,
-            RedirectStandardOutput = true,
+            RedirectStandardOutput = false,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
-        using var process = System.Diagnostics.Process.Start(psi);
+        using var process = Process.Start(psi);
         if (process == null)
             return (false, 0);
 
@@ -537,19 +538,17 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
             return (false, 0);
         }
 
-        if (process.ExitCode != 0 || !File.Exists(outputPath))
-        {
-            return (false, 0);
-        }
+        // Ensure stderr is fully drained before checking results
+        await stderrTask.ConfigureAwait(false);
+
+        if (process.ExitCode != 0 || !File.Exists(outputPath)) return (false, 0);
 
         // Get actual duration of extracted audio
         var fileInfo = new FileInfo(outputPath);
         // WAV header is 44 bytes, need at least that plus some audio data
         // Minimum 0.5 seconds of audio = 16000 samples/sec * 2 bytes * 0.5 = 16000 bytes
         if (fileInfo.Length < 16044) // 44 byte header + 16000 bytes minimum audio
-        {
             return (false, 0);
-        }
 
         // Calculate duration from file size (16kHz, 16-bit mono = 32000 bytes/second)
         // WAV header is 44 bytes, subtract that from total
@@ -564,7 +563,8 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         {
             "ffmpeg",
             "ffmpeg.exe",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "consoleimage", "ffmpeg", "ffmpeg.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "consoleimage",
+                "ffmpeg", "ffmpeg.exe"),
             "/usr/bin/ffmpeg",
             "/usr/local/bin/ffmpeg"
         };
@@ -576,7 +576,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
 
             try
             {
-                var psi = new System.Diagnostics.ProcessStartInfo
+                var psi = new ProcessStartInfo
                 {
                     FileName = candidate,
                     Arguments = "-version",
@@ -586,7 +586,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                     CreateNoWindow = true
                 };
 
-                using var process = System.Diagnostics.Process.Start(psi);
+                using var process = Process.Start(psi);
                 if (process != null)
                 {
                     process.WaitForExit(1000);
@@ -594,15 +594,17 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
                         return candidate;
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         return null;
     }
 
     /// <summary>
-    /// Check if a WAV file contains enough audio energy to be worth transcribing.
-    /// Reads PCM samples and calculates RMS energy. Skips silent chunks to save CPU.
+    ///     Check if a WAV file contains enough audio energy to be worth transcribing.
+    ///     Reads PCM samples and calculates RMS energy. Skips silent chunks to save CPU.
     /// </summary>
     private static bool HasSpeechEnergy(string wavPath, float rmsThreshold = 0.01f)
     {
@@ -611,17 +613,24 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
 
         try
         {
-            using var reader = new BinaryReader(File.OpenRead(wavPath));
-            reader.BaseStream.Seek(44, SeekOrigin.Begin); // Skip WAV header
+            using var stream = File.OpenRead(wavPath);
+            stream.Seek(44, SeekOrigin.Begin); // Skip WAV header
 
             long sumSquares = 0;
-            int sampleCount = 0;
+            var sampleCount = 0;
+            var buffer = new byte[8192]; // Read in 8KB blocks for performance
+            int bytesRead;
 
-            while (reader.BaseStream.Position + 1 < reader.BaseStream.Length)
+            while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) >= 2)
             {
-                short sample = reader.ReadInt16();
-                sumSquares += (long)sample * sample;
-                sampleCount++;
+                // Process pairs of bytes as Int16 samples (little-endian PCM)
+                var sampleBytes = bytesRead & ~1; // Round down to even
+                for (var i = 0; i < sampleBytes; i += 2)
+                {
+                    var sample = (short)(buffer[i] | (buffer[i + 1] << 8));
+                    sumSquares += (long)sample * sample;
+                    sampleCount++;
+                }
             }
 
             if (sampleCount == 0) return false;
@@ -638,7 +647,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     }
 
     /// <summary>
-    /// Format time in human-readable format.
+    ///     Format time in human-readable format.
     /// </summary>
     private static string FormatTime(double seconds)
     {
@@ -647,11 +656,11 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     }
 
     /// <summary>
-    /// Convert all transcribed segments to VTT format.
+    ///     Convert all transcribed segments to VTT format.
     /// </summary>
     public string ToVtt()
     {
-        return VttFormatter.Format(_track.Entries.Select(e => new TranscriptSegment
+        return VttFormatter.Format(Track.Entries.Select(e => new TranscriptSegment
         {
             StartSeconds = e.StartTime.TotalSeconds,
             EndSeconds = e.EndTime.TotalSeconds,
@@ -660,13 +669,13 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     }
 
     /// <summary>
-    /// Save transcription to file.
+    ///     Save transcription to file.
     /// </summary>
     public async Task SaveAsync(string outputPath, CancellationToken ct = default)
     {
         var isVtt = outputPath.EndsWith(".vtt", StringComparison.OrdinalIgnoreCase);
 
-        var segments = _track.Entries.Select(e => new TranscriptSegment
+        var segments = Track.Entries.Select(e => new TranscriptSegment
         {
             StartSeconds = e.StartTime.TotalSeconds,
             EndSeconds = e.EndTime.TotalSeconds,
@@ -674,32 +683,8 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         });
 
         if (isVtt)
-        {
             await VttFormatter.WriteAsync(outputPath, segments, false, ct);
-        }
         else
-        {
             await SrtFormatter.WriteAsync(outputPath, segments, false, ct);
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _cts.Cancel();
-
-        if (_backgroundTask != null)
-        {
-            try { await _backgroundTask; } catch { }
-        }
-
-        _whisper.Dispose();
-        _transcribeLock.Dispose();
-        _cts.Dispose();
-
-        // Cleanup temp directory
-        if (_tempAudioDir != null && Directory.Exists(_tempAudioDir))
-        {
-            try { Directory.Delete(_tempAudioDir, true); } catch { }
-        }
     }
 }

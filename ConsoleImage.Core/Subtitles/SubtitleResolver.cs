@@ -4,18 +4,39 @@ using System.Text.Json;
 namespace ConsoleImage.Core.Subtitles;
 
 /// <summary>
-/// Resolves subtitles from multiple sources in priority order:
-/// 1. Explicit path (user specified --srt path.srt)
-/// 2. YouTube subtitles (if YouTube URL)
-/// 3. Embedded subtitles in video file
-/// 4. Search for matching subtitle files (video.srt, video.en.srt)
-/// 5. Whisper transcription (handled separately - last resort)
+///     Resolves subtitles from multiple sources in priority order:
+///     1. Explicit path (user specified --srt path.srt)
+///     2. YouTube subtitles (if YouTube URL)
+///     3. Embedded subtitles in video file
+///     4. Search for matching subtitle files (video.srt, video.en.srt)
+///     5. Whisper transcription (handled separately - last resort)
 /// </summary>
 public static class SubtitleResolver
 {
     /// <summary>
-    /// Search for subtitle files matching a video file.
-    /// Searches for common naming patterns: video.srt, video.en.srt, video.eng.srt, etc.
+    ///     Text-based subtitle codecs that FFmpeg can extract to SRT.
+    ///     Bitmap-based codecs (hdmv_pgs_subtitle, dvd_subtitle, dvb_subtitle) are excluded.
+    /// </summary>
+    private static readonly HashSet<string> TextSubtitleCodecs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "subrip", "ass", "ssa", "webvtt", "mov_text", "sami", "microdvd", "srt",
+        "subviewer", "subviewer1", "realtext", "stl", "vplayer", "pjs", "mpl2",
+        "jacosub", "text"
+    };
+
+    /// <summary>
+    ///     Maximum video cache size in megabytes (default: 2GB).
+    /// </summary>
+    public static long MaxVideoCacheSizeMB { get; set; } = 2048;
+
+    /// <summary>
+    ///     Maximum subtitle cache size in megabytes (default: 100MB).
+    /// </summary>
+    public static long MaxSubtitleCacheSizeMB { get; set; } = 100;
+
+    /// <summary>
+    ///     Search for subtitle files matching a video file.
+    ///     Searches for common naming patterns: video.srt, video.en.srt, video.eng.srt, etc.
     /// </summary>
     /// <param name="videoPath">Path to video file</param>
     /// <param name="preferredLanguage">Preferred language code (en, es, etc.)</param>
@@ -51,7 +72,7 @@ public static class SubtitleResolver
             $"{baseName}_eng.srt",
             // Forced subs
             $"{baseName}.{lang}.forced.srt",
-            $"{baseName}.forced.srt",
+            $"{baseName}.forced.srt"
         };
 
         foreach (var pattern in patterns)
@@ -87,7 +108,7 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Search for subtitle files using OpenSubtitles-style naming from media servers.
+    ///     Search for subtitle files using OpenSubtitles-style naming from media servers.
     /// </summary>
     /// <param name="videoPath">Path to video file</param>
     /// <param name="searchSubdirectories">Whether to search in Subs/ subdirectory</param>
@@ -111,7 +132,6 @@ public static class SubtitleResolver
             {
                 var subPath = Path.Combine(dir, subDir);
                 if (Directory.Exists(subPath))
-                {
                     // Search in subdirectory
                     try
                     {
@@ -121,7 +141,8 @@ public static class SubtitleResolver
 
                         // First try to match video name
                         var match = files.FirstOrDefault(f =>
-                            Path.GetFileNameWithoutExtension(f).StartsWith(baseName, StringComparison.OrdinalIgnoreCase));
+                            Path.GetFileNameWithoutExtension(f)
+                                .StartsWith(baseName, StringComparison.OrdinalIgnoreCase));
 
                         if (match != null)
                             return match;
@@ -142,7 +163,6 @@ public static class SubtitleResolver
                     {
                         // Ignore errors
                     }
-                }
             }
         }
 
@@ -150,20 +170,9 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Text-based subtitle codecs that FFmpeg can extract to SRT.
-    /// Bitmap-based codecs (hdmv_pgs_subtitle, dvd_subtitle, dvb_subtitle) are excluded.
-    /// </summary>
-    private static readonly HashSet<string> TextSubtitleCodecs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "subrip", "ass", "ssa", "webvtt", "mov_text", "sami", "microdvd", "srt",
-        "subviewer", "subviewer1", "realtext", "stl", "vplayer", "pjs", "mpl2",
-        "jacosub", "text"
-    };
-
-    /// <summary>
-    /// Extract embedded text subtitles from a video file using FFmpeg/FFprobe.
-    /// Probes the file for text-based subtitle streams, selects the best match
-    /// by language preference and default disposition, then extracts to SRT.
+    ///     Extract embedded text subtitles from a video file using FFmpeg/FFprobe.
+    ///     Probes the file for text-based subtitle streams, selects the best match
+    ///     by language preference and default disposition, then extracts to SRT.
     /// </summary>
     /// <param name="videoPath">Path to video file (MKV, MP4, etc.)</param>
     /// <param name="preferredLanguage">Preferred language code (en, es, etc.)</param>
@@ -220,12 +229,19 @@ public static class SubtitleResolver
             return srtPath;
 
         // Cleanup failed extraction
-        try { if (File.Exists(srtPath)) File.Delete(srtPath); } catch { }
+        try
+        {
+            if (File.Exists(srtPath)) File.Delete(srtPath);
+        }
+        catch
+        {
+        }
+
         return null;
     }
 
     /// <summary>
-    /// Probe a video file for subtitle streams using ffprobe.
+    ///     Probe a video file for subtitle streams using ffprobe.
     /// </summary>
     private static async Task<List<SubtitleStreamInfo>> ProbeSubtitleStreamsAsync(
         string videoPath, CancellationToken ct)
@@ -262,7 +278,7 @@ public static class SubtitleResolver
                 var codecName = stream.TryGetProperty("codec_name", out var cn) ? cn.GetString() ?? "" : "";
                 var index = stream.TryGetProperty("index", out var idx) ? idx.GetInt32() : -1;
                 var isDefault = stream.TryGetProperty("disposition", out var disp)
-                    && disp.TryGetProperty("default", out var def) && def.GetInt32() == 1;
+                                && disp.TryGetProperty("default", out var def) && def.GetInt32() == 1;
 
                 string? language = null;
                 string? title = null;
@@ -275,7 +291,6 @@ public static class SubtitleResolver
                 }
 
                 if (index >= 0)
-                {
                     result.Add(new SubtitleStreamInfo
                     {
                         StreamIndex = index,
@@ -285,7 +300,6 @@ public static class SubtitleResolver
                         IsDefault = isDefault,
                         IsTextBased = TextSubtitleCodecs.Contains(codecName)
                     });
-                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -297,7 +311,7 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Extract a specific subtitle stream to SRT using ffmpeg.
+    ///     Extract a specific subtitle stream to SRT using ffmpeg.
     /// </summary>
     private static async Task<bool> ExtractSubtitleStreamAsync(
         string videoPath, int streamIndex, string outputPath, CancellationToken ct)
@@ -327,30 +341,7 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Information about a subtitle stream in a video file.
-    /// </summary>
-    internal sealed class SubtitleStreamInfo
-    {
-        public int StreamIndex { get; init; }
-        public string CodecName { get; init; } = "";
-        public string? Language { get; init; }
-        public string? Title { get; init; }
-        public bool IsDefault { get; init; }
-        public bool IsTextBased { get; init; }
-
-        public override string ToString()
-        {
-            var parts = new List<string> { $"#{StreamIndex} {CodecName}" };
-            if (!string.IsNullOrEmpty(Language)) parts.Add(Language);
-            if (!string.IsNullOrEmpty(Title)) parts.Add($"\"{Title}\"");
-            if (IsDefault) parts.Add("(default)");
-            if (IsTextBased) parts.Add("[text]");
-            return string.Join(" ", parts);
-        }
-    }
-
-    /// <summary>
-    /// Get 3-letter ISO 639-2 language code from 2-letter code.
+    ///     Get 3-letter ISO 639-2 language code from 2-letter code.
     /// </summary>
     private static string Get3LetterCode(string twoLetterCode)
     {
@@ -377,47 +368,35 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Get the cache directory for subtitle files.
+    ///     Get the cache directory for subtitle files.
     /// </summary>
     public static string GetCacheDirectory()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (!string.IsNullOrEmpty(localAppData))
-        {
-            return Path.Combine(localAppData, "consoleimage", "subtitles");
-        }
+        if (!string.IsNullOrEmpty(localAppData)) return Path.Combine(localAppData, "consoleimage", "subtitles");
 
         var home = Environment.GetEnvironmentVariable("HOME");
-        if (!string.IsNullOrEmpty(home))
-        {
-            return Path.Combine(home, ".local", "share", "consoleimage", "subtitles");
-        }
+        if (!string.IsNullOrEmpty(home)) return Path.Combine(home, ".local", "share", "consoleimage", "subtitles");
 
         return Path.Combine(Path.GetTempPath(), "consoleimage", "subtitles");
     }
 
     /// <summary>
-    /// Get the cache directory for YouTube video streams.
+    ///     Get the cache directory for YouTube video streams.
     /// </summary>
     public static string GetVideoCacheDirectory()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (!string.IsNullOrEmpty(localAppData))
-        {
-            return Path.Combine(localAppData, "consoleimage", "videos");
-        }
+        if (!string.IsNullOrEmpty(localAppData)) return Path.Combine(localAppData, "consoleimage", "videos");
 
         var home = Environment.GetEnvironmentVariable("HOME");
-        if (!string.IsNullOrEmpty(home))
-        {
-            return Path.Combine(home, ".local", "share", "consoleimage", "videos");
-        }
+        if (!string.IsNullOrEmpty(home)) return Path.Combine(home, ".local", "share", "consoleimage", "videos");
 
         return Path.Combine(Path.GetTempPath(), "consoleimage", "videos");
     }
 
     /// <summary>
-    /// Get cached video path for a YouTube video ID.
+    ///     Get cached video path for a YouTube video ID.
     /// </summary>
     public static string GetCachedVideoPath(string videoId)
     {
@@ -427,7 +406,7 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Check if a YouTube video is cached locally.
+    ///     Check if a YouTube video is cached locally.
     /// </summary>
     public static bool IsVideoCached(string videoId)
     {
@@ -436,18 +415,8 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Maximum video cache size in megabytes (default: 2GB).
-    /// </summary>
-    public static long MaxVideoCacheSizeMB { get; set; } = 2048;
-
-    /// <summary>
-    /// Maximum subtitle cache size in megabytes (default: 100MB).
-    /// </summary>
-    public static long MaxSubtitleCacheSizeMB { get; set; } = 100;
-
-    /// <summary>
-    /// Clean up cache files to stay within size limits.
-    /// Uses LRU (Least Recently Used) strategy - deletes oldest files first.
+    ///     Clean up cache files to stay within size limits.
+    ///     Uses LRU (Least Recently Used) strategy - deletes oldest files first.
     /// </summary>
     public static void CleanupCache()
     {
@@ -456,7 +425,7 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Clean up old cache files (older than specified days).
+    ///     Clean up old cache files (older than specified days).
     /// </summary>
     public static void CleanupOldCacheFiles(int maxAgeDays = 7)
     {
@@ -467,8 +436,8 @@ public static class SubtitleResolver
     }
 
     /// <summary>
-    /// Ensure video cache has space for a new file.
-    /// Deletes oldest files if cache would exceed limit.
+    ///     Ensure video cache has space for a new file.
+    ///     Deletes oldest files if cache would exceed limit.
     /// </summary>
     /// <param name="requiredSpaceMB">Space needed for new file in MB</param>
     public static void EnsureVideoCacheSpace(long requiredSpaceMB = 500)
@@ -497,16 +466,23 @@ public static class SubtitleResolver
                 {
                     oldest.Delete();
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     /// <summary>
-    /// Get the subtitle cache directory.
+    ///     Get the subtitle cache directory.
     /// </summary>
-    public static string GetSubtitleCacheDirectory() => GetCacheDirectory();
+    public static string GetSubtitleCacheDirectory()
+    {
+        return GetCacheDirectory();
+    }
 
     private static void CleanupCacheDirectory(string cacheDir, long maxSizeMB)
     {
@@ -533,10 +509,14 @@ public static class SubtitleResolver
                 {
                     oldest.Delete();
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private static void CleanupOldFilesInDirectory(string dir, DateTime cutoff)
@@ -547,15 +527,40 @@ public static class SubtitleResolver
         try
         {
             foreach (var file in Directory.GetFiles(dir))
-            {
                 try
                 {
                     if (File.GetLastWriteTime(file) < cutoff)
                         File.Delete(file);
                 }
-                catch { }
-            }
+                catch
+                {
+                }
         }
-        catch { }
+        catch
+        {
+        }
+    }
+
+    /// <summary>
+    ///     Information about a subtitle stream in a video file.
+    /// </summary>
+    internal sealed class SubtitleStreamInfo
+    {
+        public int StreamIndex { get; init; }
+        public string CodecName { get; init; } = "";
+        public string? Language { get; init; }
+        public string? Title { get; init; }
+        public bool IsDefault { get; init; }
+        public bool IsTextBased { get; init; }
+
+        public override string ToString()
+        {
+            var parts = new List<string> { $"#{StreamIndex} {CodecName}" };
+            if (!string.IsNullOrEmpty(Language)) parts.Add(Language);
+            if (!string.IsNullOrEmpty(Title)) parts.Add($"\"{Title}\"");
+            if (IsDefault) parts.Add("(default)");
+            if (IsTextBased) parts.Add("[text]");
+            return string.Join(" ", parts);
+        }
     }
 }

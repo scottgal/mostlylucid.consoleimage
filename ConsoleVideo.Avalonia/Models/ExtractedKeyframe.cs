@@ -4,7 +4,7 @@ namespace ConsoleVideo.Avalonia.Models;
 // Use ConsoleImage.Video.Core.ExtractedKeyframe for extracted frames.
 
 /// <summary>
-/// Settings for keyframe extraction.
+///     Settings for keyframe extraction.
 /// </summary>
 public record ExtractionSettings
 {
@@ -16,7 +16,7 @@ public record ExtractionSettings
 }
 
 /// <summary>
-/// Extraction strategy options.
+///     Extraction strategy options.
 /// </summary>
 public enum ExtractionStrategy
 {
@@ -27,7 +27,7 @@ public enum ExtractionStrategy
 }
 
 /// <summary>
-/// Render mode for ASCII preview.
+///     Render mode for ASCII preview.
 /// </summary>
 public enum RenderMode
 {

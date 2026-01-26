@@ -1,39 +1,39 @@
 <wnd:AppWindow xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:ConsoleVideo.Avalonia.ViewModels"
-        xmlns:controls="using:ConsoleVideo.Avalonia.Controls"
-        xmlns:ui="using:FluentAvalonia.UI.Controls"
-        xmlns:wnd="using:FluentAvalonia.UI.Windowing"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="900"
-        x:Class="ConsoleVideo.Avalonia.Views.MainWindow"
-        x:DataType="vm:MainWindowViewModel"
-        Title="ConsoleVideo"
-        Width="1400" Height="900"
-        MinWidth="1000" MinHeight="700"
-        WindowStartupLocation="CenterScreen"
-        DragDrop.AllowDrop="True"
-        KeyDown="Window_KeyDown">
+               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+               xmlns:vm="using:ConsoleVideo.Avalonia.ViewModels"
+               xmlns:controls="using:ConsoleVideo.Avalonia.Controls"
+               xmlns:ui="using:FluentAvalonia.UI.Controls"
+               xmlns:wnd="using:FluentAvalonia.UI.Windowing"
+               xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+               xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+               mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="900"
+               x:Class="ConsoleVideo.Avalonia.Views.MainWindow"
+               x:DataType="vm:MainWindowViewModel"
+               Title="ConsoleVideo"
+               Width="1400" Height="900"
+               MinWidth="1000" MinHeight="700"
+               WindowStartupLocation="CenterScreen"
+               DragDrop.AllowDrop="True"
+               KeyDown="Window_KeyDown">
 
     <Window.Styles>
         <Style Selector="Border.panel">
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="12"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style Selector="TextBlock.section-header">
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
-            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Margin" Value="0,0,0,8" />
         </Style>
         <Style Selector="TextBlock.label">
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </Window.Styles>
 
@@ -43,54 +43,55 @@
             <MenuItem Header="_File">
                 <MenuItem Header="_Open Video..." Click="OpenVideo_Click" InputGesture="Ctrl+O">
                     <MenuItem.Icon>
-                        <ui:SymbolIcon Symbol="OpenFolder"/>
+                        <ui:SymbolIcon Symbol="OpenFolder" />
                     </MenuItem.Icon>
                 </MenuItem>
-                <Separator/>
+                <Separator />
                 <MenuItem Header="_Save Keyframes..." Click="SaveKeyframes_Click" IsEnabled="{Binding Keyframes.Count}">
                     <MenuItem.Icon>
-                        <ui:SymbolIcon Symbol="Save"/>
+                        <ui:SymbolIcon Symbol="Save" />
                     </MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="Export _Manifest..." Click="ExportManifest_Click" IsEnabled="{Binding Keyframes.Count}">
+                <MenuItem Header="Export _Manifest..." Click="ExportManifest_Click"
+                          IsEnabled="{Binding Keyframes.Count}">
                     <MenuItem.Icon>
-                        <ui:SymbolIcon Symbol="Document"/>
+                        <ui:SymbolIcon Symbol="Document" />
                     </MenuItem.Icon>
                 </MenuItem>
-                <Separator/>
-                <MenuItem Header="E_xit" Click="Exit_Click"/>
+                <Separator />
+                <MenuItem Header="E_xit" Click="Exit_Click" />
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Extract Keyframes" Command="{Binding ExtractKeyframesCommand}">
                     <MenuItem.Icon>
-                        <ui:SymbolIcon Symbol="Pictures"/>
+                        <ui:SymbolIcon Symbol="Pictures" />
                     </MenuItem.Icon>
                 </MenuItem>
-                <Separator/>
+                <Separator />
                 <MenuItem Header="_Fullscreen" Click="ToggleFullscreen_Click" InputGesture="F11">
                     <MenuItem.Icon>
-                        <ui:SymbolIcon Symbol="FullScreenMaximize"/>
+                        <ui:SymbolIcon Symbol="FullScreenMaximize" />
                     </MenuItem.Icon>
                 </MenuItem>
-                <Separator/>
+                <Separator />
                 <MenuItem Header="Window _Size">
-                    <MenuItem Header="Small (1000x700)" Click="SetWindowSize_Click" Tag="1000,700"/>
-                    <MenuItem Header="Medium (1400x900)" Click="SetWindowSize_Click" Tag="1400,900"/>
-                    <MenuItem Header="Large (1800x1000)" Click="SetWindowSize_Click" Tag="1800,1000"/>
-                    <MenuItem Header="Extra Large (2200x1200)" Click="SetWindowSize_Click" Tag="2200,1200"/>
-                    <Separator/>
-                    <MenuItem Header="_Maximize" Click="Maximize_Click"/>
+                    <MenuItem Header="Small (1000x700)" Click="SetWindowSize_Click" Tag="1000,700" />
+                    <MenuItem Header="Medium (1400x900)" Click="SetWindowSize_Click" Tag="1400,900" />
+                    <MenuItem Header="Large (1800x1000)" Click="SetWindowSize_Click" Tag="1800,1000" />
+                    <MenuItem Header="Extra Large (2200x1200)" Click="SetWindowSize_Click" Tag="2200,1200" />
+                    <Separator />
+                    <MenuItem Header="_Maximize" Click="Maximize_Click" />
                 </MenuItem>
-                <Separator/>
+                <Separator />
                 <MenuItem Header="_Theme">
-                    <MenuItem Header="_Dark" Click="SetTheme_Click" Tag="Dark"/>
-                    <MenuItem Header="_Light" Click="SetTheme_Click" Tag="Light"/>
+                    <MenuItem Header="_Dark" Click="SetTheme_Click" Tag="Dark" />
+                    <MenuItem Header="_Light" Click="SetTheme_Click" Tag="Light" />
                 </MenuItem>
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_About" Click="About_Click">
                     <MenuItem.Icon>
-                        <ui:SymbolIcon Symbol="Help"/>
+                        <ui:SymbolIcon Symbol="Help" />
                     </MenuItem.Icon>
                 </MenuItem>
             </MenuItem>
@@ -102,7 +103,7 @@
             <!-- Left Panel: Original Video Preview -->
             <Border Grid.Column="0" Classes="panel" Margin="0,0,6,0">
                 <Grid RowDefinitions="Auto,*,Auto">
-                    <TextBlock Classes="section-header" Text="Original Video"/>
+                    <TextBlock Classes="section-header" Text="Original Video" />
 
                     <Border Grid.Row="1" Background="#0D0D0D" CornerRadius="6"
                             Cursor="{Binding HasVideo, Converter={x:Static vm:EnumConverters.HasVideoToCursor}}"
@@ -111,7 +112,7 @@
                             <Image Source="{Binding CurrentFrame}"
                                    Stretch="Uniform"
                                    HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
+                                   VerticalAlignment="Center" />
 
                             <!-- Drop hint overlay - clickable -->
                             <Border Background="#60000000"
@@ -119,9 +120,9 @@
                                     CornerRadius="8" Padding="20,12"
                                     IsVisible="{Binding !HasVideo}">
                                 <StackPanel Spacing="8" HorizontalAlignment="Center">
-                                    <ui:SymbolIcon Symbol="Video" FontSize="32"/>
+                                    <ui:SymbolIcon Symbol="Video" FontSize="32" />
                                     <TextBlock Text="Click here or drop media to open"
-                                               Foreground="White" FontSize="13"/>
+                                               Foreground="White" FontSize="13" />
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -134,17 +135,20 @@
                                 IsVisible="{Binding HasVideo}">
                             <Grid>
                                 <!-- Loading indicator -->
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
                                             IsVisible="{Binding IsLoadingTimeline}" Spacing="8">
-                                    <TextBlock Classes="label" Text="Loading timeline..."/>
-                                    <TextBlock Classes="label" Text="{Binding TimelineProgress, StringFormat='{}{0:P0}'}"/>
+                                    <TextBlock Classes="label" Text="Loading timeline..." />
+                                    <TextBlock Classes="label"
+                                               Text="{Binding TimelineProgress, StringFormat='{}{0:P0}'}" />
                                 </StackPanel>
 
                                 <!-- Thumbnail strip - ItemsControl with horizontal stack -->
-                                <ItemsControl ItemsSource="{Binding TimelineThumbnails}" IsVisible="{Binding !IsLoadingTimeline}">
+                                <ItemsControl ItemsSource="{Binding TimelineThumbnails}"
+                                              IsVisible="{Binding !IsLoadingTimeline}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" Spacing="1"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="1" />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
@@ -154,7 +158,7 @@
                                                     Click="TimelineThumbnail_Click">
                                                 <Image Source="{Binding Thumbnail}"
                                                        Width="32" Height="32"
-                                                       Stretch="UniformToFill"/>
+                                                       Stretch="UniformToFill" />
                                             </Button>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -165,10 +169,11 @@
                         <Slider Minimum="0"
                                 Maximum="{Binding Duration}"
                                 Value="{Binding CurrentPosition}"
-                                IsEnabled="{Binding HasVideo}"/>
+                                IsEnabled="{Binding HasVideo}" />
                         <Grid ColumnDefinitions="Auto,*,Auto">
-                            <TextBlock Classes="label" Text="{Binding CurrentPosition, StringFormat='{}{0:F1}s'}"/>
-                            <TextBlock Grid.Column="2" Classes="label" Text="{Binding Duration, StringFormat='{}{0:F1}s'}"/>
+                            <TextBlock Classes="label" Text="{Binding CurrentPosition, StringFormat='{}{0:F1}s'}" />
+                            <TextBlock Grid.Column="2" Classes="label"
+                                       Text="{Binding Duration, StringFormat='{}{0:F1}s'}" />
                         </Grid>
                     </StackPanel>
                 </Grid>
@@ -178,15 +183,15 @@
             <Border Grid.Column="1" Classes="panel" Margin="6,0,6,0">
                 <Grid RowDefinitions="Auto,*,Auto">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Classes="section-header" Text="ASCII Preview"/>
+                        <TextBlock Classes="section-header" Text="ASCII Preview" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                             <TextBlock Classes="label"
                                        Text="{Binding SelectedKeyframe.TimestampFormatted, FallbackValue=''}"
-                                       FontFamily="Cascadia Mono, Consolas, monospace"/>
+                                       FontFamily="Cascadia Mono, Consolas, monospace" />
                             <Border Background="{DynamicResource SystemFillColorSuccessBackgroundBrush}"
                                     CornerRadius="4" Padding="6,2"
                                     IsVisible="{Binding SelectedKeyframe.IsSceneBoundary, FallbackValue=False}">
-                                <TextBlock Text="Scene" FontSize="10" Foreground="White"/>
+                                <TextBlock Text="Scene" FontSize="10" Foreground="White" />
                             </Border>
                         </StackPanel>
                     </Grid>
@@ -195,7 +200,7 @@
                         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                             <controls:AnsiTextBlock AnsiText="{Binding AsciiPreview}"
                                                     FontSize="9"
-                                                    Margin="6"/>
+                                                    Margin="6" />
                         </ScrollViewer>
                     </Border>
 
@@ -205,24 +210,24 @@
                         <Button Command="{Binding PreviousKeyframeCommand}"
                                 IsEnabled="{Binding Keyframes.Count}" ToolTip.Tip="Previous frame"
                                 Padding="10,8">
-                            <ui:SymbolIcon Symbol="Previous" FontSize="16"/>
+                            <ui:SymbolIcon Symbol="Previous" FontSize="16" />
                         </Button>
                         <Button Command="{Binding TogglePlaybackCommand}"
                                 IsEnabled="{Binding Keyframes.Count}" ToolTip.Tip="Play/Pause"
                                 Padding="12,8">
                             <Panel>
-                                <ui:SymbolIcon Symbol="Pause" FontSize="18" IsVisible="{Binding IsPlaying}"/>
-                                <ui:SymbolIcon Symbol="Play" FontSize="18" IsVisible="{Binding !IsPlaying}"/>
+                                <ui:SymbolIcon Symbol="Pause" FontSize="18" IsVisible="{Binding IsPlaying}" />
+                                <ui:SymbolIcon Symbol="Play" FontSize="18" IsVisible="{Binding !IsPlaying}" />
                             </Panel>
                         </Button>
                         <Button Command="{Binding NextKeyframeCommand}"
                                 IsEnabled="{Binding Keyframes.Count}" ToolTip.Tip="Next frame"
                                 Padding="10,8">
-                            <ui:SymbolIcon Symbol="Next" FontSize="16"/>
+                            <ui:SymbolIcon Symbol="Next" FontSize="16" />
                         </Button>
                         <TextBlock Classes="label" Margin="12,0,0,0"
-                                   Text="{Binding CurrentKeyframeIndex, StringFormat='Frame {0}'}"/>
-                        <TextBlock Classes="label" Text="{Binding Keyframes.Count, StringFormat='/ {0}'}"/>
+                                   Text="{Binding CurrentKeyframeIndex, StringFormat='Frame {0}'}" />
+                        <TextBlock Classes="label" Text="{Binding Keyframes.Count, StringFormat='/ {0}'}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -239,8 +244,8 @@
                                 Padding="12,12"
                                 Classes="accent">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <ui:SymbolIcon Symbol="Pictures" FontSize="16"/>
-                                <TextBlock Text="Extract Keyframes" FontWeight="SemiBold"/>
+                                <ui:SymbolIcon Symbol="Pictures" FontSize="16" />
+                                <TextBlock Text="Extract Keyframes" FontWeight="SemiBold" />
                             </StackPanel>
                         </Button>
 
@@ -248,59 +253,59 @@
                         <ProgressBar Value="{Binding Progress}"
                                      Maximum="1"
                                      IsVisible="{Binding IsLoading}"
-                                     Height="3"/>
+                                     Height="3" />
 
                         <!-- Count Display -->
                         <TextBlock Text="{Binding CountDisplay}"
                                    IsVisible="{Binding ExtractedCount}"
                                    TextAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
 
-                        <Separator Margin="0,4"/>
+                        <Separator Margin="0,4" />
 
                         <!-- Settings Grid -->
                         <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,4">
-                            <TextBlock Classes="label" Text="Frames"/>
+                            <TextBlock Classes="label" Text="Frames" />
                             <NumericUpDown Grid.Column="1" Value="{Binding TargetKeyframeCount}"
                                            Minimum="1" Maximum="100" Width="90"
-                                           HorizontalAlignment="Right"/>
+                                           HorizontalAlignment="Right" />
 
-                            <TextBlock Grid.Row="1" Classes="label" Text="Strategy" Margin="0,8,0,0"/>
+                            <TextBlock Grid.Row="1" Classes="label" Text="Strategy" Margin="0,8,0,0" />
                             <ComboBox Grid.Row="1" Grid.Column="1" SelectedIndex="{Binding SelectedStrategy}"
                                       HorizontalAlignment="Right" Width="110" Margin="0,8,0,0">
-                                <ComboBoxItem Content="Uniform"/>
-                                <ComboBoxItem Content="I-Frames"/>
-                                <ComboBoxItem Content="Scene"/>
-                                <ComboBoxItem Content="Adaptive"/>
+                                <ComboBoxItem Content="Uniform" />
+                                <ComboBoxItem Content="I-Frames" />
+                                <ComboBoxItem Content="Scene" />
+                                <ComboBoxItem Content="Adaptive" />
                             </ComboBox>
 
-                            <TextBlock Grid.Row="2" Classes="label" Text="Start" Margin="0,8,0,0"/>
+                            <TextBlock Grid.Row="2" Classes="label" Text="Start" Margin="0,8,0,0" />
                             <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding RangeStart}"
                                            Minimum="0" Maximum="{Binding Duration}"
                                            FormatString="F1" Increment="1" Width="90"
-                                           HorizontalAlignment="Right" Margin="0,8,0,0"/>
+                                           HorizontalAlignment="Right" Margin="0,8,0,0" />
 
-                            <TextBlock Grid.Row="3" Classes="label" Text="End" Margin="0,8,0,0"/>
+                            <TextBlock Grid.Row="3" Classes="label" Text="End" Margin="0,8,0,0" />
                             <NumericUpDown Grid.Row="3" Grid.Column="1" Value="{Binding RangeEnd}"
                                            Minimum="0" Maximum="{Binding Duration}"
                                            FormatString="F1" Increment="1" Width="90"
-                                           HorizontalAlignment="Right" Margin="0,8,0,0"/>
+                                           HorizontalAlignment="Right" Margin="0,8,0,0" />
                         </Grid>
 
-                        <Separator Margin="0,4"/>
+                        <Separator Margin="0,4" />
 
                         <!-- Render Mode -->
-                        <TextBlock Classes="label" Text="Render Mode"/>
+                        <TextBlock Classes="label" Text="Render Mode" />
                         <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4,0,0">
                             <RadioButton Content="ASCII" GroupName="RenderMode" Padding="8,6"
-                                         IsChecked="{Binding SelectedRenderMode, Converter={x:Static vm:EnumConverters.RenderModeAscii}}"/>
+                                         IsChecked="{Binding SelectedRenderMode, Converter={x:Static vm:EnumConverters.RenderModeAscii}}" />
                             <RadioButton Content="Blocks" GroupName="RenderMode" Padding="8,6"
-                                         IsChecked="{Binding SelectedRenderMode, Converter={x:Static vm:EnumConverters.RenderModeBlocks}}"/>
+                                         IsChecked="{Binding SelectedRenderMode, Converter={x:Static vm:EnumConverters.RenderModeBlocks}}" />
                             <RadioButton Content="Braille" GroupName="RenderMode" Padding="8,6"
-                                         IsChecked="{Binding SelectedRenderMode, Converter={x:Static vm:EnumConverters.RenderModeBraille}}"/>
+                                         IsChecked="{Binding SelectedRenderMode, Converter={x:Static vm:EnumConverters.RenderModeBraille}}" />
                         </StackPanel>
 
-                        <Separator Margin="0,4"/>
+                        <Separator Margin="0,4" />
 
                         <!-- Terminal Preview -->
                         <Button Click="PreviewInTerminal_Click"
@@ -309,8 +314,8 @@
                                 HorizontalContentAlignment="Center"
                                 Padding="10,8">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="⌘" FontSize="14" VerticalAlignment="Center"/>
-                                <TextBlock Text="Open in Terminal"/>
+                                <TextBlock Text="⌘" FontSize="14" VerticalAlignment="Center" />
+                                <TextBlock Text="Open in Terminal" />
                             </StackPanel>
                         </Button>
 
@@ -322,8 +327,8 @@
                                 Padding="10,8"
                                 Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <ui:SymbolIcon Symbol="Microphone" FontSize="14"/>
-                                <TextBlock Text="Transcribe Speech"/>
+                                <ui:SymbolIcon Symbol="Microphone" FontSize="14" />
+                                <TextBlock Text="Transcribe Speech" />
                             </StackPanel>
                         </Button>
 
@@ -331,27 +336,31 @@
                         <Expander Header="Advanced" Margin="0,6,0,0" Padding="0">
                             <StackPanel Spacing="10" Margin="0,10,0,0">
                                 <Grid ColumnDefinitions="Auto,*">
-                                    <TextBlock Classes="label" Text="{Binding PreviewWidth, StringFormat='Width {0}'}" Width="55"/>
+                                    <TextBlock Classes="label" Text="{Binding PreviewWidth, StringFormat='Width {0}'}"
+                                               Width="55" />
                                     <Slider Grid.Column="1" Minimum="40" Maximum="120"
-                                            Value="{Binding PreviewWidth}"/>
+                                            Value="{Binding PreviewWidth}" />
                                 </Grid>
 
                                 <Grid ColumnDefinitions="Auto,*">
-                                    <TextBlock Classes="label" Text="{Binding SceneThreshold, StringFormat='Scene {0:F2}'}" Width="55"/>
+                                    <TextBlock Classes="label"
+                                               Text="{Binding SceneThreshold, StringFormat='Scene {0:F2}'}" Width="55" />
                                     <Slider Grid.Column="1" Minimum="0.1" Maximum="0.9"
-                                            Value="{Binding SceneThreshold}"/>
+                                            Value="{Binding SceneThreshold}" />
                                 </Grid>
 
                                 <Grid ColumnDefinitions="Auto,*">
-                                    <TextBlock Classes="label" Text="{Binding GifDuration, StringFormat='GIF {0:F0}s'}" Width="55"/>
+                                    <TextBlock Classes="label" Text="{Binding GifDuration, StringFormat='GIF {0:F0}s'}"
+                                               Width="55" />
                                     <Slider Grid.Column="1" Minimum="1" Maximum="30"
-                                            Value="{Binding GifDuration}"/>
+                                            Value="{Binding GifDuration}" />
                                 </Grid>
 
                                 <Grid ColumnDefinitions="Auto,*">
-                                    <TextBlock Classes="label" Text="{Binding PlaybackSpeed, StringFormat='Speed {0:F1}x'}" Width="55"/>
+                                    <TextBlock Classes="label"
+                                               Text="{Binding PlaybackSpeed, StringFormat='Speed {0:F1}x'}" Width="55" />
                                     <Slider Grid.Column="1" Minimum="0.5" Maximum="5"
-                                            Value="{Binding PlaybackSpeed}"/>
+                                            Value="{Binding PlaybackSpeed}" />
                                 </Grid>
                             </StackPanel>
                         </Expander>
@@ -365,11 +374,11 @@
             <Grid RowDefinitions="Auto,*">
                 <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ui:SymbolIcon Symbol="Pictures" FontSize="14"/>
-                        <TextBlock Classes="section-header" Text="Keyframes" Margin="0"/>
+                        <ui:SymbolIcon Symbol="Pictures" FontSize="14" />
+                        <TextBlock Classes="section-header" Text="Keyframes" Margin="0" />
                     </StackPanel>
                     <TextBlock Grid.Column="2" Classes="label"
-                               Text="{Binding SelectedKeyframe.Source, FallbackValue=''}"/>
+                               Text="{Binding SelectedKeyframe.Source, FallbackValue=''}" />
                 </Grid>
 
                 <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto"
@@ -377,7 +386,7 @@
                     <ItemsControl ItemsSource="{Binding Keyframes}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="8"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8" />
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
@@ -392,23 +401,24 @@
                                         <Grid>
                                             <Image Source="{Binding Thumbnail}"
                                                    Width="90" Height="60"
-                                                   Stretch="Uniform"/>
+                                                   Stretch="Uniform" />
                                             <!-- Scene boundary indicator -->
                                             <Border Background="#CC00AA00" CornerRadius="3"
                                                     Padding="4,2" Margin="2"
                                                     HorizontalAlignment="Left" VerticalAlignment="Top"
                                                     IsVisible="{Binding IsSceneBoundary}">
-                                                <TextBlock Text="Scene" FontSize="8" Foreground="White" FontWeight="SemiBold"/>
+                                                <TextBlock Text="Scene" FontSize="8" Foreground="White"
+                                                           FontWeight="SemiBold" />
                                             </Border>
                                         </Grid>
                                         <TextBlock Text="{Binding TimestampFormatted}"
                                                    HorizontalAlignment="Center"
                                                    FontSize="10" Margin="0,4,0,0"
-                                                   FontFamily="Cascadia Mono, Consolas, monospace"/>
+                                                   FontFamily="Cascadia Mono, Consolas, monospace" />
                                         <TextBlock Text="{Binding Index, StringFormat='#{0}'}"
                                                    HorizontalAlignment="Center"
                                                    FontSize="9"
-                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>
@@ -417,14 +427,15 @@
                 </ScrollViewer>
 
                 <StackPanel Grid.Row="1"
-                           IsVisible="{Binding !Keyframes.Count}"
-                           VerticalAlignment="Center"
-                           HorizontalAlignment="Center"
-                           Spacing="8">
-                    <ui:SymbolIcon Symbol="Pictures" FontSize="24" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                            IsVisible="{Binding !Keyframes.Count}"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Spacing="8">
+                    <ui:SymbolIcon Symbol="Pictures" FontSize="24"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                     <TextBlock Text="Extract keyframes to see them here"
                                Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                               FontSize="12"/>
+                               FontSize="12" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -433,12 +444,12 @@
         <Border Grid.Row="3" Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
                 Padding="16,8">
             <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" FontSize="12"/>
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" FontSize="12" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16"
                             IsVisible="{Binding HasVideo}">
-                    <TextBlock Classes="label" Text="{Binding VideoInfo.Width, StringFormat='{}{0}×'}"/>
-                    <TextBlock Classes="label" Text="{Binding VideoInfo.Height}"/>
-                    <TextBlock Classes="label" Text="{Binding VideoInfo.FrameRate, StringFormat='{}{0:F1} fps'}"/>
+                    <TextBlock Classes="label" Text="{Binding VideoInfo.Width, StringFormat='{}{0}×'}" />
+                    <TextBlock Classes="label" Text="{Binding VideoInfo.Height}" />
+                    <TextBlock Classes="label" Text="{Binding VideoInfo.FrameRate, StringFormat='{}{0:F1} fps'}" />
                 </StackPanel>
             </Grid>
         </Border>

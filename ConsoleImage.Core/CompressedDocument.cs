@@ -3,17 +3,17 @@
 // Dramatically reduces file size while maintaining full playback quality
 
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ConsoleImage.Core.Subtitles;
-using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// JSON source generator for compressed document format (AOT compatible)
+///     JSON source generator for compressed document format (AOT compatible)
 /// </summary>
 [JsonSourceGenerationOptions(
     WriteIndented = false,
@@ -30,16 +30,15 @@ public partial class CompressedDocumentJsonContext : JsonSerializerContext
 }
 
 /// <summary>
-/// Optimized document format with:
-/// - Global color palette (colors stored once, referenced by index)
-/// - Delta compression (only changed cells stored between keyframes)
-/// - Loop metadata (frames stored once, loop count in settings)
-/// - RLE compression for color indices
+///     Optimized document format with:
+///     - Global color palette (colors stored once, referenced by index)
+///     - Delta compression (only changed cells stored between keyframes)
+///     - Loop metadata (frames stored once, loop count in settings)
+///     - RLE compression for color indices
 /// </summary>
 public class OptimizedDocument
 {
-    [JsonPropertyName("@type")]
-    public string Type { get; set; } = "OptimizedConsoleImageDocument";
+    [JsonPropertyName("@type")] public string Type { get; set; } = "OptimizedConsoleImageDocument";
 
     public string Version { get; set; } = "3.1"; // Updated for delta support
     public DateTime Created { get; set; } = DateTime.UtcNow;
@@ -48,19 +47,19 @@ public class OptimizedDocument
     public DocumentRenderSettings Settings { get; set; } = new();
 
     /// <summary>
-    /// Global color palette - each entry is "RRGGBB" hex string.
-    /// Index 0 is reserved for "no color" (use terminal default).
+    ///     Global color palette - each entry is "RRGGBB" hex string.
+    ///     Index 0 is reserved for "no color" (use terminal default).
     /// </summary>
     public string[] Palette { get; set; } = Array.Empty<string>();
 
     /// <summary>
-    /// Keyframe interval - a full frame is stored every N frames.
-    /// Intermediate frames are delta-encoded.
+    ///     Keyframe interval - a full frame is stored every N frames.
+    ///     Intermediate frames are delta-encoded.
     /// </summary>
     public int KeyframeInterval { get; set; } = 30;
 
     /// <summary>
-    /// Optimized frames - mix of keyframes (full) and delta frames (changes only).
+    ///     Optimized frames - mix of keyframes (full) and delta frames (changes only).
     /// </summary>
     public List<OptimizedFrame> Frames { get; set; } = new();
 
@@ -69,7 +68,7 @@ public class OptimizedDocument
     public int TotalDurationMs => Frames.Sum(f => f.DelayMs);
 
     /// <summary>
-    /// Statistics on frame deduplication after optimization.
+    ///     Statistics on frame deduplication after optimization.
     /// </summary>
     [JsonIgnore]
     public (int keyframes, int deltaFrames, int refFrames, int totalSavedBytes) DeduplicationStats
@@ -78,20 +77,29 @@ public class OptimizedDocument
         {
             int keyframes = 0, deltaFrames = 0, refFrames = 0, savedBytes = 0;
             foreach (var f in Frames)
-            {
-                if (f.RefFrame.HasValue) { refFrames++; savedBytes += (f.Characters?.Length ?? 100); }
-                else if (f.IsKeyframe) keyframes++;
-                else deltaFrames++;
-            }
+                if (f.RefFrame.HasValue)
+                {
+                    refFrames++;
+                    savedBytes += f.Characters?.Length ?? 100;
+                }
+                else if (f.IsKeyframe)
+                {
+                    keyframes++;
+                }
+                else
+                {
+                    deltaFrames++;
+                }
+
             return (keyframes, deltaFrames, refFrames, savedBytes);
         }
     }
 
     /// <summary>
-    /// Post-process frames to optimize for frequently referenced content.
-    /// Uses LFU analysis to identify the most commonly duplicated frames
-    /// and ensures they are stored as keyframes that others can reference.
-    /// Call this after streaming is complete for optimal compression.
+    ///     Post-process frames to optimize for frequently referenced content.
+    ///     Uses LFU analysis to identify the most commonly duplicated frames
+    ///     and ensures they are stored as keyframes that others can reference.
+    ///     Call this after streaming is complete for optimal compression.
     /// </summary>
     public void OptimizeFrameReferences(int maxKeyframesToPromote = 10)
     {
@@ -101,7 +109,7 @@ public class OptimizedDocument
         var hashCounts = new Dictionary<int, int>();
         var hashToFirstIdx = new Dictionary<int, int>();
 
-        for (int i = 0; i < Frames.Count; i++)
+        for (var i = 0; i < Frames.Count; i++)
         {
             var frame = Frames[i];
             if (frame.ContentHash == 0) continue;
@@ -111,6 +119,7 @@ public class OptimizedDocument
                 hashCounts[frame.ContentHash] = 0;
                 hashToFirstIdx[frame.ContentHash] = i;
             }
+
             hashCounts[frame.ContentHash]++;
         }
 
@@ -139,7 +148,7 @@ public class OptimizedDocument
         }
 
         // Update all duplicate frames to reference their first occurrence
-        for (int i = 0; i < Frames.Count; i++)
+        for (var i = 0; i < Frames.Count; i++)
         {
             var frame = Frames[i];
             if (frame.ContentHash == 0 || frame.RefFrame.HasValue) continue;
@@ -151,20 +160,17 @@ public class OptimizedDocument
                 // This frame can reference an earlier one
                 frame.RefFrame = firstIdx;
                 // Clear data to save space
-                if (!frame.IsKeyframe)
-                {
-                    frame.Delta = null;
-                }
+                if (!frame.IsKeyframe) frame.Delta = null;
                 frame.IsKeyframe = false;
             }
         }
     }
 
     /// <summary>
-    /// Create optimized document from standard ConsoleImageDocument.
-    /// Uses delta encoding for motion compression.
-    /// Optionally applies temporal stability (de-jitter) to reduce flickering.
-    /// Supports frame deduplication via content hashing (identical frames reference earlier frames).
+    ///     Create optimized document from standard ConsoleImageDocument.
+    ///     Uses delta encoding for motion compression.
+    ///     Optionally applies temporal stability (de-jitter) to reduce flickering.
+    ///     Supports frame deduplication via content hashing (identical frames reference earlier frames).
     /// </summary>
     public static OptimizedDocument FromDocument(ConsoleImageDocument doc, int keyframeInterval = 30,
         bool enableStability = false, int colorThreshold = 15)
@@ -197,7 +203,7 @@ public class OptimizedDocument
         var deltaSb = new StringBuilder(4096);
         var compressSb = new StringBuilder(2048);
 
-        for (int f = 0; f < doc.Frames.Count; f++)
+        for (var f = 0; f < doc.Frames.Count; f++)
         {
             var frame = doc.Frames[f];
 
@@ -206,26 +212,19 @@ public class OptimizedDocument
 
             // Add new colors to growing palette
             foreach (var color in colors)
-            {
                 if (color.Length > 0 && !colorToIndex.ContainsKey(color))
                 {
                     colorToIndex[color] = paletteList.Count;
                     paletteList.Add(color);
                 }
-            }
 
             // Apply temporal stability if enabled (modifies colors in-place)
             if (enableStability && prevColors != null && colors.Count == prevColors.Count)
-            {
                 ApplyColorStabilityInPlace(colors, prevColors, colorThreshold);
-            }
 
             // Convert colors to palette indices
             var indices = new List<int>(colors.Count);
-            foreach (var c in colors)
-            {
-                indices.Add(colorToIndex.TryGetValue(c, out var idx) ? idx : 0);
-            }
+            foreach (var c in colors) indices.Add(colorToIndex.TryGetValue(c, out var idx) ? idx : 0);
 
             // Compute content hash for deduplication (simple hash of chars + first few indices)
             var contentHash = ComputeFrameHash(chars, indices);
@@ -247,7 +246,7 @@ public class OptimizedDocument
             }
 
             // Decide if this should be a keyframe
-            bool isKeyframe = f == 0 || f % keyframeInterval == 0;
+            var isKeyframe = f == 0 || f % keyframeInterval == 0;
 
             // Also force keyframe if frame dimensions changed
             if (prevChars != null && chars.Length != prevChars.Length)
@@ -306,31 +305,28 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Compute a simple hash of frame content for deduplication.
-    /// Uses characters + sampled color indices.
+    ///     Compute a simple hash of frame content for deduplication.
+    ///     Uses characters + sampled color indices.
     /// </summary>
     private static int ComputeFrameHash(string chars, List<int> indices)
     {
         unchecked
         {
-            int hash = 17;
+            var hash = 17;
             hash = hash * 31 + chars.GetHashCode();
 
             // Sample color indices (every 10th for speed)
-            for (int i = 0; i < indices.Count; i += 10)
-            {
-                hash = hash * 31 + indices[i];
-            }
+            for (var i = 0; i < indices.Count; i += 10) hash = hash * 31 + indices[i];
 
             return hash;
         }
     }
 
     /// <summary>
-    /// Convert back to standard ConsoleImageDocument for playback.
-    /// Reconstructs full frames from keyframes and deltas.
-    /// Optimized for low allocation: pre-caches palette ANSI strings,
-    /// reuses buffers across delta frames.
+    ///     Convert back to standard ConsoleImageDocument for playback.
+    ///     Reconstructs full frames from keyframes and deltas.
+    ///     Optimized for low allocation: pre-caches palette ANSI strings,
+    ///     reuses buffers across delta frames.
     /// </summary>
     public ConsoleImageDocument ToDocument(int? loopCountOverride = null)
     {
@@ -343,10 +339,7 @@ public class OptimizedDocument
         };
 
         // Override loop count if specified
-        if (loopCountOverride.HasValue)
-        {
-            doc.Settings.LoopCount = loopCountOverride.Value;
-        }
+        if (loopCountOverride.HasValue) doc.Settings.LoopCount = loopCountOverride.Value;
 
         if (Frames.Count == 0) return doc;
 
@@ -356,14 +349,14 @@ public class OptimizedDocument
         // Reusable buffers for delta application (avoids per-frame allocations)
         char[]? charBuffer = null;
         int[]? indexBuffer = null;
-        int bufferLen = 0;
+        var bufferLen = 0;
 
         // Reusable StringBuilder for ANSI content building
         var rebuildSb = new StringBuilder(4096);
 
         var reconstructedContent = new List<string>(Frames.Count); // Store for RefFrame lookups
 
-        for (int f = 0; f < Frames.Count; f++)
+        for (var f = 0; f < Frames.Count; f++)
         {
             var frame = Frames[f];
             string content;
@@ -385,6 +378,7 @@ public class OptimizedDocument
                     charBuffer = new char[bufferLen];
                     indexBuffer = new int[bufferLen];
                 }
+
                 chars.CopyTo(0, charBuffer, 0, bufferLen);
 
                 DecompressColorIndicesInto(frame.ColorIndices, indexBuffer!, bufferLen);
@@ -417,16 +411,16 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Pre-build ANSI escape strings for each palette color.
-    /// Index 0 = reset, others = foreground color code.
-    /// Called once at load time; eliminates hex parsing and string interpolation per frame.
+    ///     Pre-build ANSI escape strings for each palette color.
+    ///     Index 0 = reset, others = foreground color code.
+    ///     Called once at load time; eliminates hex parsing and string interpolation per frame.
     /// </summary>
     private static string[] BuildPaletteAnsiStrings(string[] palette)
     {
         var result = new string[palette.Length];
         result[0] = "\x1b[0m"; // Index 0 = reset/no color
 
-        for (int i = 1; i < palette.Length; i++)
+        for (var i = 1; i < palette.Length; i++)
         {
             var hex = palette[i];
             if (hex.Length >= 6)
@@ -446,15 +440,15 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Parse two hex characters to a byte value without Substring allocation.
+    ///     Parse two hex characters to a byte value without Substring allocation.
     /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ParseHexByte(string hex, int offset)
     {
         return (HexVal(hex[offset]) << 4) | HexVal(hex[offset + 1]);
     }
 
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int HexVal(char c)
     {
         if (c >= '0' && c <= '9') return c - '0';
@@ -464,13 +458,13 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Apply temporal stability to colors in-place - keep previous frame's color if delta is below threshold.
-    /// This reduces visual flickering between frames. Modifies currColors directly to avoid list allocation.
+    ///     Apply temporal stability to colors in-place - keep previous frame's color if delta is below threshold.
+    ///     This reduces visual flickering between frames. Modifies currColors directly to avoid list allocation.
     /// </summary>
     private static void ApplyColorStabilityInPlace(List<string> currColors, List<string> prevColors,
         int threshold)
     {
-        for (int i = 0; i < currColors.Count; i++)
+        for (var i = 0; i < currColors.Count; i++)
         {
             var curr = currColors[i];
             var prev = i < prevColors.Count ? prevColors[i] : "";
@@ -486,7 +480,7 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Check if two hex colors are similar within threshold (per-channel delta).
+    ///     Check if two hex colors are similar within threshold (per-channel delta).
     /// </summary>
     private static bool ColorsAreSimilar(string color1, string color2, int threshold)
     {
@@ -507,28 +501,28 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Calculate delta between two frames.
-    /// Format: "pos:char,colorIdx;pos:char,colorIdx;..." where pos = offset from start
-    /// Uses RLE for consecutive changes.
-    /// Optimized: single-pass scan eliminates intermediate List allocation,
-    /// direct StringBuilder writes eliminate inner StringBuilder and string interpolation.
+    ///     Calculate delta between two frames.
+    ///     Format: "pos:char,colorIdx;pos:char,colorIdx;..." where pos = offset from start
+    ///     Uses RLE for consecutive changes.
+    ///     Optimized: single-pass scan eliminates intermediate List allocation,
+    ///     direct StringBuilder writes eliminate inner StringBuilder and string interpolation.
     /// </summary>
     private static string CalculateDelta(string prevChars, List<int> prevIndices,
         string currChars, List<int> currIndices, StringBuilder? reuseSb = null)
     {
-        int minLen = Math.Min(prevChars.Length, currChars.Length);
-        int maxLen = currChars.Length;
+        var minLen = Math.Min(prevChars.Length, currChars.Length);
+        var maxLen = currChars.Length;
 
         var sb = reuseSb ?? new StringBuilder(Math.Max(64, maxLen / 5 * 25));
         sb.Clear();
-        bool firstEntry = true;
+        var firstEntry = true;
 
-        int i = 0;
+        var i = 0;
         while (i < maxLen)
         {
             // Check if this position changed
             bool changed;
-            int currColor = i < currIndices.Count ? currIndices[i] : 0;
+            var currColor = i < currIndices.Count ? currIndices[i] : 0;
 
             if (i < minLen)
             {
@@ -547,13 +541,13 @@ public class OptimizedDocument
             }
 
             // Found a change - check for RLE run (consecutive positions, same color)
-            int runStart = i;
-            int runColor = currColor;
-            int runEnd = i + 1;
+            var runStart = i;
+            var runColor = currColor;
+            var runEnd = i + 1;
 
             while (runEnd < maxLen)
             {
-                int nextColor = runEnd < currIndices.Count ? currIndices[runEnd] : 0;
+                var nextColor = runEnd < currIndices.Count ? currIndices[runEnd] : 0;
                 if (nextColor != runColor) break;
 
                 // Check if next position is also changed
@@ -568,7 +562,7 @@ public class OptimizedDocument
                 runEnd++;
             }
 
-            int runLength = runEnd - runStart;
+            var runLength = runEnd - runStart;
 
             // Write entry
             if (!firstEntry) sb.Append(';');
@@ -578,7 +572,7 @@ public class OptimizedDocument
             sb.Append(':');
 
             // Write escaped characters directly (no inner StringBuilder)
-            for (int j = runStart; j < runEnd; j++)
+            for (var j = runStart; j < runEnd; j++)
                 AppendEscapedChar(sb, currChars[j]);
 
             sb.Append(',');
@@ -597,10 +591,10 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Append a delta-escaped character directly to StringBuilder.
-    /// Avoids per-char string allocation from EscapeDeltaChar.
+    ///     Append a delta-escaped character directly to StringBuilder.
+    ///     Avoids per-char string allocation from EscapeDeltaChar.
     /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AppendEscapedChar(StringBuilder sb, char c)
     {
         switch (c)
@@ -616,15 +610,15 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Apply delta in-place to char/index buffers without allocations.
-    /// Parses delta string using spans to avoid Split/Substring allocations.
+    ///     Apply delta in-place to char/index buffers without allocations.
+    ///     Parses delta string using spans to avoid Split/Substring allocations.
     /// </summary>
     private static void ApplyDeltaInPlace(char[] chars, int[] indices, ref int bufferLen, string delta)
     {
         if (string.IsNullOrEmpty(delta)) return;
 
         var span = delta.AsSpan();
-        int start = 0;
+        var start = 0;
 
         while (start < span.Length)
         {
@@ -677,7 +671,7 @@ public class OptimizedDocument
 
             // Unescape and apply characters
             var unescapedIdx = 0;
-            for (int ci = 0; ci < charsPart.Length && unescapedIdx < count; ci++)
+            for (var ci = 0; ci < charsPart.Length && unescapedIdx < count; ci++)
             {
                 char ch;
                 if (charsPart[ci] == '\\' && ci + 1 < charsPart.Length)
@@ -703,11 +697,12 @@ public class OptimizedDocument
                     chars[pos + unescapedIdx] = ch;
                     indices[pos + unescapedIdx] = colorIdx;
                 }
+
                 unescapedIdx++;
             }
 
             // Fill remaining count with spaces (for RLE runs longer than char data)
-            for (int i = unescapedIdx; i < count && pos + i < bufferLen; i++)
+            for (var i = unescapedIdx; i < count && pos + i < bufferLen; i++)
             {
                 chars[pos + i] = ' ';
                 indices[pos + i] = colorIdx;
@@ -716,32 +711,34 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Find first unescaped comma in span (skips escaped sequences like \m).
+    ///     Find first unescaped comma in span (skips escaped sequences like \m).
     /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FindUnescapedComma(ReadOnlySpan<char> span)
     {
-        for (int i = 0; i < span.Length; i++)
+        for (var i = 0; i < span.Length; i++)
         {
             if (span[i] == '\\' && i + 1 < span.Length)
             {
                 i++; // Skip escaped char
                 continue;
             }
+
             if (span[i] == ',') return i;
         }
+
         return -1;
     }
 
     /// <summary>
-    /// Parse integer from span without allocation.
+    ///     Parse integer from span without allocation.
     /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ParseInt(ReadOnlySpan<char> span)
     {
-        int result = 0;
-        bool negative = false;
-        int i = 0;
+        var result = 0;
+        var negative = false;
+        var i = 0;
 
         if (span.Length > 0 && span[0] == '-')
         {
@@ -760,9 +757,9 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Parse ANSI content to extract characters and colors.
-    /// Optimized: span-based parsing avoids Substring/Split allocations.
-    /// Color strings are interned via dictionary to avoid duplicate heap allocations.
+    ///     Parse ANSI content to extract characters and colors.
+    ///     Optimized: span-based parsing avoids Substring/Split allocations.
+    ///     Color strings are interned via dictionary to avoid duplicate heap allocations.
     /// </summary>
     private static (string chars, List<string> colors) ParseAnsiContent(string content)
     {
@@ -774,13 +771,13 @@ public class OptimizedDocument
         var colorIntern = new Dictionary<int, string>(64);
         colorIntern[0] = ""; // No color sentinel
 
-        int i = 0;
+        var i = 0;
         while (i < content.Length)
         {
             if (content[i] == '\x1b' && i + 1 < content.Length && content[i + 1] == '[')
             {
                 // Find the 'm' terminator
-                int end = content.IndexOf('m', i + 2);
+                var end = content.IndexOf('m', i + 2);
                 if (end > i)
                 {
                     var seqStart = i + 2;
@@ -810,8 +807,10 @@ public class OptimizedDocument
                             hexStr = $"{r:X2}{g:X2}{b:X2}";
                             colorIntern[colorKey] = hexStr;
                         }
+
                         currentColor = hexStr;
                     }
+
                     // Background color (48;2;...) - skip
                     i = end + 1;
                     continue;
@@ -828,13 +827,13 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Parse the next integer from a semicolon-delimited string at the given position.
-    /// Advances pos past the integer and the following semicolon.
+    ///     Parse the next integer from a semicolon-delimited string at the given position.
+    ///     Advances pos past the integer and the following semicolon.
     /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ParseNextInt(string content, ref int pos, int end)
     {
-        int val = 0;
+        var val = 0;
         while (pos < end && content[pos] != ';')
         {
             var c = content[pos];
@@ -842,13 +841,14 @@ public class OptimizedDocument
                 val = val * 10 + (c - '0');
             pos++;
         }
+
         if (pos < end) pos++; // Skip semicolon
         return val;
     }
 
     /// <summary>
-    /// Rebuild ANSI content from char/index buffers using pre-cached palette strings.
-    /// Zero-allocation hot path (reuses provided StringBuilder).
+    ///     Rebuild ANSI content from char/index buffers using pre-cached palette strings.
+    ///     Zero-allocation hot path (reuses provided StringBuilder).
     /// </summary>
     private static string RebuildAnsiContentFast(char[] chars, int[] indices, int length,
         string[] paletteAnsi, StringBuilder sb)
@@ -858,7 +858,7 @@ public class OptimizedDocument
 
         var lastColorIdx = -1;
 
-        for (int i = 0; i < length; i++)
+        for (var i = 0; i < length; i++)
         {
             var colorIdx = indices[i];
 
@@ -888,8 +888,8 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Compress color indices using run-length encoding.
-    /// Accepts optional reusable StringBuilder to avoid per-call allocation.
+    ///     Compress color indices using run-length encoding.
+    ///     Accepts optional reusable StringBuilder to avoid per-call allocation.
     /// </summary>
     private static string CompressColorIndices(List<int> indices, StringBuilder? reuseSb = null)
     {
@@ -897,11 +897,10 @@ public class OptimizedDocument
 
         var sb = reuseSb ?? new StringBuilder(indices.Count * 3);
         sb.Clear();
-        int currentIdx = indices[0];
-        int count = 1;
+        var currentIdx = indices[0];
+        var count = 1;
 
-        for (int i = 1; i < indices.Count; i++)
-        {
+        for (var i = 1; i < indices.Count; i++)
             if (indices[i] == currentIdx)
             {
                 count++;
@@ -912,7 +911,7 @@ public class OptimizedDocument
                 currentIdx = indices[i];
                 count = 1;
             }
-        }
+
         AppendRun(sb, currentIdx, count);
 
         return sb.ToString();
@@ -930,10 +929,10 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Create optimized document by streaming from an NDJSON file.
-    /// Reads one frame at a time - avoids loading all frame content strings into memory.
-    /// The palette is built incrementally (no two-pass needed).
-    /// Memory: O(1 frame content + palette + optimized output) instead of O(N frames).
+    ///     Create optimized document by streaming from an NDJSON file.
+    ///     Reads one frame at a time - avoids loading all frame content strings into memory.
+    ///     The palette is built incrementally (no two-pass needed).
+    ///     Memory: O(1 frame content + palette + optimized output) instead of O(N frames).
     /// </summary>
     public static async Task<OptimizedDocument> FromNdjsonFileAsync(
         string ndjsonPath,
@@ -959,7 +958,7 @@ public class OptimizedDocument
         // Reusable StringBuilders
         var deltaSb = new StringBuilder(4096);
         var compressSb = new StringBuilder(2048);
-        int frameIdx = 0;
+        var frameIdx = 0;
 
         using var reader = new StreamReader(ndjsonPath, Encoding.UTF8);
         string? line;
@@ -980,6 +979,7 @@ public class OptimizedDocument
                     optimized.Settings = header.Settings;
                     optimized.Created = header.Created;
                 }
+
                 continue;
             }
 
@@ -996,13 +996,11 @@ public class OptimizedDocument
 
             // Add any new colors to growing palette
             foreach (var color in colors)
-            {
                 if (color.Length > 0 && !colorToIndex.ContainsKey(color))
                 {
                     colorToIndex[color] = paletteList.Count;
                     paletteList.Add(color);
                 }
-            }
 
             // Apply temporal stability
             if (enableStability && prevColors != null && colors.Count == prevColors.Count)
@@ -1031,7 +1029,7 @@ public class OptimizedDocument
             }
 
             // Decide if this should be a keyframe
-            bool isKeyframe = frameIdx == 0 || frameIdx % keyframeInterval == 0;
+            var isKeyframe = frameIdx == 0 || frameIdx % keyframeInterval == 0;
             if (prevChars != null && chars.Length != prevChars.Length)
                 isKeyframe = true;
 
@@ -1087,8 +1085,8 @@ public class OptimizedDocument
     }
 
     /// <summary>
-    /// Decompress RLE color indices directly into a pre-allocated buffer.
-    /// Zero-allocation: parses using spans, writes directly to int[].
+    ///     Decompress RLE color indices directly into a pre-allocated buffer.
+    ///     Zero-allocation: parses using spans, writes directly to int[].
     /// </summary>
     private static void DecompressColorIndicesInto(string? compressed, int[] buffer, int bufferLen)
     {
@@ -1098,8 +1096,8 @@ public class OptimizedDocument
         if (string.IsNullOrEmpty(compressed)) return;
 
         var span = compressed.AsSpan();
-        int writePos = 0;
-        int start = 0;
+        var writePos = 0;
+        var start = 0;
 
         while (start < span.Length && writePos < bufferLen)
         {
@@ -1136,7 +1134,7 @@ public class OptimizedDocument
 
             // Write run to buffer
             var end = Math.Min(writePos + count, bufferLen);
-            for (int i = writePos; i < end; i++)
+            for (var i = writePos; i < end; i++)
                 buffer[i] = idx;
             writePos = end;
         }
@@ -1144,7 +1142,7 @@ public class OptimizedDocument
 }
 
 /// <summary>
-/// Extension for cloning DocumentRenderSettings.
+///     Extension for cloning DocumentRenderSettings.
 /// </summary>
 public static class DocumentRenderSettingsExtensions
 {
@@ -1175,41 +1173,41 @@ public static class DocumentRenderSettingsExtensions
 }
 
 /// <summary>
-/// Optimized frame - can be keyframe (full) or delta (changes only).
+///     Optimized frame - can be keyframe (full) or delta (changes only).
 /// </summary>
 public class OptimizedFrame
 {
     /// <summary>
-    /// True = full keyframe, False = delta from previous frame.
+    ///     True = full keyframe, False = delta from previous frame.
     /// </summary>
     public bool IsKeyframe { get; set; } = true;
 
     /// <summary>
-    /// Plain characters without ANSI codes (keyframes only).
+    ///     Plain characters without ANSI codes (keyframes only).
     /// </summary>
     public string? Characters { get; set; }
 
     /// <summary>
-    /// RLE-compressed color indices (keyframes only).
+    ///     RLE-compressed color indices (keyframes only).
     /// </summary>
     public string? ColorIndices { get; set; }
 
     /// <summary>
-    /// Delta encoding - changes from previous frame (delta frames only).
-    /// Format: "pos:char,colorIdx;pos:chars,colorIdx,count;..."
+    ///     Delta encoding - changes from previous frame (delta frames only).
+    ///     Format: "pos:char,colorIdx;pos:chars,colorIdx,count;..."
     /// </summary>
     public string? Delta { get; set; }
 
     /// <summary>
-    /// Reference to an identical frame (0-based index).
-    /// When set, this frame uses the same content as the referenced frame.
-    /// Used for perceptual hash-based frame deduplication.
+    ///     Reference to an identical frame (0-based index).
+    ///     When set, this frame uses the same content as the referenced frame.
+    ///     Used for perceptual hash-based frame deduplication.
     /// </summary>
     public int? RefFrame { get; set; }
 
     /// <summary>
-    /// Content hash for deduplication (set during streaming, used for post-optimization).
-    /// Not serialized - computed on the fly.
+    ///     Content hash for deduplication (set during streaming, used for post-optimization).
+    ///     Not serialized - computed on the fly.
     /// </summary>
     [JsonIgnore]
     public int ContentHash { get; set; }
@@ -1220,17 +1218,23 @@ public class OptimizedFrame
 }
 
 /// <summary>
-/// Handles reading and writing compressed document archives (.cid.7z or .cidz).
+///     Handles reading and writing compressed document archives (.cid.7z or .cidz).
 /// </summary>
 public static class CompressedDocumentArchive
 {
+    private const byte CidzVersion = 2;
+    private const byte CidzFlagHasSubtitles = 0x01;
+
     /// <summary>
-    /// Supported archive extensions.
+    ///     Supported archive extensions.
     /// </summary>
     public static readonly string[] SupportedExtensions = { ".7z", ".cidz", ".cid.7z" };
 
+    // CIDZ v2 binary format magic
+    private static readonly byte[] CidzMagic = "CIDZ"u8.ToArray();
+
     /// <summary>
-    /// Check if a file path indicates a compressed document.
+    ///     Check if a file path indicates a compressed document.
     /// </summary>
     public static bool IsCompressedDocument(string path)
     {
@@ -1238,30 +1242,25 @@ public static class CompressedDocumentArchive
         return SupportedExtensions.Any(ext => lower.EndsWith(ext));
     }
 
-    // CIDZ v2 binary format magic
-    private static readonly byte[] CidzMagic = "CIDZ"u8.ToArray();
-    private const byte CidzVersion = 2;
-    private const byte CidzFlagHasSubtitles = 0x01;
-
     /// <summary>
-    /// Save a document to a compressed archive.
-    /// Applies delta encoding for motion compression.
-    /// Loop count is stored in settings - frames are NOT duplicated.
+    ///     Save a document to a compressed archive.
+    ///     Applies delta encoding for motion compression.
+    ///     Loop count is stored in settings - frames are NOT duplicated.
     /// </summary>
     public static async Task SaveAsync(ConsoleImageDocument doc, string path,
         int keyframeInterval = 30, CancellationToken ct = default)
     {
-        await SaveAsync(doc, path, keyframeInterval, subtitles: null, ct: ct);
+        await SaveAsync(doc, path, keyframeInterval, null, ct);
     }
 
     /// <summary>
-    /// Save a document with optional subtitle track bundled inside the archive.
-    /// Uses CIDZ v2 format: 6-byte header + Brotli-compressed payload.
-    /// Streams JSON directly to Brotli - no full JSON string buffered in memory.
-    /// Brotli achieves ~20-30% better compression than Deflate/GZip on text data.
-    /// Format: [CIDZ magic 4B][version 1B][flags 1B][Brotli(JSON + \0 + VTT)]
-    /// Default compression level is Optimal (quality ~4) for fast encoding.
-    /// Use SmallestSize for archival when encoding speed doesn't matter.
+    ///     Save a document with optional subtitle track bundled inside the archive.
+    ///     Uses CIDZ v2 format: 6-byte header + Brotli-compressed payload.
+    ///     Streams JSON directly to Brotli - no full JSON string buffered in memory.
+    ///     Brotli achieves ~20-30% better compression than Deflate/GZip on text data.
+    ///     Format: [CIDZ magic 4B][version 1B][flags 1B][Brotli(JSON + \0 + VTT)]
+    ///     Default compression level is Optimal (quality ~4) for fast encoding.
+    ///     Use SmallestSize for archival when encoding speed doesn't matter.
     /// </summary>
     public static async Task SaveAsync(ConsoleImageDocument doc, string path,
         int keyframeInterval, SubtitleTrack? subtitles,
@@ -1277,9 +1276,9 @@ public static class CompressedDocumentArchive
     }
 
     /// <summary>
-    /// Save an already-optimized document to CIDZ format.
-    /// Use this with OptimizedDocument.FromNdjsonFileAsync for streaming compression
-    /// that avoids loading all frame content into memory.
+    ///     Save an already-optimized document to CIDZ format.
+    ///     Use this with OptimizedDocument.FromNdjsonFileAsync for streaming compression
+    ///     that avoids loading all frame content into memory.
     /// </summary>
     public static async Task SaveOptimizedAsync(OptimizedDocument optimized, string path,
         SubtitleTrack? subtitles = null,
@@ -1310,7 +1309,7 @@ public static class CompressedDocumentArchive
     }
 
     /// <summary>
-    /// Build VTT content from a subtitle track without writing to disk.
+    ///     Build VTT content from a subtitle track without writing to disk.
     /// </summary>
     private static string BuildVttContent(SubtitleTrack track)
     {
@@ -1338,9 +1337,9 @@ public static class CompressedDocumentArchive
     }
 
     /// <summary>
-    /// Load a document from a compressed archive.
-    /// Auto-detects format: CIDZ v2 (Brotli), GZip (v1), 7z (legacy).
-    /// CIDZ v2 archives may contain bundled subtitles.
+    ///     Load a document from a compressed archive.
+    ///     Auto-detects format: CIDZ v2 (Brotli), GZip (v1), 7z (legacy).
+    ///     CIDZ v2 archives may contain bundled subtitles.
     /// </summary>
     public static async Task<ConsoleImageDocument> LoadAsync(string path,
         int? loopCountOverride = null, CancellationToken ct = default)
@@ -1354,9 +1353,7 @@ public static class CompressedDocumentArchive
 
         // CIDZ v2 magic: "CIDZ" (0x43 0x49 0x44 0x5A)
         if (read >= 4 && magic[0] == 0x43 && magic[1] == 0x49 && magic[2] == 0x44 && magic[3] == 0x5A)
-        {
             return await LoadCidzV2Async(fileStream, loopCountOverride, ct);
-        }
 
         // 7z magic: "7z\xBC\xAF\x27\x1C" - legacy format
         if (read >= 6 && magic[0] == 0x37 && magic[1] == 0x7A && magic[2] == 0xBC)
@@ -1378,14 +1375,10 @@ public static class CompressedDocumentArchive
         // GZip magic: 0x1F 0x8B - v1 single-JSON format
         Stream decompressStream;
         if (read >= 2 && magic[0] == 0x1F && magic[1] == 0x8B)
-        {
-            decompressStream = new GZipStream(fileStream, CompressionMode.Decompress, leaveOpen: true);
-        }
+            decompressStream = new GZipStream(fileStream, CompressionMode.Decompress, true);
         else
-        {
             // Assume uncompressed JSON
             decompressStream = fileStream;
-        }
 
         using (decompressStream)
         {
@@ -1396,7 +1389,7 @@ public static class CompressedDocumentArchive
     }
 
     /// <summary>
-    /// Load CIDZ v2 format: 6-byte header + Brotli payload (JSON + \0 + VTT).
+    ///     Load CIDZ v2 format: 6-byte header + Brotli payload (JSON + \0 + VTT).
     /// </summary>
     private static async Task<ConsoleImageDocument> LoadCidzV2Async(
         Stream fileStream, int? loopCountOverride, CancellationToken ct)
@@ -1410,31 +1403,27 @@ public static class CompressedDocumentArchive
         var hasSubtitles = (flags & CidzFlagHasSubtitles) != 0;
 
         // Decompress entire Brotli payload into memory
-        await using var brotli = new BrotliStream(fileStream, CompressionMode.Decompress, leaveOpen: true);
+        await using var brotli = new BrotliStream(fileStream, CompressionMode.Decompress, true);
         using var ms = new MemoryStream();
         await brotli.CopyToAsync(ms, ct);
         var payload = ms.GetBuffer();
         var payloadLen = (int)ms.Length;
 
         // Find null separator between JSON and VTT
-        int jsonLen = payloadLen;
-        int vttStart = payloadLen;
+        var jsonLen = payloadLen;
+        var vttStart = payloadLen;
 
         if (hasSubtitles)
-        {
             // Scan backwards from end for the null byte (more efficient since VTT is small)
             // But JSON could also end near the end, so scan forward from the end of JSON
             // JSON always ends with '}', so find the last '}' then the null byte after it
-            for (int i = payloadLen - 1; i >= 0; i--)
-            {
+            for (var i = payloadLen - 1; i >= 0; i--)
                 if (payload[i] == 0x00)
                 {
                     jsonLen = i;
                     vttStart = i + 1;
                     break;
                 }
-            }
-        }
 
         // Parse JSON directly from UTF-8 bytes (skip string conversion)
         var jsonSpan = new ReadOnlySpan<byte>(payload, 0, jsonLen);
@@ -1449,28 +1438,25 @@ public static class CompressedDocumentArchive
         {
             var vttContent = Encoding.UTF8.GetString(payload, vttStart, payloadLen - vttStart);
             var track = SubtitleParser.Parse(vttContent, "subtitles.vtt");
-            if (track.HasEntries)
-            {
-                doc.Subtitles = SubtitleTrackData.FromTrack(track);
-            }
+            if (track.HasEntries) doc.Subtitles = SubtitleTrackData.FromTrack(track);
         }
 
         return doc;
     }
 
     /// <summary>
-    /// Stream frames from a compressed archive.
-    /// Reconstructs full frames from keyframes and deltas on-the-fly.
+    ///     Stream frames from a compressed archive.
+    ///     Reconstructs full frames from keyframes and deltas on-the-fly.
     /// </summary>
     public static async IAsyncEnumerable<(DocumentFrame Frame, int Index, int Total)> StreamFramesAsync(
         string path,
         int? loopCountOverride = null,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         var doc = await LoadAsync(path, loopCountOverride, ct);
         var total = doc.FrameCount;
 
-        for (int i = 0; i < doc.Frames.Count; i++)
+        for (var i = 0; i < doc.Frames.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
             yield return (doc.Frames[i], i, total);
@@ -1478,13 +1464,13 @@ public static class CompressedDocumentArchive
     }
 
     /// <summary>
-    /// Stream frames with playback support including loop handling.
+    ///     Stream frames with playback support including loop handling.
     /// </summary>
     public static async IAsyncEnumerable<DocumentFrame> StreamPlaybackAsync(
         string path,
         float speedMultiplier = 1.0f,
         int? loopCountOverride = null,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         var doc = await LoadAsync(path, loopCountOverride, ct);
         var effectiveSpeed = speedMultiplier > 0 ? speedMultiplier : 1.0f;
@@ -1499,10 +1485,7 @@ public static class CompressedDocumentArchive
                 yield return frame;
 
                 var delayMs = (int)(frame.DelayMs / effectiveSpeed);
-                if (delayMs > 0)
-                {
-                    await Task.Delay(delayMs, ct);
-                }
+                if (delayMs > 0) await Task.Delay(delayMs, ct);
             }
 
             loopsDone++;
@@ -1512,7 +1495,7 @@ public static class CompressedDocumentArchive
     }
 
     /// <summary>
-    /// Get document info without fully reconstructing all frames.
+    ///     Get document info without fully reconstructing all frames.
     /// </summary>
     public static async Task<DocumentInfo> GetInfoAsync(string path, CancellationToken ct = default)
     {
@@ -1536,25 +1519,21 @@ public static class CompressedDocumentArchive
         try
         {
             var optimized = JsonSerializer.Deserialize(json, CompressedDocumentJsonContext.Default.OptimizedDocument);
-            if (optimized?.Type == "OptimizedConsoleImageDocument")
-            {
-                return optimized.ToDocument(loopCountOverride);
-            }
+            if (optimized?.Type == "OptimizedConsoleImageDocument") return optimized.ToDocument(loopCountOverride);
         }
-        catch { }
+        catch
+        {
+        }
 
         // Fall back to standard format
         var doc = ConsoleImageDocument.FromJson(json);
-        if (loopCountOverride.HasValue)
-        {
-            doc.Settings.LoopCount = loopCountOverride.Value;
-        }
+        if (loopCountOverride.HasValue) doc.Settings.LoopCount = loopCountOverride.Value;
         return doc;
     }
 }
 
 /// <summary>
-/// Document metadata.
+///     Document metadata.
 /// </summary>
 public class DocumentInfo
 {

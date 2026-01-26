@@ -7,28 +7,34 @@ using SixLabors.ImageSharp.PixelFormats;
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Unified renderer that handles all render modes with a consistent interface.
+///     Unified renderer that handles all render modes with a consistent interface.
 /// </summary>
 public class UnifiedRenderer : IDisposable
 {
     private readonly RenderOptions _options;
-    private readonly RenderMode _mode;
     private bool _disposed;
 
     public UnifiedRenderer(RenderOptions options, RenderMode mode)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _mode = mode;
+        Mode = mode;
     }
 
-    public RenderMode Mode => _mode;
+    public RenderMode Mode { get; }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
 
     /// <summary>
-    /// Render a single image file to a frame.
+    ///     Render a single image file to a frame.
     /// </summary>
     public IAnimationFrame RenderFile(string path)
     {
-        return _mode switch
+        return Mode switch
         {
             RenderMode.Braille => new BrailleRenderer(_options).RenderFileToFrame(path),
             RenderMode.ColorBlocks => new ColorBlockRenderer(_options).RenderFileToFrame(path),
@@ -37,11 +43,11 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render a single image to a frame.
+    ///     Render a single image to a frame.
     /// </summary>
     public IAnimationFrame RenderImage(Image<Rgba32> image)
     {
-        return _mode switch
+        return Mode switch
         {
             RenderMode.Braille => new BrailleFrame(new BrailleRenderer(_options).RenderImage(image), 0),
             RenderMode.ColorBlocks => new ColorBlockFrame(new ColorBlockRenderer(_options).RenderImage(image), 0),
@@ -50,11 +56,11 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Render an animated GIF file to a list of frames.
+    ///     Render an animated GIF file to a list of frames.
     /// </summary>
     public List<IAnimationFrame> RenderGif(string path)
     {
-        return _mode switch
+        return Mode switch
         {
             RenderMode.Braille => RenderBrailleGif(path),
             RenderMode.ColorBlocks => RenderBlocksGif(path),
@@ -109,7 +115,7 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Save frames to a document (cidz or json).
+    ///     Save frames to a document (cidz or json).
     /// </summary>
     public static async Task SaveToDocumentAsync(
         IReadOnlyList<IAnimationFrame> frames,
@@ -142,7 +148,7 @@ public class UnifiedRenderer : IDisposable
     }
 
     /// <summary>
-    /// Save frames to an animated GIF.
+    ///     Save frames to an animated GIF.
     /// </summary>
     public static async Task SaveToGifAsync(
         IReadOnlyList<IAnimationFrame> frames,
@@ -154,7 +160,6 @@ public class UnifiedRenderer : IDisposable
         using var writer = new GifWriter(options ?? new GifWriterOptions());
 
         foreach (var frame in frames)
-        {
             switch (mode)
             {
                 case RenderMode.Braille when frame is BrailleFrame bf:
@@ -167,21 +172,13 @@ public class UnifiedRenderer : IDisposable
                     writer.AddFrame(frame.Content, frame.DelayMs);
                     break;
             }
-        }
 
         await writer.SaveAsync(outputPath, ct);
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        GC.SuppressFinalize(this);
     }
 }
 
 /// <summary>
-/// Generic frame implementation for unified rendering.
+///     Generic frame implementation for unified rendering.
 /// </summary>
 public class GenericFrame : IAnimationFrame
 {

@@ -2,6 +2,7 @@
 // Can be run directly without BenchmarkDotNet framework magic
 
 using System.Diagnostics;
+using System.Numerics;
 using ConsoleImage.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -34,7 +35,8 @@ public static class SimpleBenchmark
     private static void RunBrightnessTests()
     {
         Console.WriteLine("--- Brightness Range Calculation ---");
-        Console.WriteLine($"SIMD available: {System.Numerics.Vector.IsHardwareAccelerated}, Vector<float>.Count: {System.Numerics.Vector<float>.Count}");
+        Console.WriteLine(
+            $"SIMD available: {Vector.IsHardwareAccelerated}, Vector<float>.Count: {Vector<float>.Count}");
 
         var random = new Random(42);
         var smallBuffer = new float[80 * 45 * 8];
@@ -102,7 +104,6 @@ public static class SimpleBenchmark
         // Generate random test vectors
         var testVectors = new ShapeVector[1000];
         for (var i = 0; i < testVectors.Length; i++)
-        {
             testVectors[i] = new ShapeVector(
                 (float)random.NextDouble(),
                 (float)random.NextDouble(),
@@ -111,7 +112,6 @@ public static class SimpleBenchmark
                 (float)random.NextDouble(),
                 (float)random.NextDouble()
             );
-        }
 
         // Warm up
         for (var i = 0; i < 100; i++)
@@ -126,21 +126,16 @@ public static class SimpleBenchmark
 
         // Test K-D Tree (with cache disabled via different quantization)
         var sw = Stopwatch.StartNew();
-        for (var i = 0; i < iterations; i++)
-        {
-            charMap.FindBestMatch(testVectors[i % testVectors.Length]);
-        }
+        for (var i = 0; i < iterations; i++) charMap.FindBestMatch(testVectors[i % testVectors.Length]);
         sw.Stop();
         var kdTreeTime = sw.Elapsed.TotalMicroseconds / iterations;
         var (hits, misses, cacheSize, hitRate) = charMap.GetCacheStats();
-        Console.WriteLine($"K-D Tree (cached): {kdTreeTime:F2} µs/lookup, cache: {hitRate:P1} hit rate ({cacheSize} entries)");
+        Console.WriteLine(
+            $"K-D Tree (cached): {kdTreeTime:F2} µs/lookup, cache: {hitRate:P1} hit rate ({cacheSize} entries)");
 
         // Test Brute Force SIMD
         sw.Restart();
-        for (var i = 0; i < iterations; i++)
-        {
-            charMap.FindBestMatchBruteForce(testVectors[i % testVectors.Length]);
-        }
+        for (var i = 0; i < iterations; i++) charMap.FindBestMatchBruteForce(testVectors[i % testVectors.Length]);
         sw.Stop();
         var bruteForceTime = sw.Elapsed.TotalMicroseconds / iterations;
         Console.WriteLine($"SIMD Brute Force:  {bruteForceTime:F2} µs/lookup ({charMap.Count} characters)");
@@ -154,6 +149,7 @@ public static class SimpleBenchmark
             var bfResult = charMap.FindBestMatchBruteForce(testVectors[i]);
             if (kdResult == bfResult) matches++;
         }
+
         Console.WriteLine($"Agreement: {matches}/100 ({(matches == 100 ? "OK" : "MISMATCH")})");
     }
 
@@ -193,21 +189,14 @@ public static class SimpleBenchmark
 
         const int iterations = 50;
         var sw = Stopwatch.StartNew();
-        for (var i = 0; i < iterations; i++)
-        {
-            smallRenderer.RenderImage(smallImage);
-        }
+        for (var i = 0; i < iterations; i++) smallRenderer.RenderImage(smallImage);
         sw.Stop();
         Console.WriteLine($"80x45 output:  {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame (3600 cells)");
 
         sw.Restart();
-        for (var i = 0; i < iterations; i++)
-        {
-            mediumRenderer.RenderImage(mediumImage);
-        }
+        for (var i = 0; i < iterations; i++) mediumRenderer.RenderImage(mediumImage);
         sw.Stop();
         Console.WriteLine($"160x90 output: {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame (14400 cells)");
-
     }
 
     private static void RunBrailleTests()
@@ -226,35 +215,23 @@ public static class SimpleBenchmark
         using var renderer = new BrailleRenderer(options);
 
         // Warm up
-        for (var i = 0; i < 5; i++)
-        {
-            renderer.RenderImage(smallImage);
-        }
+        for (var i = 0; i < 5; i++) renderer.RenderImage(smallImage);
 
         const int iterations = 100;
         var sw = Stopwatch.StartNew();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderImage(smallImage);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderImage(smallImage);
         sw.Stop();
         Console.WriteLine($"Small (160x90):  {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame");
 
         sw.Restart();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderImage(mediumImage);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderImage(mediumImage);
         sw.Stop();
         Console.WriteLine($"Medium (320x180): {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame");
 
         // Test delta rendering
         var cells = renderer.RenderToCells(smallImage);
         sw.Restart();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderWithDelta(smallImage, cells);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderWithDelta(smallImage, cells);
         sw.Stop();
         Console.WriteLine($"Delta (same frame): {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame");
     }
@@ -275,25 +252,16 @@ public static class SimpleBenchmark
         using var renderer = new ColorBlockRenderer(options);
 
         // Warm up
-        for (var i = 0; i < 5; i++)
-        {
-            renderer.RenderImage(smallImage);
-        }
+        for (var i = 0; i < 5; i++) renderer.RenderImage(smallImage);
 
         const int iterations = 100;
         var sw = Stopwatch.StartNew();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderImage(smallImage);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderImage(smallImage);
         sw.Stop();
         Console.WriteLine($"Small (160x90):  {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame");
 
         sw.Restart();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderImage(mediumImage);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderImage(mediumImage);
         sw.Stop();
         Console.WriteLine($"Medium (320x180): {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame");
     }
@@ -329,6 +297,7 @@ public static class SimpleBenchmark
             if (buffer[i] < min) min = buffer[i];
             if (buffer[i] > max) max = buffer[i];
         }
+
         return (min, max);
     }
 
@@ -380,25 +349,16 @@ public static class SimpleBenchmark
         using var renderer = new MatrixRenderer(options);
 
         // Warm up
-        for (var i = 0; i < 5; i++)
-        {
-            renderer.RenderImage(smallImage);
-        }
+        for (var i = 0; i < 5; i++) renderer.RenderImage(smallImage);
 
         const int iterations = 100;
         var sw = Stopwatch.StartNew();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderImage(smallImage);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderImage(smallImage);
         sw.Stop();
         Console.WriteLine($"Small (160x90):  {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame");
 
         sw.Restart();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderImage(mediumImage);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderImage(mediumImage);
         sw.Stop();
         Console.WriteLine($"Medium (320x180): {sw.Elapsed.TotalMilliseconds / iterations:F2} ms/frame");
     }
@@ -422,16 +382,13 @@ public static class SimpleBenchmark
         using var renderer = new BrailleRenderer(options);
 
         // Simulate 100 frames
-        for (var i = 0; i < 100; i++)
-        {
-            renderer.RenderImage(image);
-        }
+        for (var i = 0; i < 100; i++) renderer.RenderImage(image);
 
         var gen0After = GC.CollectionCount(0);
         var gen1After = GC.CollectionCount(1);
         var memAfter = GC.GetTotalMemory(false);
 
-        Console.WriteLine($"Braille (100 frames):");
+        Console.WriteLine("Braille (100 frames):");
         Console.WriteLine($"  Gen0 collections: {gen0After - gen0Before}");
         Console.WriteLine($"  Gen1 collections: {gen1After - gen1Before}");
         Console.WriteLine($"  Memory delta: {(memAfter - memBefore) / 1024:N0} KB");
@@ -447,16 +404,13 @@ public static class SimpleBenchmark
 
         using var blockRenderer = new ColorBlockRenderer(options);
 
-        for (var i = 0; i < 100; i++)
-        {
-            blockRenderer.RenderImage(image);
-        }
+        for (var i = 0; i < 100; i++) blockRenderer.RenderImage(image);
 
         gen0After = GC.CollectionCount(0);
         gen1After = GC.CollectionCount(1);
         memAfter = GC.GetTotalMemory(false);
 
-        Console.WriteLine($"ColorBlock (100 frames):");
+        Console.WriteLine("ColorBlock (100 frames):");
         Console.WriteLine($"  Gen0 collections: {gen0After - gen0Before}");
         Console.WriteLine($"  Gen1 collections: {gen1After - gen1Before}");
         Console.WriteLine($"  Memory delta: {(memAfter - memBefore) / 1024:N0} KB");
@@ -467,22 +421,22 @@ public static class SimpleBenchmark
         if (buffer.Length == 0) return (0f, 1f);
 
         var span = buffer.AsSpan();
-        var vectorSize = System.Numerics.Vector<float>.Count;
+        var vectorSize = Vector<float>.Count;
         var len = span.Length;
 
-        if (!System.Numerics.Vector.IsHardwareAccelerated || len < vectorSize * 2)
+        if (!Vector.IsHardwareAccelerated || len < vectorSize * 2)
             return GetMinMaxUnrolled(buffer);
 
-        var vectorizedLength = len - (len % vectorSize);
+        var vectorizedLength = len - len % vectorSize;
 
-        var minVec = new System.Numerics.Vector<float>(span);
+        var minVec = new Vector<float>(span);
         var maxVec = minVec;
 
         for (var i = vectorSize; i < vectorizedLength; i += vectorSize)
         {
-            var vec = new System.Numerics.Vector<float>(span.Slice(i));
-            minVec = System.Numerics.Vector.Min(minVec, vec);
-            maxVec = System.Numerics.Vector.Max(maxVec, vec);
+            var vec = new Vector<float>(span.Slice(i));
+            minVec = Vector.Min(minVec, vec);
+            maxVec = Vector.Max(maxVec, vec);
         }
 
         var min = float.MaxValue;

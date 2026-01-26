@@ -1,6 +1,7 @@
 # ConsoleImage.Transcription
 
-Whisper-based audio transcription for ConsoleImage. Auto-generates subtitles from video/audio files using OpenAI Whisper models.
+Whisper-based audio transcription for ConsoleImage. Auto-generates subtitles from video/audio files using OpenAI Whisper
+models.
 
 ## Features
 
@@ -66,13 +67,13 @@ consoleimage "https://youtu.be/VIDEO_ID" --subs whisper
 
 ## Model Sizes
 
-| Model | VRAM | Speed | Accuracy |
-|-------|------|-------|----------|
-| tiny | ~1GB | Fast | Basic |
-| base | ~1GB | Fast | Good |
-| small | ~2GB | Medium | Better |
-| medium | ~5GB | Slow | Great |
-| large | ~10GB | Slowest | Best |
+| Model  | VRAM  | Speed   | Accuracy |
+|--------|-------|---------|----------|
+| tiny   | ~1GB  | Fast    | Basic    |
+| base   | ~1GB  | Fast    | Good     |
+| small  | ~2GB  | Medium  | Better   |
+| medium | ~5GB  | Slow    | Great    |
+| large  | ~10GB | Slowest | Best     |
 
 Models are downloaded automatically on first use to `~/.cache/whisper/`.
 

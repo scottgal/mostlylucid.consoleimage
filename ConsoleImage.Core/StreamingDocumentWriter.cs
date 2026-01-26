@@ -41,7 +41,7 @@ public class StreamingDocumentHeader
     public DocumentRenderSettings Settings { get; set; } = new();
 
     /// <summary>
-    /// Subtitle track data (stored separately, not embedded in frames).
+    ///     Subtitle track data (stored separately, not embedded in frames).
     /// </summary>
     public SubtitleTrackData? Subtitles { get; set; }
 }
@@ -119,6 +119,28 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
     /// </summary>
     public int TotalDurationMs { get; private set; }
 
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+
+        // Auto-finalize on dispose if not already done
+        if (_headerWritten && !_finalized) await FinalizeAsync(false);
+
+        await _writer.DisposeAsync();
+        _disposed = true;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+
+        // Auto-finalize on dispose if not already done
+        if (_headerWritten && !_finalized) Finalize(false);
+
+        _writer.Dispose();
+        _disposed = true;
+    }
+
     /// <summary>
     ///     Set subtitle track data (must be called before WriteHeader)
     /// </summary>
@@ -140,28 +162,6 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
         _header.Settings.SubtitleFile = subtitleFile;
         _header.Settings.SubtitleLanguage = language;
         _header.Settings.SubtitleSource = source;
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed) return;
-
-        // Auto-finalize on dispose if not already done
-        if (_headerWritten && !_finalized) await FinalizeAsync(false);
-
-        await _writer.DisposeAsync();
-        _disposed = true;
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-
-        // Auto-finalize on dispose if not already done
-        if (_headerWritten && !_finalized) Finalize(false);
-
-        _writer.Dispose();
-        _disposed = true;
     }
 
     /// <summary>
@@ -202,6 +202,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
             if (width <= 0) width = w;
             if (height <= 0) height = h;
         }
+
         var frame = new StreamingDocumentFrame
         {
             Index = FrameCount,
@@ -233,6 +234,7 @@ public class StreamingDocumentWriter : IDisposable, IAsyncDisposable
             if (width <= 0) width = w;
             if (height <= 0) height = h;
         }
+
         var frame = new StreamingDocumentFrame
         {
             Index = FrameCount,

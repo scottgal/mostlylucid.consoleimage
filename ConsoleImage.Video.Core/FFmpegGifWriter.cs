@@ -7,30 +7,28 @@ using SixLabors.ImageSharp.Processing;
 namespace ConsoleImage.Video.Core;
 
 /// <summary>
-/// Memory-efficient GIF writer using FFmpeg pipe protocol.
-/// Streams raw frames directly to FFmpeg - only one frame in memory at a time.
-/// Ideal for long videos where buffering all frames would exhaust memory.
+///     Memory-efficient GIF writer using FFmpeg pipe protocol.
+///     Streams raw frames directly to FFmpeg - only one frame in memory at a time.
+///     Ideal for long videos where buffering all frames would exhaust memory.
 /// </summary>
 public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
 {
-    private readonly string _outputPath;
-    private readonly int _width;
-    private readonly int _height;
     private readonly int _fps;
+    private readonly byte[] _frameBuffer;
+    private readonly int _height;
     private readonly int _loopCount;
     private readonly int _maxColors;
-    private readonly double? _maxLengthSeconds;
     private readonly int? _maxFrames;
+    private readonly double? _maxLengthSeconds;
+    private readonly string _outputPath;
+    private readonly int _width;
+    private bool _disposed;
 
     private Process? _ffmpegProcess;
     private Stream? _stdin;
-    private int _frameCount;
-    private double _totalMs;
-    private bool _disposed;
-    private readonly byte[] _frameBuffer;
 
     /// <summary>
-    /// Create a streaming GIF writer.
+    ///     Create a streaming GIF writer.
     /// </summary>
     /// <param name="outputPath">Output GIF file path</param>
     /// <param name="width">Frame width in pixels</param>
@@ -68,25 +66,63 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Number of frames written.
+    ///     Number of frames written.
     /// </summary>
-    public int FrameCount => _frameCount;
+    public int FrameCount { get; private set; }
 
     /// <summary>
-    /// Total duration in milliseconds.
+    ///     Total duration in milliseconds.
     /// </summary>
-    public double TotalDurationMs => _totalMs;
+    public double TotalDurationMs { get; private set; }
 
     /// <summary>
-    /// Check if we should stop adding frames.
+    ///     Check if we should stop adding frames.
     /// </summary>
     public bool ShouldStop =>
-        (_maxFrames.HasValue && _frameCount >= _maxFrames.Value) ||
-        (_maxLengthSeconds.HasValue && _totalMs / 1000.0 >= _maxLengthSeconds.Value);
+        (_maxFrames.HasValue && FrameCount >= _maxFrames.Value) ||
+        (_maxLengthSeconds.HasValue && TotalDurationMs / 1000.0 >= _maxLengthSeconds.Value);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+
+        try
+        {
+            await FinishAsync();
+        }
+        catch
+        {
+        }
+
+        Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        try
+        {
+            _stdin?.Close();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (_ffmpegProcess != null && !_ffmpegProcess.HasExited) _ffmpegProcess.Kill();
+            _ffmpegProcess?.Dispose();
+        }
+        catch
+        {
+        }
+    }
 
     /// <summary>
-    /// Start the FFmpeg process for GIF encoding.
-    /// Must be called before adding frames.
+    ///     Start the FFmpeg process for GIF encoding.
+    ///     Must be called before adding frames.
     /// </summary>
     public async Task StartAsync(string? ffmpegPath = null, CancellationToken ct = default)
     {
@@ -124,8 +160,8 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Add an image frame to the GIF.
-    /// The image will be written immediately to FFmpeg and can be disposed after this call.
+    ///     Add an image frame to the GIF.
+    ///     The image will be written immediately to FFmpeg and can be disposed after this call.
     /// </summary>
     public void AddFrame(Image<Rgba32> image)
     {
@@ -134,8 +170,8 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
         if (ShouldStop) return;
 
         // Resize if needed
-        Image<Rgba32> frameToWrite = image;
-        bool needsDispose = false;
+        var frameToWrite = image;
+        var needsDispose = false;
 
         if (image.Width != _width || image.Height != _height)
         {
@@ -153,12 +189,12 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
         if (needsDispose)
             frameToWrite.Dispose();
 
-        _frameCount++;
-        _totalMs += 1000.0 / _fps;
+        FrameCount++;
+        TotalDurationMs += 1000.0 / _fps;
     }
 
     /// <summary>
-    /// Add a frame asynchronously.
+    ///     Add a frame asynchronously.
     /// </summary>
     public async Task AddFrameAsync(Image<Rgba32> image, CancellationToken ct = default)
     {
@@ -166,8 +202,8 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
         if (_stdin == null) throw new InvalidOperationException("Call StartAsync before adding frames");
         if (ShouldStop) return;
 
-        Image<Rgba32> frameToWrite = image;
-        bool needsDispose = false;
+        var frameToWrite = image;
+        var needsDispose = false;
 
         if (image.Width != _width || image.Height != _height)
         {
@@ -182,12 +218,12 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
         if (needsDispose)
             frameToWrite.Dispose();
 
-        _frameCount++;
-        _totalMs += 1000.0 / _fps;
+        FrameCount++;
+        TotalDurationMs += 1000.0 / _fps;
     }
 
     /// <summary>
-    /// Finish writing and close the GIF file.
+    ///     Finish writing and close the GIF file.
     /// </summary>
     public async Task FinishAsync(CancellationToken ct = default)
     {
@@ -206,13 +242,11 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
         await _ffmpegProcess.WaitForExitAsync(ct);
 
         if (_ffmpegProcess.ExitCode != 0)
-        {
             throw new InvalidOperationException($"FFmpeg exited with code {_ffmpegProcess.ExitCode}");
-        }
     }
 
     /// <summary>
-    /// Finish synchronously.
+    ///     Finish synchronously.
     /// </summary>
     public void Finish()
     {
@@ -224,40 +258,5 @@ public sealed class FFmpegGifWriter : IAsyncDisposable, IDisposable
         _stdin = null;
 
         _ffmpegProcess.WaitForExit();
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        try
-        {
-            _stdin?.Close();
-        }
-        catch { }
-
-        try
-        {
-            if (_ffmpegProcess != null && !_ffmpegProcess.HasExited)
-            {
-                _ffmpegProcess.Kill();
-            }
-            _ffmpegProcess?.Dispose();
-        }
-        catch { }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed) return;
-
-        try
-        {
-            await FinishAsync();
-        }
-        catch { }
-
-        Dispose();
     }
 }

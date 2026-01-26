@@ -4,12 +4,12 @@ using System.Text.RegularExpressions;
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Renders ASCII/braille art to markdown-friendly formats.
+///     Renders ASCII/braille art to markdown-friendly formats.
 /// </summary>
 public static partial class MarkdownRenderer
 {
     /// <summary>
-    /// Markdown output format options.
+    ///     Markdown output format options.
     /// </summary>
     public enum MarkdownFormat
     {
@@ -31,7 +31,7 @@ public static partial class MarkdownRenderer
     private static partial Regex AnsiColorRegex();
 
     /// <summary>
-    /// Convert ANSI-colored content to markdown format.
+    ///     Convert ANSI-colored content to markdown format.
     /// </summary>
     /// <param name="ansiContent">Content with ANSI escape codes</param>
     /// <param name="format">Target markdown format</param>
@@ -55,8 +55,8 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Convert to plain text in a code block (strips ANSI codes).
-    /// Works in all markdown renderers.
+    ///     Convert to plain text in a code block (strips ANSI codes).
+    ///     Works in all markdown renderers.
     /// </summary>
     private static string ToPlainMarkdown(string ansiContent, string? title)
     {
@@ -73,8 +73,8 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Convert to HTML with inline CSS colors.
-    /// Works in markdown renderers that allow HTML (not GitHub).
+    ///     Convert to HTML with inline CSS colors.
+    ///     Works in markdown renderers that allow HTML (not GitHub).
     /// </summary>
     private static string ToHtmlMarkdown(string ansiContent, string? title, string fontFamily)
     {
@@ -83,13 +83,11 @@ public static partial class MarkdownRenderer
         if (!string.IsNullOrEmpty(title))
             sb.AppendLine($"## {title}").AppendLine();
 
-        sb.AppendLine($"<pre style=\"font-family: {fontFamily}; line-height: 1.0; background: #1e1e1e; padding: 10px; overflow-x: auto;\">");
+        sb.AppendLine(
+            $"<pre style=\"font-family: {fontFamily}; line-height: 1.0; background: #1e1e1e; padding: 10px; overflow-x: auto;\">");
 
         var lines = ansiContent.Split('\n');
-        foreach (var line in lines)
-        {
-            sb.AppendLine(ConvertAnsiLineToHtml(line));
-        }
+        foreach (var line in lines) sb.AppendLine(ConvertAnsiLineToHtml(line));
 
         sb.AppendLine("</pre>");
 
@@ -97,8 +95,8 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Preserve ANSI codes in a code block.
-    /// Only works in terminals that render ANSI codes in markdown.
+    ///     Preserve ANSI codes in a code block.
+    ///     Only works in terminals that render ANSI codes in markdown.
     /// </summary>
     private static string ToAnsiMarkdown(string ansiContent, string? title)
     {
@@ -116,8 +114,8 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Convert to SVG that can be embedded in markdown.
-    /// Full color support, works everywhere images are supported.
+    ///     Convert to SVG that can be embedded in markdown.
+    ///     Full color support, works everywhere images are supported.
     /// </summary>
     private static string ToSvgMarkdown(string ansiContent, string? title, string fontFamily)
     {
@@ -134,7 +132,7 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Generate an SVG representation of ANSI-colored text.
+    ///     Generate an SVG representation of ANSI-colored text.
     /// </summary>
     public static string GenerateSvg(string ansiContent, string fontFamily = "Consolas, monospace", int fontSize = 14)
     {
@@ -149,7 +147,7 @@ public static partial class MarkdownRenderer
 
         var sb = new StringBuilder();
         sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\">");
-        sb.AppendLine($"  <rect width=\"100%\" height=\"100%\" fill=\"#1e1e1e\"/>");
+        sb.AppendLine("  <rect width=\"100%\" height=\"100%\" fill=\"#1e1e1e\"/>");
         sb.AppendLine($"  <text font-family=\"{fontFamily}\" font-size=\"{fontSize}\" fill=\"#d4d4d4\">");
 
         var y = (double)(fontSize + 5);
@@ -164,13 +162,9 @@ public static partial class MarkdownRenderer
             {
                 var escapedText = EscapeXml(text);
                 if (color != null)
-                {
                     sb.Append($"<tspan fill=\"{color}\">{escapedText}</tspan>");
-                }
                 else
-                {
                     sb.Append(escapedText);
-                }
             }
 
             sb.AppendLine("</tspan>");
@@ -184,7 +178,7 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Save ANSI content to a markdown file.
+    ///     Save ANSI content to a markdown file.
     /// </summary>
     public static async Task SaveMarkdownAsync(
         string ansiContent,
@@ -198,7 +192,7 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Save ANSI content directly to SVG file.
+    ///     Save ANSI content directly to SVG file.
     /// </summary>
     public static async Task SaveSvgAsync(
         string ansiContent,
@@ -212,7 +206,7 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Strip all ANSI escape codes from content.
+    ///     Strip all ANSI escape codes from content.
     /// </summary>
     public static string StripAnsiCodes(string content)
     {
@@ -220,7 +214,7 @@ public static partial class MarkdownRenderer
     }
 
     /// <summary>
-    /// Convert a single line with ANSI codes to HTML spans.
+    ///     Convert a single line with ANSI codes to HTML spans.
     /// </summary>
     private static string ConvertAnsiLineToHtml(string line)
     {
@@ -231,20 +225,16 @@ public static partial class MarkdownRenderer
         {
             var escapedText = EscapeHtml(text);
             if (color != null)
-            {
                 sb.Append($"<span style=\"color:{color}\">{escapedText}</span>");
-            }
             else
-            {
                 sb.Append(escapedText);
-            }
         }
 
         return sb.ToString();
     }
 
     /// <summary>
-    /// Parse a line and extract text segments with their colors.
+    ///     Parse a line and extract text segments with their colors.
     /// </summary>
     private static List<(string Text, string? Color)> ParseAnsiLine(string line)
     {

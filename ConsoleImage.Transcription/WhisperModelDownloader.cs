@@ -1,8 +1,8 @@
 namespace ConsoleImage.Transcription;
 
 /// <summary>
-/// Downloads and caches Whisper GGML models from HuggingFace.
-/// Cross-platform cache location handling.
+///     Downloads and caches Whisper GGML models from HuggingFace.
+///     Cross-platform cache location handling.
 /// </summary>
 public class WhisperModelDownloader
 {
@@ -17,7 +17,7 @@ public class WhisperModelDownloader
     }
 
     /// <summary>
-    /// Get cross-platform cache directory for whisper models.
+    ///     Get cross-platform cache directory for whisper models.
     /// </summary>
     public static string CacheDirectory
     {
@@ -39,7 +39,7 @@ public class WhisperModelDownloader
     }
 
     /// <summary>
-    /// Check if model is already downloaded locally.
+    ///     Check if model is already downloaded locally.
     /// </summary>
     public static bool IsModelCached(string modelSize = "base", string language = "en")
     {
@@ -49,7 +49,7 @@ public class WhisperModelDownloader
     }
 
     /// <summary>
-    /// Get model info for prompting user.
+    ///     Get model info for prompting user.
     /// </summary>
     public static (string fileName, int sizeMB) GetModelInfo(string modelSize = "base", string language = "en")
     {
@@ -57,7 +57,7 @@ public class WhisperModelDownloader
     }
 
     /// <summary>
-    /// Ensure model is downloaded and return local path.
+    ///     Ensure model is downloaded and return local path.
     /// </summary>
     public static async Task<string> EnsureModelAsync(
         string modelSize = "base",
@@ -103,7 +103,8 @@ public class WhisperModelDownloader
 
             {
                 await using var contentStream = await response.Content.ReadAsStreamAsync(ct);
-                await using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
+                await using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None,
+                    81920, true);
 
                 var buffer = new byte[81920];
                 long totalRead = 0;
@@ -137,7 +138,6 @@ public class WhisperModelDownloader
             {
                 // If target exists, try to delete it first
                 if (File.Exists(localPath))
-                {
                     try
                     {
                         File.Delete(localPath);
@@ -146,7 +146,6 @@ public class WhisperModelDownloader
                     {
                         throw new IOException($"Cannot delete existing model file {localPath}: {delEx.Message}", delEx);
                     }
-                }
 
                 File.Move(tempPath, localPath);
             }
@@ -177,7 +176,6 @@ public class WhisperModelDownloader
 
         // English-specific models are smaller and faster
         if (lang == "en")
-        {
             return size switch
             {
                 "tiny" => "ggml-tiny.en.bin",
@@ -186,7 +184,6 @@ public class WhisperModelDownloader
                 "medium" => "ggml-medium.en.bin",
                 _ => "ggml-base.en.bin"
             };
-        }
 
         // Multi-language models
         return size switch

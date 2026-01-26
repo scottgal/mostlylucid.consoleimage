@@ -6,7 +6,7 @@ using ConsoleImage.Core;
 namespace ConsoleImage.Cli.Handlers;
 
 /// <summary>
-/// Calibration mode for adjusting aspect ratio and gamma per render mode.
+///     Calibration mode for adjusting aspect ratio and gamma per render mode.
 /// </summary>
 public enum CalibrationMode
 {
@@ -15,13 +15,13 @@ public enum CalibrationMode
 }
 
 /// <summary>
-/// Handles aspect ratio and color/gamma calibration mode.
+///     Handles aspect ratio and color/gamma calibration mode.
 /// </summary>
 public static class CalibrationHandler
 {
     /// <summary>
-    /// Run calibration mode - interactive display with adjustment controls.
-    /// Supports both aspect ratio (circle test) and gamma (color test card) calibration.
+    ///     Run calibration mode - interactive display with adjustment controls.
+    ///     Supports both aspect ratio (circle test) and gamma (color test card) calibration.
     /// </summary>
     public static int Handle(
         bool useBraille, bool useBlocks, bool useMatrix,
@@ -48,7 +48,10 @@ public static class CalibrationHandler
             if (Console.WindowWidth > 0) consoleWidth = Console.WindowWidth;
             if (Console.WindowHeight > 0) consoleHeight = Console.WindowHeight;
         }
-        catch { /* Non-interactive console */ }
+        catch
+        {
+            /* Non-interactive console */
+        }
 
         var defaultWidth = width ?? Math.Min(consoleWidth - 2, 80);
         var defaultHeight = height ?? Math.Min(consoleHeight - 10, 30);
@@ -70,7 +73,8 @@ public static class CalibrationHandler
             if (charAspect.HasValue) savedItems.Add($"aspect={calibrationAspect:F3}");
             if (gamma.HasValue) savedItems.Add($"gamma={calibrationGamma:F2}");
 
-            Console.WriteLine($"Saved {modeName} calibration ({string.Join(", ", savedItems)}) to: {CalibrationHelper.GetDefaultPath()}");
+            Console.WriteLine(
+                $"Saved {modeName} calibration ({string.Join(", ", savedItems)}) to: {CalibrationHelper.GetDefaultPath()}");
             return 0;
         }
 
@@ -106,9 +110,11 @@ public static class CalibrationHandler
 
                 Console.WriteLine(calibrationOutput);
                 Console.WriteLine();
-                Console.WriteLine($"\x1b[33m▲/▼\x1b[0m Adjust ratio   \x1b[33mPgUp/PgDn\x1b[0m Large steps   \x1b[33mTab\x1b[0m Color cal   \x1b[33mEnter\x1b[0m Save   \x1b[33mEsc\x1b[0m Cancel");
+                Console.WriteLine(
+                    "\x001b[33m▲/▼\x001b[0m Adjust ratio   \x001b[33mPgUp/PgDn\x001b[0m Large steps   \x001b[33mTab\x001b[0m Color cal   \x001b[33mEnter\x001b[0m Save   \x001b[33mEsc\x001b[0m Cancel");
                 Console.WriteLine();
-                Console.WriteLine($"Character aspect ratio: \x1b[1;36m{calibrationAspect:F3}\x1b[0m{(aspectChanged ? " *" : "")}");
+                Console.WriteLine(
+                    $"Character aspect ratio: \x1b[1;36m{calibrationAspect:F3}\x1b[0m{(aspectChanged ? " *" : "")}");
             }
             else // Gamma calibration
             {
@@ -130,9 +136,11 @@ public static class CalibrationHandler
 
                 Console.WriteLine(calibrationOutput);
                 Console.WriteLine();
-                Console.WriteLine($"\x1b[33m▲/▼\x1b[0m Adjust gamma   \x1b[33mPgUp/PgDn\x1b[0m Large steps   \x1b[33mTab\x1b[0m Aspect cal   \x1b[33mEnter\x1b[0m Save   \x1b[33mEsc\x1b[0m Cancel");
+                Console.WriteLine(
+                    "\x001b[33m▲/▼\x001b[0m Adjust gamma   \x001b[33mPgUp/PgDn\x001b[0m Large steps   \x001b[33mTab\x001b[0m Aspect cal   \x001b[33mEnter\x001b[0m Save   \x001b[33mEsc\x001b[0m Cancel");
                 Console.WriteLine();
-                Console.WriteLine($"Gamma: \x1b[1;36m{calibrationGamma:F2}\x1b[0m{(gammaChanged ? " *" : "")}  (< 1.0 = brighter, > 1.0 = darker)");
+                Console.WriteLine(
+                    $"Gamma: \x1b[1;36m{calibrationGamma:F2}\x1b[0m{(gammaChanged ? " *" : "")}  (< 1.0 = brighter, > 1.0 = darker)");
             }
 
             // Wait for key
@@ -150,6 +158,7 @@ public static class CalibrationHandler
                         calibrationGamma = Math.Min(2.0f, calibrationGamma + 0.05f);
                         gammaChanged = true;
                     }
+
                     break;
 
                 case ConsoleKey.DownArrow:
@@ -163,6 +172,7 @@ public static class CalibrationHandler
                         calibrationGamma = Math.Max(0.2f, calibrationGamma - 0.05f);
                         gammaChanged = true;
                     }
+
                     break;
 
                 case ConsoleKey.PageUp:
@@ -176,6 +186,7 @@ public static class CalibrationHandler
                         calibrationGamma = Math.Min(2.0f, calibrationGamma + 0.1f);
                         gammaChanged = true;
                     }
+
                     break;
 
                 case ConsoleKey.PageDown:
@@ -189,6 +200,7 @@ public static class CalibrationHandler
                         calibrationGamma = Math.Max(0.2f, calibrationGamma - 0.1f);
                         gammaChanged = true;
                     }
+
                     break;
 
                 case ConsoleKey.Tab:
@@ -221,13 +233,10 @@ public static class CalibrationHandler
         Console.Write("\x1b[2J\x1b[H"); // Clear screen
 
         if (saved)
-        {
-            Console.WriteLine($"\x1b[32m+\x1b[0m Saved {modeName} calibration (aspect={calibrationAspect:F3}, gamma={calibrationGamma:F2}) to: {CalibrationHelper.GetDefaultPath()}");
-        }
+            Console.WriteLine(
+                $"\x1b[32m+\x1b[0m Saved {modeName} calibration (aspect={calibrationAspect:F3}, gamma={calibrationGamma:F2}) to: {CalibrationHelper.GetDefaultPath()}");
         else
-        {
             Console.WriteLine("Calibration cancelled. No changes saved.");
-        }
 
         return 0;
     }

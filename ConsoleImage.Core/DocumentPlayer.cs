@@ -72,8 +72,8 @@ public class DocumentPlayer : IDisposable
 
         // Pre-compute max height without LINQ allocation
         var maxHeight = 0;
-        int frameWidth = 0;
-        for (int i = 0; i < _document.Frames.Count; i++)
+        var frameWidth = 0;
+        for (var i = 0; i < _document.Frames.Count; i++)
         {
             var h = _document.Frames[i].Height;
             if (h > maxHeight) maxHeight = h;
@@ -86,7 +86,14 @@ public class DocumentPlayer : IDisposable
         if (_subtitles != null && _subtitles.HasEntries)
         {
             var displayWidth = frameWidth > 0 ? frameWidth : _document.Settings.MaxWidth;
-            try { displayWidth = Math.Min(displayWidth, Console.WindowWidth - 1); } catch { }
+            try
+            {
+                displayWidth = Math.Min(displayWidth, Console.WindowWidth - 1);
+            }
+            catch
+            {
+            }
+
             subtitleRenderer = new SubtitleRenderer(displayWidth, 2, _document.Settings.UseColor);
         }
 
@@ -126,7 +133,8 @@ public class DocumentPlayer : IDisposable
                     var renderStart = Stopwatch.GetTimestamp();
 
                     // Build optimized frame buffer with diff rendering
-                    var buffer = BuildFrameBuffer(frameSb, frame.Content, previousContent, i == 0 && previousContent == null);
+                    var buffer = BuildFrameBuffer(frameSb, frame.Content, previousContent,
+                        i == 0 && previousContent == null);
                     previousContent = frame.Content;
 
                     // Write frame atomically
@@ -210,7 +218,7 @@ public class DocumentPlayer : IDisposable
             var diffStart = sb.Length;
             var changedLines = 0;
 
-            for (int line = 0; line < maxLines; line++)
+            for (var line = 0; line < maxLines; line++)
             {
                 var currLine = LineUtils.GetLineFromStarts(content, currStarts, currLineCount, line);
                 var prevLine = LineUtils.GetLineFromStarts(previousContent, prevStarts, prevLineCount, line);
@@ -239,6 +247,7 @@ public class DocumentPlayer : IDisposable
                         var padding = Math.Min(prevVisible - currVisible, BlankLine200.Length);
                         sb.Append(BlankLine200.AsSpan(0, padding));
                     }
+
                     sb.Append(ColorReset);
                 }
             }
@@ -254,20 +263,22 @@ public class DocumentPlayer : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetVisibleLength(ReadOnlySpan<char> line)
     {
-        int len = 0;
-        bool inEscape = false;
+        var len = 0;
+        var inEscape = false;
 
-        foreach (char c in line)
-        {
+        foreach (var c in line)
             if (c == '\x1b')
+            {
                 inEscape = true;
+            }
             else if (inEscape)
             {
                 if (c == 'm') inEscape = false;
             }
             else
+            {
                 len++;
-        }
+            }
 
         return len;
     }
@@ -342,6 +353,7 @@ public class DocumentPlayer : IDisposable
             if (!string.IsNullOrEmpty(_document.Settings.SubtitleLanguage))
                 info.AppendLine($"Subtitle Language: {_document.Settings.SubtitleLanguage}");
         }
+
         if (_subtitles != null)
             info.AppendLine($"Subtitle Track: {_subtitles.Count} entries");
 

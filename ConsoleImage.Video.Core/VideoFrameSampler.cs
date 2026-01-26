@@ -1,8 +1,8 @@
 namespace ConsoleImage.Video.Core;
 
 /// <summary>
-/// Intelligent frame sampler that selects representative frames based on various strategies.
-/// Used for scene-aware and keyframe-based sampling.
+///     Intelligent frame sampler that selects representative frames based on various strategies.
+///     Used for scene-aware and keyframe-based sampling.
 /// </summary>
 public class VideoFrameSampler
 {
@@ -14,7 +14,7 @@ public class VideoFrameSampler
     }
 
     /// <summary>
-    /// Get optimal frame timestamps based on the sampling strategy.
+    ///     Get optimal frame timestamps based on the sampling strategy.
     /// </summary>
     public async Task<List<double>> GetSampleTimestampsAsync(
         string videoPath,
@@ -45,7 +45,7 @@ public class VideoFrameSampler
     }
 
     /// <summary>
-    /// Uniform sampling at fixed intervals.
+    ///     Uniform sampling at fixed intervals.
     /// </summary>
     private List<double> GetUniformSamples(
         double startTime,
@@ -62,17 +62,14 @@ public class VideoFrameSampler
         var interval = 1.0 / effectiveFps;
         var frameCount = (int)(duration / interval);
 
-        for (int i = 0; i < frameCount; i++)
-        {
-            timestamps.Add(startTime + (i * interval));
-        }
+        for (var i = 0; i < frameCount; i++) timestamps.Add(startTime + i * interval);
 
         return timestamps;
     }
 
     /// <summary>
-    /// Sample at codec keyframes (I-frames).
-    /// Provides better quality frames at natural breakpoints.
+    ///     Sample at codec keyframes (I-frames).
+    ///     Provides better quality frames at natural breakpoints.
     /// </summary>
     private async Task<List<double>> GetKeyframeSamplesAsync(
         string videoPath,
@@ -91,24 +88,20 @@ public class VideoFrameSampler
             .ToList();
 
         if (inRangeKeyframes.Count == 0)
-        {
             // Fall back to uniform sampling
             return GetUniformSamples(startTime, endTime - startTime, videoInfo, options);
-        }
 
         // Apply frame step to keyframes
         var sampledKeyframes = new List<double>();
-        for (int i = 0; i < inRangeKeyframes.Count; i += options.FrameStep)
-        {
+        for (var i = 0; i < inRangeKeyframes.Count; i += options.FrameStep)
             sampledKeyframes.Add(inRangeKeyframes[i].Timestamp);
-        }
 
         // Fill gaps with uniform samples if keyframes are too sparse
         var effectiveFps = (options.TargetFps ?? videoInfo.FrameRate) / options.FrameStep;
         var maxGap = 1.0 / Math.Max(1, effectiveFps / 4); // Allow 4x the normal interval
 
         var result = new List<double>();
-        for (int i = 0; i < sampledKeyframes.Count; i++)
+        for (var i = 0; i < sampledKeyframes.Count; i++)
         {
             result.Add(sampledKeyframes[i]);
 
@@ -120,10 +113,7 @@ public class VideoFrameSampler
                     // Fill gap with uniform samples
                     var fillCount = (int)(gap / (1.0 / effectiveFps)) - 1;
                     var fillInterval = gap / (fillCount + 1);
-                    for (int j = 1; j <= fillCount; j++)
-                    {
-                        result.Add(sampledKeyframes[i] + (j * fillInterval));
-                    }
+                    for (var j = 1; j <= fillCount; j++) result.Add(sampledKeyframes[i] + j * fillInterval);
                 }
             }
         }
@@ -132,8 +122,8 @@ public class VideoFrameSampler
     }
 
     /// <summary>
-    /// Scene-aware sampling - prioritize frames at scene changes.
-    /// Ensures visual continuity and important moments are captured.
+    ///     Scene-aware sampling - prioritize frames at scene changes.
+    ///     Ensures visual continuity and important moments are captured.
     /// </summary>
     private async Task<List<double>> GetSceneAwareSamplesAsync(
         string videoPath,
@@ -175,8 +165,8 @@ public class VideoFrameSampler
     }
 
     /// <summary>
-    /// Adaptive sampling based on scene complexity.
-    /// More frames during scene changes, fewer during static scenes.
+    ///     Adaptive sampling based on scene complexity.
+    ///     More frames during scene changes, fewer during static scenes.
     /// </summary>
     private async Task<List<double>> GetAdaptiveSamplesAsync(
         string videoPath,
@@ -206,7 +196,7 @@ public class VideoFrameSampler
         boundaries.Add(endTime);
         boundaries = boundaries.Distinct().OrderBy(t => t).ToList();
 
-        for (int i = 0; i < boundaries.Count - 1; i++)
+        for (var i = 0; i < boundaries.Count - 1; i++)
         {
             var segmentStart = boundaries[i];
             var segmentEnd = boundaries[i + 1];
@@ -218,26 +208,20 @@ public class VideoFrameSampler
 
             double segmentFps;
             if (isNearSceneChange)
-            {
                 // Higher sampling near scene changes
                 segmentFps = effectiveFps;
-            }
             else if (segmentDuration > 5.0)
-            {
                 // Lower sampling for long static segments
                 segmentFps = effectiveFps / 2;
-            }
             else
-            {
                 segmentFps = effectiveFps * 0.75;
-            }
 
             var interval = 1.0 / segmentFps;
             var frameCount = Math.Max(1, (int)(segmentDuration / interval));
 
-            for (int j = 0; j < frameCount; j++)
+            for (var j = 0; j < frameCount; j++)
             {
-                var timestamp = segmentStart + (j * interval);
+                var timestamp = segmentStart + j * interval;
                 if (timestamp < segmentEnd)
                     result.Add(timestamp);
             }
@@ -247,7 +231,7 @@ public class VideoFrameSampler
     }
 
     /// <summary>
-    /// Estimate memory usage for buffering frames.
+    ///     Estimate memory usage for buffering frames.
     /// </summary>
     public static long EstimateBufferMemory(int width, int height, int bufferFrames)
     {

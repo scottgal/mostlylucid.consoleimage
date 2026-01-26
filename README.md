@@ -2,7 +2,8 @@
 
 **Version 4.1** - High-quality ASCII art renderer for .NET 10 with live AI transcription.
 
-> NOTE: Whisper (`--subs whisper` ) is not currently functional. Will be before 4.1 RTM With MANY performance optimizations. 
+> NOTE: Whisper (`--subs whisper` ) is not currently functional. Will be before 4.1 RTM With MANY performance
+> optimizations.
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -56,12 +57,12 @@ That's it! Colors and animation are enabled by default. **Braille mode is now th
 
 ConsoleImage requires **zero manual setup** for common tasks. Dependencies are downloaded automatically on first use:
 
-| Component | When Downloaded | Size | Cache Location |
-|-----------|----------------|------|----------------|
-| **FFmpeg** | First video file playback | ~25MB | `~/.local/share/consoleimage/ffmpeg/` |
-| **yt-dlp** | First YouTube URL | ~10MB | `~/.local/share/consoleimage/ytdlp/` |
-| **Whisper Runtime** | First `--subs whisper` use | ~15MB | `~/.local/share/consoleimage/whisper/runtimes/` |
-| **Whisper Models** | First transcription | 75MB-3GB | `~/.local/share/consoleimage/whisper/` |
+| Component           | When Downloaded            | Size     | Cache Location                                  |
+|---------------------|----------------------------|----------|-------------------------------------------------|
+| **FFmpeg**          | First video file playback  | ~25MB    | `~/.local/share/consoleimage/ffmpeg/`           |
+| **yt-dlp**          | First YouTube URL          | ~10MB    | `~/.local/share/consoleimage/ytdlp/`            |
+| **Whisper Runtime** | First `--subs whisper` use | ~15MB    | `~/.local/share/consoleimage/whisper/runtimes/` |
+| **Whisper Models**  | First transcription        | 75MB-3GB | `~/.local/share/consoleimage/whisper/`          |
 
 ### How Auto-Download Works
 
@@ -101,6 +102,7 @@ winget install yt-dlp              # Windows
 All downloads are cached in `~/.local/share/consoleimage/` (or `%LOCALAPPDATA%\consoleimage\` on Windows).
 
 To clear cached downloads:
+
 ```bash
 rm -rf ~/.local/share/consoleimage/  # Linux/macOS
 rd /s "%LOCALAPPDATA%\consoleimage"  # Windows
@@ -143,24 +145,28 @@ consoleimage transcribe movie.mp4 -o output.vtt
 ```
 
 **How it works:**
+
 - Audio is extracted and transcribed in 15-second chunks
 - Transcription runs ahead of playback in the background
 - If playback catches up, it briefly pauses showing "⏳ Transcribing..."
 - Subtitles are auto-saved as `.vtt` files for instant replay
 
 **Whisper models auto-download** on first use (~75MB-3GB depending on model).
-> - YouTube videos with `--ss` may have audio extraction issues at certain positions. Try a different start time if transcription fails.
+> - YouTube videos with `--ss` may have audio extraction issues at certain positions. Try a different start time if
+    transcription fails.
 
 ### Choosing a Render Mode
 
-| Mode | Command | Resolution | Best For |
-|------|---------|------------|----------|
-| **Braille** | `consoleimage photo.jpg` | 8x (2×4 dots/cell) | **DEFAULT** - Maximum detail |
-| **ASCII** | `consoleimage photo.jpg -a` | Standard | Widest compatibility |
-| **Blocks** | `consoleimage photo.jpg -b` | 2x vertical | Photos, high fidelity |
-| **Matrix** | `consoleimage photo.jpg -M` | Digital rain | Special effects |
+| Mode        | Command                     | Resolution         | Best For                     |
+|-------------|-----------------------------|--------------------|------------------------------|
+| **Braille** | `consoleimage photo.jpg`    | 8x (2×4 dots/cell) | **DEFAULT** - Maximum detail |
+| **ASCII**   | `consoleimage photo.jpg -a` | Standard           | Widest compatibility         |
+| **Blocks**  | `consoleimage photo.jpg -b` | 2x vertical        | Photos, high fidelity        |
+| **Matrix**  | `consoleimage photo.jpg -M` | Digital rain       | Special effects              |
 
-**Braille mode** is now the default because it packs 8 dots into each character cell, giving you the highest resolution output:
+**Braille mode** is now the default because it packs 8 dots into each character cell, giving you the highest resolution
+output:
+
 - Maximum detail in limited terminal space
 - Smallest `.cidz` document files (fewer characters = smaller files)
 - Crisp rendering of photos, videos, or animations
@@ -198,19 +204,19 @@ consoleimage movie.mp4 -o movie.cidz
 
 ### Render Mode Comparison
 
-| Braille (DEFAULT) | ASCII | ColorBlocks |
-|-------------------|-------|-------------|
+| Braille (DEFAULT)                                                                                                                     | ASCII                                                                                                                             | ColorBlocks                                                                                                                              |
+|---------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> |
-| 2×4 dot patterns (8x resolution) | Shape-matched characters | Unicode half-blocks (▀▄) |
+| 2×4 dot patterns (8x resolution)                                                                                                      | Shape-matched characters                                                                                                          | Unicode half-blocks (▀▄)                                                                                                                 |
 
 ### Monochrome Braille: Compact & Fast
 
 Monochrome braille (1-bit) is perfect for quick previews, SSH connections, and maximum detail in minimal file size:
 
-| Monochrome Braille | Full Color Braille |
-|--------------------|-------------------|
+| Monochrome Braille                                                                                                                  | Full Color Braille                                                                                                                        |
+|-------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_mono.gif" width="250" alt="Monochrome"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/boingball_braille.gif" width="250" alt="Color Braille"> |
-| ~265 KB (3-5x smaller) | ~884 KB |
+| ~265 KB (3-5x smaller)                                                                                                              | ~884 KB                                                                                                                                   |
 
 ```bash
 consoleimage animation.gif --mono -w 120  # Fast, compact, high detail
@@ -218,8 +224,8 @@ consoleimage animation.gif --mono -w 120  # Fast, compact, high detail
 
 ### Landscape Example
 
-| Braille | ASCII | ColorBlocks |
-|---------|-------|-------------|
+| Braille                                                                                                                                       | ASCII                                                                                                                                     | ColorBlocks                                                                                                                                 |
+|-----------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_braille.gif" width="250" alt="Landscape Braille"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_ascii.gif" width="250" alt="Landscape ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_blocks.gif" width="250" alt="Landscape Blocks"> |
 
 ```bash
@@ -235,8 +241,8 @@ consoleimage movie.mp4 -a -w 120 # ASCII mode, wider
 
 ### Matrix Mode
 
-| Classic Green | Full Color |
-|---------------|------------|
+| Classic Green                                                                                                                             | Full Color                                                                                                                                             |
+|-------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_matrix.gif" width="250" alt="Matrix Classic"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/landscape_matrix_fullcolor.gif" width="250" alt="Matrix Full Color"> |
 
 ```bash
@@ -295,6 +301,7 @@ consoleimage "https://youtu.be/VIDEO_ID" -o video.cidz
 ```
 
 **Requirements:**
+
 - **yt-dlp** - Auto-downloads (~10MB) on first YouTube use, or install manually via `pip install yt-dlp`
 - **FFmpeg** - Auto-downloads on first video use
 
@@ -306,11 +313,11 @@ Display subtitles during video playback or generate them automatically with Whis
 
 #### Subtitle Sources
 
-| Source | Command | Description |
-|--------|---------|-------------|
-| **File** | `--subs movie.srt` | Load from SRT/VTT file |
-| **YouTube** | `--subs auto` | Auto-download from YouTube |
-| **Live Whisper** | `--subs whisper` | Real-time transcription during playback |
+| Source           | Command            | Description                             |
+|------------------|--------------------|-----------------------------------------|
+| **File**         | `--subs movie.srt` | Load from SRT/VTT file                  |
+| **YouTube**      | `--subs auto`      | Auto-download from YouTube              |
+| **Live Whisper** | `--subs whisper`   | Real-time transcription during playback |
 
 #### Live Transcription Mode (`--subs whisper`)
 
@@ -331,6 +338,7 @@ consoleimage movie.mp4 --subs whisper  # Uses movie.vtt if it exists
 ```
 
 **Features:**
+
 - Audio transcribed in 15-second chunks, buffered 30s ahead
 - Background transcription continues during playback
 - Brief pause with "⏳ Transcribing..." if playback catches up
@@ -357,6 +365,7 @@ consoleimage transcribe movie.mp4 --stream --quiet
 ```
 
 **Output format:**
+
 ```
 [00:00:01.500 --> 00:00:04.200] Hello, welcome to the video.
 [00:00:04.500 --> 00:00:07.800] Today we'll be discussing...
@@ -402,13 +411,13 @@ consoleimage transcribe movie.mp4 --whisper-url https://api.example.com/transcri
 
 **Whisper Models:**
 
-| Model | Size | Speed | Accuracy | Best For |
-|-------|------|-------|----------|----------|
-| `tiny` | 75MB | Fastest | Good | Quick previews |
-| `base` | 142MB | Fast | Better | **Default** |
-| `small` | 466MB | Medium | Great | General use |
-| `medium` | 1.5GB | Slow | Excellent | Professional |
-| `large` | 3GB | Slowest | Best | Maximum accuracy |
+| Model    | Size  | Speed   | Accuracy  | Best For         |
+|----------|-------|---------|-----------|------------------|
+| `tiny`   | 75MB  | Fastest | Good      | Quick previews   |
+| `base`   | 142MB | Fast    | Better    | **Default**      |
+| `small`  | 466MB | Medium  | Great     | General use      |
+| `medium` | 1.5GB | Slow    | Excellent | Professional     |
+| `large`  | 3GB   | Slowest | Best      | Maximum accuracy |
 
 Models are automatically downloaded on first use (~30s-5min depending on size).
 
@@ -467,6 +476,7 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
 #### Quick Install (Command Line)
 
 **Windows (PowerShell):**
+
 ```powershell
 # Download and extract to user bin folder
 $version = "4.0.0"  # Check releases for latest
@@ -478,6 +488,7 @@ $env:PATH += ";$env:LOCALAPPDATA\consoleimage"
 ```
 
 **Linux x64:**
+
 ```bash
 # Download and install to /usr/local/bin
 VERSION="4.0.0"  # Check releases for latest
@@ -486,6 +497,7 @@ sudo chmod +x /usr/local/bin/consoleimage
 ```
 
 **Linux ARM64 (Raspberry Pi, etc.):**
+
 ```bash
 VERSION="4.0.0"
 curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-linux-arm64.tar.gz" | sudo tar -xz -C /usr/local/bin
@@ -493,6 +505,7 @@ sudo chmod +x /usr/local/bin/consoleimage
 ```
 
 **macOS (Apple Silicon):**
+
 ```bash
 VERSION="4.0.0"
 curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-osx-arm64.tar.gz" | tar -xz -C /usr/local/bin
@@ -501,6 +514,7 @@ chmod +x /usr/local/bin/consoleimage
 ```
 
 **Verify installation:**
+
 ```bash
 consoleimage --version
 ```
@@ -512,8 +526,8 @@ consoleimage --version
 - **24-bit color** recommended for `--mode blocks` and `--mode braille`
 - **Unicode font** for braille mode (most terminals include this)
 - **FFmpeg** - Only required for video files (auto-downloads on first video use)
-  - Images, GIFs, and cidz/json documents work without FFmpeg
-  - Manual install: `winget install FFmpeg` (Windows), `brew install ffmpeg` (macOS), `apt install ffmpeg` (Linux)
+    - Images, GIFs, and cidz/json documents work without FFmpeg
+    - Manual install: `winget install FFmpeg` (Windows), `brew install ffmpeg` (macOS), `apt install ffmpeg` (Linux)
 
 ## CLI Cookbook
 
@@ -643,16 +657,17 @@ Console.WriteLine(AsciiArt.Render("photo.jpg"));
 
 ### Render Modes
 
-| Mode            | CLI Option                        | Description                                     | Best For                          |
-|-----------------|-----------------------------------|-------------------------------------------------|-----------------------------------|
-| **Braille**     | `--mode braille` or `-B` (default)| Braille patterns (2×4 dots per cell)            | **DEFAULT** - Maximum resolution  |
-| **ASCII**       | `--mode ascii` or `-a`            | Shape-matched ASCII characters with ANSI colors | Widest compatibility              |
-| **ColorBlocks** | `--mode blocks` or `-b`           | Unicode half-blocks (▀▄) with 24-bit color      | High fidelity, photos             |
-| **iTerm2**      | `--mode iterm2`                   | Native inline image protocol                    | iTerm2, WezTerm                   |
-| **Kitty**       | `--mode kitty`                    | Native graphics protocol                        | Kitty terminal                    |
-| **Sixel**       | `--mode sixel`                    | DEC Sixel graphics                              | xterm, mlterm, foot               |
+| Mode            | CLI Option                         | Description                                     | Best For                         |
+|-----------------|------------------------------------|-------------------------------------------------|----------------------------------|
+| **Braille**     | `--mode braille` or `-B` (default) | Braille patterns (2×4 dots per cell)            | **DEFAULT** - Maximum resolution |
+| **ASCII**       | `--mode ascii` or `-a`             | Shape-matched ASCII characters with ANSI colors | Widest compatibility             |
+| **ColorBlocks** | `--mode blocks` or `-b`            | Unicode half-blocks (▀▄) with 24-bit color      | High fidelity, photos            |
+| **iTerm2**      | `--mode iterm2`                    | Native inline image protocol                    | iTerm2, WezTerm                  |
+| **Kitty**       | `--mode kitty`                     | Native graphics protocol                        | Kitty terminal                   |
+| **Sixel**       | `--mode sixel`                     | DEC Sixel graphics                              | xterm, mlterm, foot              |
 
-**Note:** Braille mode is now the default (v3.0+). Protocol modes (iTerm2, Kitty, Sixel) display true images in supported terminals. Use `--mode list` to see all
+**Note:** Braille mode is now the default (v3.0+). Protocol modes (iTerm2, Kitty, Sixel) display true images in
+supported terminals. Use `--mode list` to see all
 available modes.
 
 ### CLI Usage
@@ -849,10 +864,11 @@ await writer.FinalizeAsync();  // Or let dispose auto-finalize
 
 ### Embedding in Applications
 
-Use the lightweight **[ConsoleImage.Player](ConsoleImage.Player/README.md)** package to play `.cidz` documents without any dependencies on ImageSharp or FFmpeg. Perfect for animated startup logos:
+Use the lightweight **[ConsoleImage.Player](ConsoleImage.Player/README.md)** package to play `.cidz` documents without
+any dependencies on ImageSharp or FFmpeg. Perfect for animated startup logos:
 
-| ASCII | ColorBlocks | Braille |
-|-------|-------------|---------|
+| ASCII                                                                                                                           | ColorBlocks                                                                                                                       | Braille                                                                                                                             |
+|---------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_ascii.gif" width="150" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_blocks.gif" width="150" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_braille.gif" width="150" alt="Braille"> |
 
 ```bash
@@ -1078,15 +1094,15 @@ Console.WriteLine(AsciiArt.FromFile("photo.jpg", config));
 
 ## Documentation
 
-| Component                          | Description                                    | Documentation                                                          |
-|------------------------------------|------------------------------------------------|------------------------------------------------------------------------|
-| **consoleimage**                   | Unified CLI for images, GIFs, videos, cidz     | [ConsoleImage/README.md](ConsoleImage/README.md)                       |
-| **mostlylucid.consoleimage**       | Core rendering library (NuGet)                 | [ConsoleImage.Core/README.md](ConsoleImage.Core/README.md)             |
-| **mostlylucid.consoleimage.video** | Video support library (NuGet)                  | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
-| **mostlylucid.consoleimage.player**| Document playback library (NuGet)              | [ConsoleImage.Player/README.md](ConsoleImage.Player/README.md)         |
-| **JSON/CIDZ Format**               | Document format specification                  | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md)                             |
-| **Braille Rendering**              | How the 8x resolution braille mode works       | [docs/BRAILLE-RENDERING.md](docs/BRAILLE-RENDERING.md)                 |
-| **Changelog**                      | Version history                                | [CHANGELOG.md](CHANGELOG.md)                                           |
+| Component                           | Description                                | Documentation                                                          |
+|-------------------------------------|--------------------------------------------|------------------------------------------------------------------------|
+| **consoleimage**                    | Unified CLI for images, GIFs, videos, cidz | [ConsoleImage/README.md](ConsoleImage/README.md)                       |
+| **mostlylucid.consoleimage**        | Core rendering library (NuGet)             | [ConsoleImage.Core/README.md](ConsoleImage.Core/README.md)             |
+| **mostlylucid.consoleimage.video**  | Video support library (NuGet)              | [ConsoleImage.Video.Core/README.md](ConsoleImage.Video.Core/README.md) |
+| **mostlylucid.consoleimage.player** | Document playback library (NuGet)          | [ConsoleImage.Player/README.md](ConsoleImage.Player/README.md)         |
+| **JSON/CIDZ Format**                | Document format specification              | [docs/JSON-FORMAT.md](docs/JSON-FORMAT.md)                             |
+| **Braille Rendering**               | How the 8x resolution braille mode works   | [docs/BRAILLE-RENDERING.md](docs/BRAILLE-RENDERING.md)                 |
+| **Changelog**                       | Version history                            | [CHANGELOG.md](CHANGELOG.md)                                           |
 
 ## Architecture
 

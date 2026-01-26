@@ -1,12 +1,11 @@
 using System.Diagnostics;
-using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Provides yt-dlp binary - from PATH, common locations, or auto-downloaded.
+///     Provides yt-dlp binary - from PATH, common locations, or auto-downloaded.
 /// </summary>
 public static class YtdlpProvider
 {
@@ -14,8 +13,8 @@ public static class YtdlpProvider
     private static readonly object _lock = new();
 
     /// <summary>
-    /// Whitelist of valid browser names for --cookies-from-browser.
-    /// Prevents command injection attacks via this parameter.
+    ///     Whitelist of valid browser names for --cookies-from-browser.
+    ///     Prevents command injection attacks via this parameter.
     /// </summary>
     private static readonly HashSet<string> ValidBrowserNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -39,7 +38,7 @@ public static class YtdlpProvider
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
-    /// Get the local cache directory for yt-dlp binary.
+    ///     Get the local cache directory for yt-dlp binary.
     /// </summary>
     public static string CacheDirectory
     {
@@ -47,17 +46,11 @@ public static class YtdlpProvider
         {
             // Try LocalApplicationData first (works on Windows, macOS)
             var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (!string.IsNullOrEmpty(localAppData))
-            {
-                return Path.Combine(localAppData, "consoleimage", "ytdlp");
-            }
+            if (!string.IsNullOrEmpty(localAppData)) return Path.Combine(localAppData, "consoleimage", "ytdlp");
 
             // On Linux/WSL, LocalApplicationData may return empty - use $HOME/.local/share
             var home = Environment.GetEnvironmentVariable("HOME");
-            if (!string.IsNullOrEmpty(home))
-            {
-                return Path.Combine(home, ".local", "share", "consoleimage", "ytdlp");
-            }
+            if (!string.IsNullOrEmpty(home)) return Path.Combine(home, ".local", "share", "consoleimage", "ytdlp");
 
             // Last resort: use temp directory
             return Path.Combine(Path.GetTempPath(), "consoleimage", "ytdlp");
@@ -65,7 +58,7 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Check if a URL is a YouTube video URL.
+    ///     Check if a URL is a YouTube video URL.
     /// </summary>
     public static bool IsYouTubeUrl(string? url)
     {
@@ -77,7 +70,7 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Validate browser name for --cookies-from-browser to prevent command injection.
+    ///     Validate browser name for --cookies-from-browser to prevent command injection.
     /// </summary>
     /// <param name="browserName">Browser name from user input.</param>
     /// <returns>True if valid, false otherwise.</returns>
@@ -90,8 +83,8 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Build safe cookie arguments for yt-dlp commands.
-    /// Validates inputs to prevent command injection attacks.
+    ///     Build safe cookie arguments for yt-dlp commands.
+    ///     Validates inputs to prevent command injection attacks.
     /// </summary>
     /// <param name="cookiesFromBrowser">Browser name (must be in whitelist).</param>
     /// <param name="cookiesFile">Path to cookies file (must exist and be a valid path).</param>
@@ -102,13 +95,11 @@ public static class YtdlpProvider
         if (!string.IsNullOrEmpty(cookiesFromBrowser))
         {
             var browser = cookiesFromBrowser.Trim();
-            if (IsValidBrowserName(browser))
-            {
-                return $"--cookies-from-browser {browser} ";
-            }
+            if (IsValidBrowserName(browser)) return $"--cookies-from-browser {browser} ";
 
             // Invalid browser name - log warning and skip
-            Console.Error.WriteLine($"Warning: Invalid browser name '{browser}'. Valid options: {string.Join(", ", ValidBrowserNames)}");
+            Console.Error.WriteLine(
+                $"Warning: Invalid browser name '{browser}'. Valid options: {string.Join(", ", ValidBrowserNames)}");
             return "";
         }
 
@@ -120,15 +111,12 @@ public static class YtdlpProvider
             // Reject paths with shell metacharacters (command injection prevention)
             if (ContainsShellMetacharacters(path))
             {
-                Console.Error.WriteLine($"Warning: Cookies file path contains invalid characters.");
+                Console.Error.WriteLine("Warning: Cookies file path contains invalid characters.");
                 return "";
             }
 
             // Verify file exists
-            if (File.Exists(path))
-            {
-                return $"--cookies \"{path}\" ";
-            }
+            if (File.Exists(path)) return $"--cookies \"{path}\" ";
 
             Console.Error.WriteLine($"Warning: Cookies file not found: {path}");
         }
@@ -137,7 +125,7 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Check if a string contains shell metacharacters that could be used for command injection.
+    ///     Check if a string contains shell metacharacters that could be used for command injection.
     /// </summary>
     private static bool ContainsShellMetacharacters(string input)
     {
@@ -147,7 +135,7 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Gets path to yt-dlp executable, downloading if necessary.
+    ///     Gets path to yt-dlp executable, downloading if necessary.
     /// </summary>
     public static async Task<string> GetYtdlpPathAsync(
         string? customPath = null,
@@ -174,7 +162,11 @@ public static class YtdlpProvider
         var inPath = FindInPath();
         if (inPath != null)
         {
-            lock (_lock) { _resolvedPath = inPath; }
+            lock (_lock)
+            {
+                _resolvedPath = inPath;
+            }
+
             return inPath;
         }
 
@@ -182,41 +174,44 @@ public static class YtdlpProvider
         var cached = FindInCache();
         if (cached != null)
         {
-            lock (_lock) { _resolvedPath = cached; }
+            lock (_lock)
+            {
+                _resolvedPath = cached;
+            }
+
             return cached;
         }
 
         // 5. Download
         progress?.Report(("yt-dlp not found, downloading...", 0));
         var downloaded = await DownloadYtdlpAsync(progress, ct);
-        lock (_lock) { _resolvedPath = downloaded; }
+        lock (_lock)
+        {
+            _resolvedPath = downloaded;
+        }
+
         return downloaded;
     }
 
     /// <summary>
-    /// Check if yt-dlp is available without downloading.
+    ///     Check if yt-dlp is available without downloading.
     /// </summary>
     public static bool IsAvailable(string? customPath = null)
     {
-        if (!string.IsNullOrEmpty(customPath))
-        {
-            return File.Exists(customPath);
-        }
+        if (!string.IsNullOrEmpty(customPath)) return File.Exists(customPath);
 
         return FindInPath() != null || FindInCache() != null;
     }
 
     /// <summary>
-    /// Get yt-dlp location status for display.
+    ///     Get yt-dlp location status for display.
     /// </summary>
     public static string GetStatus(string? customPath = null)
     {
         if (!string.IsNullOrEmpty(customPath))
-        {
             return File.Exists(customPath)
                 ? $"Custom: {customPath}"
                 : $"Not found at: {customPath}";
-        }
 
         var inPath = FindInPath();
         if (inPath != null) return $"System: {inPath}";
@@ -228,55 +223,54 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Check if yt-dlp needs to be downloaded and return status information.
+    ///     Check if yt-dlp needs to be downloaded and return status information.
     /// </summary>
     /// <returns>Tuple of (needsDownload, statusMessage, downloadUrl)</returns>
     public static (bool NeedsDownload, string StatusMessage, string? DownloadUrl) GetDownloadStatus()
     {
-        if (IsAvailable())
-        {
-            return (false, GetStatus(), null);
-        }
+        if (IsAvailable()) return (false, GetStatus(), null);
 
         var rid = GetRuntimeIdentifier();
         if (!DownloadUrls.TryGetValue(rid, out var url))
-        {
             return (false, $"No auto-download available for {rid}. Please install yt-dlp manually.", null);
-        }
 
         return (true, $"yt-dlp not found. Can auto-download (~10MB) to: {CacheDirectory}", url);
     }
 
     /// <summary>
-    /// Download yt-dlp with explicit user confirmation.
+    ///     Download yt-dlp with explicit user confirmation.
     /// </summary>
     public static async Task<string> DownloadAsync(
         IProgress<(string Status, double Progress)>? progress = null,
         CancellationToken ct = default)
     {
-        if (IsAvailable())
-        {
-            return (await GetYtdlpPathAsync(null, null, ct))!;
-        }
+        if (IsAvailable()) return (await GetYtdlpPathAsync(null, null, ct))!;
 
         return await DownloadYtdlpAsync(progress, ct);
     }
 
     /// <summary>
-    /// Clear downloaded yt-dlp from cache.
+    ///     Clear downloaded yt-dlp from cache.
     /// </summary>
     public static void ClearCache()
     {
         if (Directory.Exists(CacheDirectory))
+            try
+            {
+                Directory.Delete(CacheDirectory, true);
+            }
+            catch
+            {
+            }
+
+        lock (_lock)
         {
-            try { Directory.Delete(CacheDirectory, true); }
-            catch { }
+            _resolvedPath = null;
         }
-        lock (_lock) { _resolvedPath = null; }
     }
 
     /// <summary>
-    /// Get YouTube video stream information using yt-dlp.
+    ///     Get YouTube video stream information using yt-dlp.
     /// </summary>
     /// <param name="youtubeUrl">YouTube video URL.</param>
     /// <param name="ytdlpPath">Optional custom yt-dlp path.</param>
@@ -368,7 +362,7 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Download subtitles for a YouTube video.
+    ///     Download subtitles for a YouTube video.
     /// </summary>
     /// <param name="youtubeUrl">YouTube video URL.</param>
     /// <param name="outputDirectory">Directory to save subtitle file.</param>
@@ -402,7 +396,8 @@ public static class YtdlpProvider
         var cookieArgs = BuildSafeCookieArgs(cookiesFromBrowser, cookiesFile);
 
         // Try to download subtitles (prefer manual subs, fall back to auto-generated)
-        var args = $"{cookieArgs}--skip-download --write-sub --write-auto-sub --sub-lang \"{lang}\" --sub-format srt --convert-subs srt -o \"{outputTemplate}\" --no-warnings --no-playlist \"{youtubeUrl}\"";
+        var args =
+            $"{cookieArgs}--skip-download --write-sub --write-auto-sub --sub-lang \"{lang}\" --sub-format srt --convert-subs srt -o \"{outputTemplate}\" --no-warnings --no-playlist \"{youtubeUrl}\"";
 
         try
         {
@@ -432,14 +427,12 @@ public static class YtdlpProvider
             var possiblePaths = new[]
             {
                 Path.Combine(outputDirectory, $"{videoId}.{lang}.srt"),
-                Path.Combine(outputDirectory, $"{videoId}.srt"),
+                Path.Combine(outputDirectory, $"{videoId}.srt")
             };
 
             foreach (var path in possiblePaths)
-            {
                 if (File.Exists(path))
                     return path;
-            }
 
             // Search for any .srt file with the video ID
             var srtFiles = Directory.GetFiles(outputDirectory, $"{videoId}*.srt");
@@ -456,7 +449,7 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Extract video ID from a YouTube URL.
+    ///     Extract video ID from a YouTube URL.
     /// </summary>
     private static string? ExtractVideoId(string url)
     {
@@ -485,7 +478,8 @@ public static class YtdlpProvider
         return null;
     }
 
-    private static async Task<string?> GetTitleAsync(string ytdlp, string youtubeUrl, string? cookiesFromBrowser, string? cookiesFile, CancellationToken ct)
+    private static async Task<string?> GetTitleAsync(string ytdlp, string youtubeUrl, string? cookiesFromBrowser,
+        string? cookiesFile, CancellationToken ct)
     {
         try
         {
@@ -542,9 +536,8 @@ public static class YtdlpProvider
         // Common installation locations
         var commonPaths = GetCommonPaths();
         foreach (var path in commonPaths)
-        {
-            if (File.Exists(path)) return path;
-        }
+            if (File.Exists(path))
+                return path;
 
         return null;
     }
@@ -553,20 +546,26 @@ public static class YtdlpProvider
     {
         if (OperatingSystem.IsWindows())
         {
-            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "yt-dlp", "yt-dlp.exe");
-            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "yt-dlp", "yt-dlp.exe");
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "yt-dlp", "yt-dlp.exe");
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "yt-dlp",
+                "yt-dlp.exe");
             yield return @"C:\yt-dlp\yt-dlp.exe";
             // Python pip locations
-            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local", "Programs", "Python", "Python311", "Scripts", "yt-dlp.exe");
-            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local", "Programs", "Python", "Python310", "Scripts", "yt-dlp.exe");
-            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Roaming", "Python", "Python311", "Scripts", "yt-dlp.exe");
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData",
+                "Local", "Programs", "Python", "Python311", "Scripts", "yt-dlp.exe");
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData",
+                "Local", "Programs", "Python", "Python310", "Scripts", "yt-dlp.exe");
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData",
+                "Roaming", "Python", "Python311", "Scripts", "yt-dlp.exe");
         }
         else
         {
             yield return "/usr/local/bin/yt-dlp";
             yield return "/usr/bin/yt-dlp";
             yield return "/opt/homebrew/bin/yt-dlp";
-            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "yt-dlp");
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin",
+                "yt-dlp");
         }
     }
 
@@ -585,9 +584,8 @@ public static class YtdlpProvider
     {
         var rid = GetRuntimeIdentifier();
         if (!DownloadUrls.TryGetValue(rid, out var url))
-        {
-            throw new PlatformNotSupportedException($"No yt-dlp download available for {rid}. Please install manually: pip install yt-dlp");
-        }
+            throw new PlatformNotSupportedException(
+                $"No yt-dlp download available for {rid}. Please install manually: pip install yt-dlp");
 
         Directory.CreateDirectory(CacheDirectory);
 
@@ -625,10 +623,7 @@ public static class YtdlpProvider
         fileStream.Close();
 
         // Set executable permission on Unix
-        if (!OperatingSystem.IsWindows())
-        {
-            await SetExecutablePermissionAsync(exePath, ct);
-        }
+        if (!OperatingSystem.IsWindows()) await SetExecutablePermissionAsync(exePath, ct);
 
         progress?.Report(("yt-dlp ready!", 1.0));
         return exePath;
@@ -649,7 +644,9 @@ public static class YtdlpProvider
             if (process != null)
                 await process.WaitForExitAsync(ct);
         }
-        catch { }
+        catch
+        {
+        }
     }
 
     private static string GetRuntimeIdentifier()
@@ -670,7 +667,7 @@ public static class YtdlpProvider
     }
 
     /// <summary>
-    /// Download a YouTube video to a local file for caching.
+    ///     Download a YouTube video to a local file for caching.
     /// </summary>
     /// <param name="youtubeUrl">YouTube video URL.</param>
     /// <param name="outputPath">Path to save the video file.</param>
@@ -707,7 +704,8 @@ public static class YtdlpProvider
             Directory.CreateDirectory(dir);
 
         // Build yt-dlp command
-        var args = $"{cookieArgs}-f \"{format}\" --merge-output-format mp4 --no-warnings --no-playlist -o \"{outputPath}\" \"{youtubeUrl}\"";
+        var args =
+            $"{cookieArgs}-f \"{format}\" --merge-output-format mp4 --no-warnings --no-playlist -o \"{outputPath}\" \"{youtubeUrl}\"";
 
         try
         {
@@ -731,16 +729,12 @@ public static class YtdlpProvider
             {
                 string? line;
                 while ((line = await process.StandardError.ReadLineAsync(ct)) != null)
-                {
                     if (progress != null)
                     {
                         var match = progressRegex.Match(line);
                         if (match.Success && double.TryParse(match.Groups[1].Value, out var pct))
-                        {
                             progress.Report(($"Downloading: {pct:F0}%", pct / 100.0));
-                        }
                     }
-                }
             }, ct);
 
             await process.StandardOutput.ReadToEndAsync(ct);
@@ -758,7 +752,7 @@ public static class YtdlpProvider
 }
 
 /// <summary>
-/// Information about a YouTube video stream.
+///     Information about a YouTube video stream.
 /// </summary>
 public class YouTubeStreamInfo
 {

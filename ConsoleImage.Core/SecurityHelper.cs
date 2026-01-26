@@ -1,14 +1,17 @@
 // SecurityHelper - Input validation utilities to prevent command injection
 
+using System.Text;
+using System.Text.RegularExpressions;
+
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Security utilities for input validation and command injection prevention.
+///     Security utilities for input validation and command injection prevention.
 /// </summary>
 public static class SecurityHelper
 {
     /// <summary>
-    /// Shell metacharacters that could be used for command injection.
+    ///     Shell metacharacters that could be used for command injection.
     /// </summary>
     private static readonly char[] ShellMetacharacters =
     {
@@ -16,7 +19,7 @@ public static class SecurityHelper
     };
 
     /// <summary>
-    /// Check if a string contains shell metacharacters that could be used for command injection.
+    ///     Check if a string contains shell metacharacters that could be used for command injection.
     /// </summary>
     /// <param name="input">String to check.</param>
     /// <returns>True if dangerous characters found.</returns>
@@ -29,7 +32,7 @@ public static class SecurityHelper
     }
 
     /// <summary>
-    /// Validate that a file path is safe to use in command arguments.
+    ///     Validate that a file path is safe to use in command arguments.
     /// </summary>
     /// <param name="path">File path to validate.</param>
     /// <param name="requireExists">If true, also verifies the file exists.</param>
@@ -45,7 +48,6 @@ public static class SecurityHelper
 
         // Check if path contains directory traversal attempts
         if (path.Contains(".."))
-        {
             // Allow if it resolves to a valid absolute path
             try
             {
@@ -58,7 +60,6 @@ public static class SecurityHelper
             {
                 return false;
             }
-        }
 
         // Verify file exists if required
         if (requireExists && !File.Exists(path) && !Directory.Exists(path))
@@ -68,7 +69,7 @@ public static class SecurityHelper
     }
 
     /// <summary>
-    /// Validate that a URL is safe to use (only http/https protocols).
+    ///     Validate that a URL is safe to use (only http/https protocols).
     /// </summary>
     /// <param name="url">URL to validate.</param>
     /// <returns>True if URL is safe.</returns>
@@ -85,8 +86,8 @@ public static class SecurityHelper
     }
 
     /// <summary>
-    /// Escape a string for safe use in shell arguments.
-    /// Wraps in quotes and escapes internal quotes.
+    ///     Escape a string for safe use in shell arguments.
+    ///     Wraps in quotes and escapes internal quotes.
     /// </summary>
     /// <param name="argument">Argument to escape.</param>
     /// <returns>Safely escaped argument string.</returns>
@@ -96,17 +97,14 @@ public static class SecurityHelper
             return "\"\"";
 
         // For Windows, escape double quotes by doubling them
-        if (OperatingSystem.IsWindows())
-        {
-            return "\"" + argument.Replace("\"", "\"\"") + "\"";
-        }
+        if (OperatingSystem.IsWindows()) return "\"" + argument.Replace("\"", "\"\"") + "\"";
 
         // For Unix-like systems, use single quotes and escape single quotes
         return "'" + argument.Replace("'", "'\\''") + "'";
     }
 
     /// <summary>
-    /// Sanitize a filename to remove potentially dangerous characters.
+    ///     Sanitize a filename to remove potentially dangerous characters.
     /// </summary>
     /// <param name="filename">Filename to sanitize.</param>
     /// <param name="replacement">Replacement character for invalid chars.</param>
@@ -130,8 +128,8 @@ public static class SecurityHelper
     }
 
     /// <summary>
-    /// Remove ANSI escape sequences from text to prevent terminal injection attacks.
-    /// External text (subtitles, speaker names) should always be sanitized before display.
+    ///     Remove ANSI escape sequences from text to prevent terminal injection attacks.
+    ///     External text (subtitles, speaker names) should always be sanitized before display.
     /// </summary>
     /// <param name="text">Text that may contain ANSI escape sequences.</param>
     /// <returns>Text with all ANSI sequences removed.</returns>
@@ -142,19 +140,17 @@ public static class SecurityHelper
 
         // Remove ANSI CSI sequences: ESC [ ... letter
         // Also removes OSC sequences: ESC ] ... BEL/ST
-        var result = System.Text.RegularExpressions.Regex.Replace(
+        var result = Regex.Replace(
             text,
             @"\x1b[\[\]()#;?]?(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[A-Za-z@^`\x7f]?",
             string.Empty);
 
         // Also strip bare ESC and other control characters (except common whitespace)
-        var sb = new System.Text.StringBuilder(result.Length);
+        var sb = new StringBuilder(result.Length);
         foreach (var c in result)
-        {
             // Allow printable characters, space, tab, newline
             if (c >= ' ' || c == '\t' || c == '\n' || c == '\r')
                 sb.Append(c);
-        }
 
         return sb.ToString();
     }

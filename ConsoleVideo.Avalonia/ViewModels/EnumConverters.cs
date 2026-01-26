@@ -1,14 +1,14 @@
+using System.Globalization;
 using Avalonia.Data;
 using Avalonia.Data.Converters;
 using Avalonia.Input;
 using ConsoleVideo.Avalonia.Models;
 using FluentAvalonia.UI.Controls;
-using System.Globalization;
 
 namespace ConsoleVideo.Avalonia.ViewModels;
 
 /// <summary>
-/// Static converter instances for enum bindings.
+///     Static converter instances for enum bindings.
 /// </summary>
 public static class EnumConverters
 {
@@ -17,18 +17,19 @@ public static class EnumConverters
     public static readonly IValueConverter RenderModeBraille = new EnumToBoolConverter<RenderMode>(RenderMode.Braille);
     public static readonly IValueConverter PlayPauseIcon = new BoolToStringConverter("⏸", "▶");
     public static readonly IValueConverter PlayPauseSymbol = new BoolToSymbolConverter(Symbol.Pause, Symbol.Play);
+
     public static readonly IValueConverter HasVideoToCursor = new BoolToCursorConverter(
         Cursor.Default,
         new Cursor(StandardCursorType.Hand));
 }
 
 /// <summary>
-/// Converter for boolean to string (e.g., play/pause icons).
+///     Converter for boolean to string (e.g., play/pause icons).
 /// </summary>
 public class BoolToStringConverter : IValueConverter
 {
-    private readonly string _trueValue;
     private readonly string _falseValue;
+    private readonly string _trueValue;
 
     public BoolToStringConverter(string trueValue, string falseValue)
     {
@@ -48,12 +49,12 @@ public class BoolToStringConverter : IValueConverter
 }
 
 /// <summary>
-/// Converter for boolean to FluentAvalonia Symbol.
+///     Converter for boolean to FluentAvalonia Symbol.
 /// </summary>
 public class BoolToSymbolConverter : IValueConverter
 {
-    private readonly Symbol _trueValue;
     private readonly Symbol _falseValue;
+    private readonly Symbol _trueValue;
 
     public BoolToSymbolConverter(Symbol trueValue, Symbol falseValue)
     {
@@ -73,7 +74,7 @@ public class BoolToSymbolConverter : IValueConverter
 }
 
 /// <summary>
-/// Converter for binding enum values to radio buttons.
+///     Converter for binding enum values to radio buttons.
 /// </summary>
 public class EnumToBoolConverter<T> : IValueConverter where T : Enum
 {
@@ -86,30 +87,24 @@ public class EnumToBoolConverter<T> : IValueConverter where T : Enum
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is T enumValue)
-        {
-            return enumValue.Equals(_targetValue);
-        }
+        if (value is T enumValue) return enumValue.Equals(_targetValue);
         return false;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is true)
-        {
-            return _targetValue;
-        }
+        if (value is true) return _targetValue;
         return BindingOperations.DoNothing;
     }
 }
 
 /// <summary>
-/// Converter for boolean to Cursor (e.g., show hand when clickable).
+///     Converter for boolean to Cursor (e.g., show hand when clickable).
 /// </summary>
 public class BoolToCursorConverter : IValueConverter
 {
-    private readonly Cursor _trueValue;
     private readonly Cursor _falseValue;
+    private readonly Cursor _trueValue;
 
     public BoolToCursorConverter(Cursor trueValue, Cursor falseValue)
     {

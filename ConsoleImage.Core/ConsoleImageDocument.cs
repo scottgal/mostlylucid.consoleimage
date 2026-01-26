@@ -123,10 +123,7 @@ public class ConsoleImageDocument
     {
         // Ensure compressed extension
         var compressedPath = path;
-        if (!CompressedDocumentArchive.IsCompressedDocument(path))
-        {
-            compressedPath = path + ".cidz";
-        }
+        if (!CompressedDocumentArchive.IsCompressedDocument(path)) compressedPath = path + ".cidz";
         await CompressedDocumentArchive.SaveAsync(this, compressedPath, 30, ct);
     }
 
@@ -202,6 +199,7 @@ public class ConsoleImageDocument
             if (width <= 0) width = w;
             if (height <= 0) height = h;
         }
+
         Frames.Add(new DocumentFrame
         {
             Content = content,
@@ -363,7 +361,10 @@ public class DocumentRenderSettings
     /// <summary>
     ///     Create a shallow copy of these settings.
     /// </summary>
-    public DocumentRenderSettings Clone() => (DocumentRenderSettings)MemberwiseClone();
+    public DocumentRenderSettings Clone()
+    {
+        return (DocumentRenderSettings)MemberwiseClone();
+    }
 
     /// <summary>
     ///     Create settings from RenderOptions
@@ -522,10 +523,8 @@ public class DocumentFrame
 
         var lineCount = 1;
         for (var i = 0; i < content.Length; i++)
-        {
             if (content[i] == '\n')
                 lineCount++;
-        }
 
         return (firstLineLen, lineCount);
     }

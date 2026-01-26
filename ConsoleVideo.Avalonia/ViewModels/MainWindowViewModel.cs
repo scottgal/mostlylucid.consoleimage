@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,11 +15,101 @@ namespace ConsoleVideo.Avalonia.ViewModels;
 
 public partial class MainWindowViewModel : ObservableObject
 {
-    private readonly VideoPreviewService _previewService;
+    private readonly AsciiPreviewService _asciiPreviewService = new();
     private readonly KeyframeExtractionService _extractionService;
+    private readonly VideoPreviewService _previewService;
+    private readonly SubtitleOverlayService _subtitleOverlayService = new();
     private readonly ThumbnailTimelineService _thumbnailService;
+
+    // ASCII Preview
+    [ObservableProperty] private string? _asciiPreview;
+
+    [ObservableProperty] private Bitmap? _currentFrame;
+
+    [ObservableProperty] private int _currentKeyframeIndex;
+
+    [ObservableProperty] private double _currentPosition;
+
+    [ObservableProperty] private double _duration;
+
+    [ObservableProperty] private int _extractedCount;
+
     private CancellationTokenSource? _extractionCts;
+
+    // GIF export settings
+    [ObservableProperty] private double _gifDuration = 5.0; // Total GIF duration in seconds
+
+    [ObservableProperty] private int _gifFontSize = 10;
+
+    [ObservableProperty] private TimelineThumbnail? _hoveredThumbnail;
+
+    [ObservableProperty] private bool _isAnimatedGif;
+
+    [ObservableProperty] private bool _isImage;
+
+    [ObservableProperty] private bool _isLoading;
+
+    [ObservableProperty] private bool _isLoadingTimeline;
+
+    // Playback state
+    [ObservableProperty] private bool _isPlaying;
+
+    [ObservableProperty] private bool _isTranscribing;
+
+    // Extracted keyframes
+    [ObservableProperty] private ObservableCollection<KeyframeViewModel> _keyframes = [];
+
+    private CancellationTokenSource? _playbackCts;
+
+    [ObservableProperty] private double _playbackSpeed = 1.0;
+
+    [ObservableProperty] private int _previewHeight = 30;
+
+    [ObservableProperty] private int _previewWidth = 80;
+
+    [ObservableProperty] private double _progress;
+
+    [ObservableProperty] private double _rangeEnd;
+
+    // Timeline range
+    [ObservableProperty] private double _rangeStart;
+
+    [ObservableProperty] private int _requestedCount;
+
+    [ObservableProperty] private double _sceneThreshold = 0.4;
+
+    [ObservableProperty] private KeyframeViewModel? _selectedKeyframe;
+
+    [ObservableProperty] private RenderMode _selectedRenderMode = RenderMode.Ascii;
+
+    [ObservableProperty] private ExtractionStrategy _selectedStrategy = ExtractionStrategy.Uniform;
+
+    // Status
+    [ObservableProperty] private string _statusText = "Ready. Open a video file to begin.";
+
+    // Transcription
+    [ObservableProperty] private ObservableCollection<EditableSubtitle> _subtitles = [];
+
+    // Extraction settings
+    [ObservableProperty] private int _targetKeyframeCount = 10;
+
     private CancellationTokenSource? _thumbnailCts;
+
+    [ObservableProperty] private double _timelineProgress;
+
+    // Visual timeline scrubbing
+    [ObservableProperty] private ObservableCollection<TimelineThumbnail> _timelineThumbnails = [];
+
+    private CancellationTokenSource? _transcriptionCts;
+
+    [ObservableProperty] private string _transcriptionStatus = "";
+
+    [ObservableProperty] private VideoInfo? _videoInfo;
+
+    // Video state
+    [ObservableProperty] private string? _videoPath;
+
+    private WhisperService? _whisperService;
 
     public MainWindowViewModel()
     {
@@ -27,125 +118,10 @@ public partial class MainWindowViewModel : ObservableObject
         _thumbnailService = new ThumbnailTimelineService();
     }
 
-    // Video state
-    [ObservableProperty]
-    private string? _videoPath;
-
-    [ObservableProperty]
-    private VideoInfo? _videoInfo;
-
-    [ObservableProperty]
-    private Bitmap? _currentFrame;
-
-    [ObservableProperty]
-    private double _currentPosition;
-
-    [ObservableProperty]
-    private double _duration;
-
-    // Timeline range
-    [ObservableProperty]
-    private double _rangeStart;
-
-    [ObservableProperty]
-    private double _rangeEnd;
-
-    // Extraction settings
-    [ObservableProperty]
-    private int _targetKeyframeCount = 10;
-
-    [ObservableProperty]
-    private ExtractionStrategy _selectedStrategy = ExtractionStrategy.Uniform;
-
-    [ObservableProperty]
-    private RenderMode _selectedRenderMode = RenderMode.Ascii;
-
-    [ObservableProperty]
-    private double _sceneThreshold = 0.4;
-
-    // Extracted keyframes
-    [ObservableProperty]
-    private ObservableCollection<KeyframeViewModel> _keyframes = [];
-
-    [ObservableProperty]
-    private KeyframeViewModel? _selectedKeyframe;
-
-    // ASCII Preview
-    [ObservableProperty]
-    private string? _asciiPreview;
-
-    [ObservableProperty]
-    private int _previewWidth = 80;
-
-    [ObservableProperty]
-    private int _previewHeight = 30;
-
-    // Playback state
-    [ObservableProperty]
-    private bool _isPlaying;
-
-    [ObservableProperty]
-    private int _currentKeyframeIndex;
-
-    [ObservableProperty]
-    private double _playbackSpeed = 1.0;
-
-    // GIF export settings
-    [ObservableProperty]
-    private double _gifDuration = 5.0; // Total GIF duration in seconds
-
-    [ObservableProperty]
-    private int _gifFontSize = 10;
-
-    // Visual timeline scrubbing
-    [ObservableProperty]
-    private ObservableCollection<TimelineThumbnail> _timelineThumbnails = [];
-
-    [ObservableProperty]
-    private bool _isLoadingTimeline;
-
-    [ObservableProperty]
-    private double _timelineProgress;
-
-    [ObservableProperty]
-    private TimelineThumbnail? _hoveredThumbnail;
-
-    // Transcription
-    [ObservableProperty]
-    private ObservableCollection<EditableSubtitle> _subtitles = [];
-
-    [ObservableProperty]
-    private bool _isTranscribing;
-
-    [ObservableProperty]
-    private string _transcriptionStatus = "";
-
-    private WhisperService? _whisperService;
-    private CancellationTokenSource? _transcriptionCts;
-
-    private CancellationTokenSource? _playbackCts;
-    private readonly AsciiPreviewService _asciiPreviewService = new();
-    private readonly SubtitleOverlayService _subtitleOverlayService = new();
-
-    // Status
-    [ObservableProperty]
-    private string _statusText = "Ready. Open a video file to begin.";
-
-    [ObservableProperty]
-    private bool _isLoading;
-
-    [ObservableProperty]
-    private double _progress;
-
-    [ObservableProperty]
-    private int _extractedCount;
-
-    [ObservableProperty]
-    private int _requestedCount;
-
     // Computed properties
     public bool HasVideo => VideoInfo != null;
     public string RangeDisplay => $"{FormatTime(RangeStart)} - {FormatTime(RangeEnd)}";
+
     public string CountDisplay => ExtractedCount > 0
         ? $"Requested: {RequestedCount} | Extracted: {ExtractedCount}"
         : "";
@@ -177,10 +153,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             // Update current frame index
             var index = Keyframes.IndexOf(value);
-            if (index >= 0)
-            {
-                CurrentKeyframeIndex = index;
-            }
+            if (index >= 0) CurrentKeyframeIndex = index;
             // Seek video to this timestamp
             _ = SeekToAsync(value.Timestamp);
         }
@@ -223,12 +196,6 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    [ObservableProperty]
-    private bool _isImage;
-
-    [ObservableProperty]
-    private bool _isAnimatedGif;
-
     [RelayCommand]
     private async Task OpenVideoAsync()
     {
@@ -261,7 +228,7 @@ public partial class MainWindowViewModel : ObservableObject
                 RangeStart = 0;
                 RangeEnd = Duration;
 
-                for (int i = 0; i < image.Frames.Count; i++)
+                for (var i = 0; i < image.Frames.Count; i++)
                 {
                     var frame = image.Frames.CloneFrame(i);
                     var thumbnail = await ConvertToThumbnailAsync(frame, 120, 90);
@@ -286,7 +253,8 @@ public partial class MainWindowViewModel : ObservableObject
                     CurrentFrame = Keyframes[0].Thumbnail;
                 }
 
-                StatusText = $"Loaded: {Path.GetFileName(path)} ({image.Width}x{image.Height}, {image.Frames.Count} frames)";
+                StatusText =
+                    $"Loaded: {Path.GetFileName(path)} ({image.Width}x{image.Height}, {image.Frames.Count} frames)";
             }
             else
             {
@@ -358,7 +326,8 @@ public partial class MainWindowViewModel : ObservableObject
                 // Load first frame
                 await SeekToAsync(0);
 
-                StatusText = $"Loaded: {Path.GetFileName(path)} ({VideoInfo.Width}x{VideoInfo.Height}, {VideoInfo.FrameRate:F2} fps)";
+                StatusText =
+                    $"Loaded: {Path.GetFileName(path)} ({VideoInfo.Width}x{VideoInfo.Height}, {VideoInfo.FrameRate:F2} fps)";
 
                 // Start loading thumbnail timeline in background
                 _ = LoadTimelineThumbnailsAsync();
@@ -396,19 +365,21 @@ public partial class MainWindowViewModel : ObservableObject
 
             // Stream thumbnails and add them incrementally to the UI
             await foreach (var thumb in _thumbnailService.ExtractTimelineStreamAsync(
-                VideoPath,
-                Duration,
-                _thumbnailCts.Token))
+                               VideoPath,
+                               Duration,
+                               _thumbnailCts.Token))
             {
                 TimelineThumbnails.Add(thumb);
                 count++;
                 TimelineProgress = (double)count / total;
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Timeline error: {ex.Message}");
+            Debug.WriteLine($"Timeline error: {ex.Message}");
         }
         finally
         {
@@ -417,14 +388,11 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Seek to position when clicking a timeline thumbnail.
+    ///     Seek to position when clicking a timeline thumbnail.
     /// </summary>
     public async Task SeekToThumbnailAsync(TimelineThumbnail thumbnail)
     {
-        if (thumbnail != null)
-        {
-            await SeekToAsync(thumbnail.Timestamp);
-        }
+        if (thumbnail != null) await SeekToAsync(thumbnail.Timestamp);
     }
 
     public async Task SeekToAsync(double position)
@@ -439,10 +407,7 @@ public partial class MainWindowViewModel : ObservableObject
                 Math.Min(VideoInfo.Width, 640),
                 Math.Min(VideoInfo.Height, 480));
 
-            if (frame != null)
-            {
-                CurrentFrame = frame;
-            }
+            if (frame != null) CurrentFrame = frame;
         }
         catch (Exception ex)
         {
@@ -505,10 +470,7 @@ public partial class MainWindowViewModel : ObservableObject
             }
 
             // Auto-select first keyframe
-            if (Keyframes.Count > 0)
-            {
-                SelectedKeyframe = Keyframes[0];
-            }
+            if (Keyframes.Count > 0) SelectedKeyframe = Keyframes[0];
 
             StatusText = $"Extracted {ExtractedCount} keyframes (requested: {RequestedCount})";
         }
@@ -553,13 +515,9 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task TogglePlaybackAsync()
     {
         if (IsPlaying)
-        {
             StopPlayback();
-        }
         else
-        {
             await StartPlaybackAsync();
-        }
     }
 
     private async Task StartPlaybackAsync()
@@ -579,7 +537,9 @@ public partial class MainWindowViewModel : ObservableObject
                 await Task.Delay(delay, _playbackCts.Token);
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
         finally
         {
             IsPlaying = false;
@@ -593,7 +553,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Transcribe speech from the video and apply subtitles to keyframes.
+    ///     Transcribe speech from the video and apply subtitles to keyframes.
     /// </summary>
     public async Task TranscribeSpeechAsync()
     {
@@ -610,10 +570,7 @@ public partial class MainWindowViewModel : ObservableObject
             StatusText = "Setting up speech recognition...";
 
             // Initialize Whisper if not already
-            if (_whisperService == null)
-            {
-                _whisperService = new WhisperService();
-            }
+            if (_whisperService == null) _whisperService = new WhisperService();
 
             var progress = new Progress<(string Status, double Progress)>(report =>
             {
@@ -636,10 +593,8 @@ public partial class MainWindowViewModel : ObservableObject
                 _transcriptionCts.Token);
 
             // Convert to editable subtitles
-            for (int i = 0; i < segments.Count; i++)
-            {
+            for (var i = 0; i < segments.Count; i++)
                 Subtitles.Add(EditableSubtitle.FromTranscription(segments[i], i + 1));
-            }
 
             StatusText = $"Transcription complete: {segments.Count} segments. Edit subtitles in the list below.";
             TranscriptionStatus = $"{segments.Count} segments";
@@ -662,7 +617,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Apply subtitles to keyframes and render overlay images.
+    ///     Apply subtitles to keyframes and render overlay images.
     /// </summary>
     [RelayCommand]
     private async Task ApplySubtitlesAsync()
@@ -676,7 +631,7 @@ public partial class MainWindowViewModel : ObservableObject
 
             var transcriptionSegments = Subtitles.Select(s => s.ToTranscription()).ToList();
 
-            for (int i = 0; i < Keyframes.Count; i++)
+            for (var i = 0; i < Keyframes.Count; i++)
             {
                 var kf = Keyframes[i];
                 if (kf.OriginalImage == null) continue;
@@ -727,7 +682,7 @@ public partial class MainWindowViewModel : ObservableObject
             Directory.CreateDirectory(framesFolder);
 
             // Get full-size frames and save
-            for (int i = 0; i < Keyframes.Count; i++)
+            for (var i = 0; i < Keyframes.Count; i++)
             {
                 var kf = Keyframes[i];
                 var frame = await _previewService.GetFrameImageAsync(kf.Timestamp);
@@ -738,6 +693,7 @@ public partial class MainWindowViewModel : ObservableObject
                     await frame.SaveAsPngAsync(path);
                     frame.Dispose();
                 }
+
                 Progress = (double)(i + 1) / Keyframes.Count;
             }
 
@@ -788,23 +744,18 @@ public partial class MainWindowViewModel : ObservableObject
 
 public partial class KeyframeViewModel : ObservableObject
 {
-    [ObservableProperty]
-    private int _index;
+    [ObservableProperty] private int _index;
 
-    [ObservableProperty]
-    private double _timestamp;
+    [ObservableProperty] private bool _isSceneBoundary;
 
-    [ObservableProperty]
-    private Bitmap? _thumbnail;
+    [ObservableProperty] private string _source = "";
 
-    [ObservableProperty]
-    private bool _isSceneBoundary;
+    [ObservableProperty] private Bitmap? _thumbnail;
 
-    [ObservableProperty]
-    private string _source = "";
+    [ObservableProperty] private double _timestamp;
 
     /// <summary>
-    /// Original full-resolution image for ASCII rendering.
+    ///     Original full-resolution image for ASCII rendering.
     /// </summary>
     public Image<Rgba32>? OriginalImage { get; set; }
 

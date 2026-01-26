@@ -13,19 +13,24 @@ Write-Host ""
 
 # Setup Visual Studio environment
 $vsInstallerPath = "C:\Program Files (x86)\Microsoft Visual Studio\Installer"
-if (Test-Path $vsInstallerPath) {
+if (Test-Path $vsInstallerPath)
+{
     $env:PATH = "$vsInstallerPath;$env:PATH"
 }
 
 # Find VS installation
 $vsPath = $null
-try {
-    $vsPath = & vswhere.exe -latest -property installationPath 2>$null
-} catch {
+try
+{
+    $vsPath = & vswhere.exe -latest -property installationPath 2> $null
+}
+catch
+{
     # vswhere not in PATH
 }
 
-if (-not $vsPath) {
+if (-not $vsPath)
+{
     # Try common VS paths
     $vsPaths = @(
         "C:\Program Files\Microsoft Visual Studio\2022\Enterprise",
@@ -33,23 +38,31 @@ if (-not $vsPath) {
         "C:\Program Files\Microsoft Visual Studio\2022\Community",
         "C:\Program Files\Microsoft Visual Studio\2022\BuildTools"
     )
-    foreach ($path in $vsPaths) {
-        if (Test-Path $path) {
+    foreach ($path in $vsPaths)
+    {
+        if (Test-Path $path)
+        {
             $vsPath = $path
             break
         }
     }
 }
 
-if ($vsPath) {
+if ($vsPath)
+{
     $devShellPath = Join-Path $vsPath "Common7\Tools\Launch-VsDevShell.ps1"
-    if (Test-Path $devShellPath) {
+    if (Test-Path $devShellPath)
+    {
         Write-Host "Loading VS Developer Shell from: $vsPath" -ForegroundColor Gray
         & $devShellPath -SkipAutomaticLocation
-    } else {
+    }
+    else
+    {
         Write-Warning "VS Developer Shell not found - AOT compilation may fail"
     }
-} else {
+}
+else
+{
     Write-Warning "Visual Studio not found - AOT compilation requires VS Build Tools"
 }
 
@@ -78,10 +91,13 @@ Write-Host ""
 Write-Host "=== Build complete! ===" -ForegroundColor Green
 
 $exePath = Join-Path $outputDir "consoleimage.exe"
-if (Test-Path $exePath) {
+if (Test-Path $exePath)
+{
     $size = (Get-Item $exePath).Length / 1MB
-    Write-Host "Binary: $exePath ($([math]::Round($size, 1)) MB)" -ForegroundColor Cyan
-} else {
+    Write-Host "Binary: $exePath ($([math]::Round($size, 1) ) MB)" -ForegroundColor Cyan
+}
+else
+{
     Write-Host "Binary: $exePath" -ForegroundColor Cyan
 }
 

@@ -4,6 +4,7 @@
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
@@ -63,12 +64,15 @@ public class CharacterMap
 
     private readonly ConcurrentDictionary<int, char> _cache = new();
     private readonly int _cacheBits;
-    private readonly KdTree _kdTree;
-    private readonly Dictionary<char, ShapeVector> _vectors = new();
 
     // SIMD-optimized storage for brute force fallback
     private readonly char[] _characters = Array.Empty<char>();
-    private readonly float[] _vectorData = Array.Empty<float>(); // Interleaved: [v0_0, v0_1, ..., v0_5, 0, 0, v1_0, ...]
+    private readonly KdTree _kdTree;
+
+    private readonly float[]
+        _vectorData = Array.Empty<float>(); // Interleaved: [v0_0, v0_1, ..., v0_5, 0, 0, v1_0, ...]
+
+    private readonly Dictionary<char, ShapeVector> _vectors = new();
 
     // Cache statistics for performance monitoring
     private long _cacheHits;
@@ -111,6 +115,11 @@ public class CharacterMap
     ///     Gets all available characters
     /// </summary>
     public IEnumerable<char> Characters => _vectors.Keys;
+
+    /// <summary>
+    ///     Number of characters in the map.
+    /// </summary>
+    public int Count => _characters.Length;
 
     /// <summary>
     ///     Gets the shape vector for a character
@@ -389,23 +398,23 @@ public class CharacterMap
         var bestDist = float.MaxValue;
         var bestIdx = 0;
 
-        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated)
+        if (Vector256.IsHardwareAccelerated)
         {
             // Load target vector once (AVX)
-            var targetVec = System.Runtime.Intrinsics.Vector256.Create(
+            var targetVec = Vector256.Create(
                 target.TopLeft, target.TopRight, target.MiddleLeft, target.MiddleRight,
                 target.BottomLeft, target.BottomRight, 0f, 0f);
 
             for (var i = 0; i < count; i++)
             {
                 var offset = i * 8;
-                var charVec = System.Runtime.Intrinsics.Vector256.Create(
+                var charVec = Vector256.Create(
                     _vectorData[offset], _vectorData[offset + 1], _vectorData[offset + 2], _vectorData[offset + 3],
                     _vectorData[offset + 4], _vectorData[offset + 5], 0f, 0f);
 
                 var diff = targetVec - charVec;
                 var squared = diff * diff;
-                var dist = System.Runtime.Intrinsics.Vector256.Sum(squared);
+                var dist = Vector256.Sum(squared);
 
                 if (dist < bestDist)
                 {
@@ -430,9 +439,4 @@ public class CharacterMap
 
         return _characters[bestIdx];
     }
-
-    /// <summary>
-    ///     Number of characters in the map.
-    /// </summary>
-    public int Count => _characters.Length;
 }

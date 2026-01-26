@@ -4,36 +4,11 @@ using System.Text;
 namespace ConsoleImage.Core.Subtitles;
 
 /// <summary>
-/// Represents a complete subtitle track with multiple entries.
-/// Optimized for sequential playback with cached last-lookup index.
+///     Represents a complete subtitle track with multiple entries.
+///     Optimized for sequential playback with cached last-lookup index.
 /// </summary>
 public class SubtitleTrack
 {
-    /// <summary>
-    /// List of subtitle entries sorted by start time.
-    /// </summary>
-    public List<SubtitleEntry> Entries { get; set; } = new();
-
-    /// <summary>
-    /// Language code (e.g., "en", "es", "jp").
-    /// </summary>
-    public string? Language { get; set; }
-
-    /// <summary>
-    /// Original source file path.
-    /// </summary>
-    public string? SourceFile { get; set; }
-
-    /// <summary>
-    /// Total number of subtitle entries.
-    /// </summary>
-    public int Count => Entries.Count;
-
-    /// <summary>
-    /// Check if the track has any entries.
-    /// </summary>
-    public bool HasEntries => Entries.Count > 0;
-
     // Sequential playback optimization: cache the last found index.
     // During sequential playback, the next subtitle is almost always at
     // the same or next index, so checking nearby entries first avoids
@@ -41,8 +16,33 @@ public class SubtitleTrack
     private int _lastFoundIndex = -1;
 
     /// <summary>
-    /// Reset the sequential playback cache. Call this after seeking to avoid
-    /// stale cache hits that return incorrect subtitles for the new position.
+    ///     List of subtitle entries sorted by start time.
+    /// </summary>
+    public List<SubtitleEntry> Entries { get; set; } = new();
+
+    /// <summary>
+    ///     Language code (e.g., "en", "es", "jp").
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>
+    ///     Original source file path.
+    /// </summary>
+    public string? SourceFile { get; set; }
+
+    /// <summary>
+    ///     Total number of subtitle entries.
+    /// </summary>
+    public int Count => Entries.Count;
+
+    /// <summary>
+    ///     Check if the track has any entries.
+    /// </summary>
+    public bool HasEntries => Entries.Count > 0;
+
+    /// <summary>
+    ///     Reset the sequential playback cache. Call this after seeking to avoid
+    ///     stale cache hits that return incorrect subtitles for the new position.
     /// </summary>
     public void ResetCache()
     {
@@ -50,9 +50,9 @@ public class SubtitleTrack
     }
 
     /// <summary>
-    /// Get the subtitle active at the given timestamp.
-    /// Optimized for sequential playback: checks cached position first (O(1)),
-    /// then falls back to binary search (O(log n)).
+    ///     Get the subtitle active at the given timestamp.
+    ///     Optimized for sequential playback: checks cached position first (O(1)),
+    ///     then falls back to binary search (O(log n)).
     /// </summary>
     /// <param name="timestamp">The timestamp to check.</param>
     /// <returns>The active subtitle entry, or null if none.</returns>
@@ -92,15 +92,13 @@ public class SubtitleTrack
         // Fall back to binary search
         var result = BinarySearchActive(timestamp);
         if (result != null)
-        {
             // Update cache for next sequential lookup
             _lastFoundIndex = Entries.IndexOf(result);
-        }
         return result;
     }
 
     /// <summary>
-    /// Binary search for the active subtitle at a timestamp.
+    ///     Binary search for the active subtitle at a timestamp.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private SubtitleEntry? BinarySearchActive(TimeSpan timestamp)
@@ -126,15 +124,18 @@ public class SubtitleTrack
     }
 
     /// <summary>
-    /// Get the subtitle active at the given timestamp in seconds.
+    ///     Get the subtitle active at the given timestamp in seconds.
     /// </summary>
     /// <param name="seconds">The timestamp in seconds.</param>
     /// <returns>The active subtitle entry, or null if none.</returns>
-    public SubtitleEntry? GetActiveAt(double seconds) => GetActiveAt(TimeSpan.FromSeconds(seconds));
+    public SubtitleEntry? GetActiveAt(double seconds)
+    {
+        return GetActiveAt(TimeSpan.FromSeconds(seconds));
+    }
 
     /// <summary>
-    /// Get the subtitle active at or near the given timestamp, with tolerance for timing imprecision.
-    /// Useful for GIF/video output where frame times may not align exactly with subtitle times.
+    ///     Get the subtitle active at or near the given timestamp, with tolerance for timing imprecision.
+    ///     Useful for GIF/video output where frame times may not align exactly with subtitle times.
     /// </summary>
     /// <param name="timestamp">The timestamp to check.</param>
     /// <param name="tolerance">Tolerance window (checks timestamp ± tolerance).</param>
@@ -175,16 +176,18 @@ public class SubtitleTrack
     }
 
     /// <summary>
-    /// Get the subtitle active at or near the given timestamp in seconds, with tolerance.
+    ///     Get the subtitle active at or near the given timestamp in seconds, with tolerance.
     /// </summary>
     /// <param name="seconds">The timestamp in seconds.</param>
     /// <param name="toleranceSeconds">Tolerance window in seconds (default: 0.5).</param>
     /// <returns>The active subtitle entry, or null if none.</returns>
     public SubtitleEntry? GetActiveAtWithTolerance(double seconds, double toleranceSeconds = 0.5)
-        => GetActiveAtWithTolerance(TimeSpan.FromSeconds(seconds), TimeSpan.FromSeconds(toleranceSeconds));
+    {
+        return GetActiveAtWithTolerance(TimeSpan.FromSeconds(seconds), TimeSpan.FromSeconds(toleranceSeconds));
+    }
 
     /// <summary>
-    /// Get formatted display lines for the subtitle at the given timestamp.
+    ///     Get formatted display lines for the subtitle at the given timestamp.
     /// </summary>
     /// <param name="timestamp">The timestamp to check.</param>
     /// <param name="maxWidth">Maximum width in characters for wrapping.</param>
@@ -200,17 +203,19 @@ public class SubtitleTrack
     }
 
     /// <summary>
-    /// Get formatted display lines for the subtitle at the given timestamp in seconds.
+    ///     Get formatted display lines for the subtitle at the given timestamp in seconds.
     /// </summary>
     /// <param name="seconds">The timestamp in seconds.</param>
     /// <param name="maxWidth">Maximum width in characters for wrapping.</param>
     /// <param name="maxLines">Maximum number of lines to return (default: 2).</param>
     /// <returns>Array of lines to display, or empty array if no subtitle active.</returns>
     public string[] GetDisplayLines(double seconds, int maxWidth, int maxLines = 2)
-        => GetDisplayLines(TimeSpan.FromSeconds(seconds), maxWidth, maxLines);
+    {
+        return GetDisplayLines(TimeSpan.FromSeconds(seconds), maxWidth, maxLines);
+    }
 
     /// <summary>
-    /// Format subtitle text for display with word wrapping and line limits.
+    ///     Format subtitle text for display with word wrapping and line limits.
     /// </summary>
     private static string[] FormatForDisplay(string text, int maxWidth, int maxLines)
     {
@@ -261,10 +266,7 @@ public class SubtitleTrack
                     }
                 }
 
-                if (!string.IsNullOrEmpty(currentLine) && result.Count < maxLines)
-                {
-                    result.Add(currentLine);
-                }
+                if (!string.IsNullOrEmpty(currentLine) && result.Count < maxLines) result.Add(currentLine);
             }
         }
 
@@ -272,13 +274,13 @@ public class SubtitleTrack
     }
 
     /// <summary>
-    /// Add a subtitle entry, maintaining sort order by start time.
+    ///     Add a subtitle entry, maintaining sort order by start time.
     /// </summary>
     public void AddEntry(SubtitleEntry entry)
     {
         // Find insertion point to maintain sorted order
-        var index = Entries.BinarySearch(entry, Comparer<SubtitleEntry>.Create(
-            (a, b) => a.StartTime.CompareTo(b.StartTime)));
+        var index = Entries.BinarySearch(entry,
+            Comparer<SubtitleEntry>.Create((a, b) => a.StartTime.CompareTo(b.StartTime)));
 
         if (index < 0)
             index = ~index;
@@ -287,7 +289,7 @@ public class SubtitleTrack
     }
 
     /// <summary>
-    /// Get total duration from first subtitle start to last subtitle end.
+    ///     Get total duration from first subtitle start to last subtitle end.
     /// </summary>
     public TimeSpan GetTotalDuration()
     {
@@ -300,7 +302,7 @@ public class SubtitleTrack
     }
 
     /// <summary>
-    /// Save the subtitle track as a WebVTT (.vtt) sidecar file.
+    ///     Save the subtitle track as a WebVTT (.vtt) sidecar file.
     /// </summary>
     public async Task SaveAsVttAsync(string path, CancellationToken ct = default)
     {
@@ -323,7 +325,7 @@ public class SubtitleTrack
     }
 
     /// <summary>
-    /// Format a TimeSpan as VTT timestamp (HH:MM:SS.mmm).
+    ///     Format a TimeSpan as VTT timestamp (HH:MM:SS.mmm).
     /// </summary>
     private static string FormatVttTimestamp(TimeSpan ts)
     {

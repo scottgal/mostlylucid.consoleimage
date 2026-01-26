@@ -9,9 +9,13 @@ public class TemplateSettingsTests : IDisposable
     public void Dispose()
     {
         foreach (var file in _tempFiles)
-        {
-            try { File.Delete(file); } catch { }
-        }
+            try
+            {
+                File.Delete(file);
+            }
+            catch
+            {
+            }
     }
 
     private string CreateTempFile(string content)
@@ -171,7 +175,7 @@ public class TemplateSettingsTests : IDisposable
     {
         var settings = new TemplateSettings
         {
-            Width = 80,
+            Width = 80
             // All other properties null
         };
 

@@ -32,25 +32,25 @@
 
     <!-- Local development: use ProjectReference -->
     <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
-        <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj" />
-        <ProjectReference Include="..\ConsoleImage.Transcription\ConsoleImage.Transcription.csproj" />
+        <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj"/>
+        <ProjectReference Include="..\ConsoleImage.Transcription\ConsoleImage.Transcription.csproj"/>
     </ItemGroup>
 
     <!-- CI/Release: use NuGet packages -->
     <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
-        <PackageReference Include="mostlylucid.consoleimage.video" Version="$(CorePackageVersion)" />
-        <PackageReference Include="mostlylucid.consoleimage.transcription" Version="$(CorePackageVersion)" />
+        <PackageReference Include="mostlylucid.consoleimage.video" Version="$(CorePackageVersion)"/>
+        <PackageReference Include="mostlylucid.consoleimage.transcription" Version="$(CorePackageVersion)"/>
     </ItemGroup>
 
     <!-- Bundle Whisper native runtime for AOT builds -->
     <!-- Whisper.net.Runtime contains CPU binaries for all platforms -->
     <ItemGroup Condition="'$(PublishAot)' == 'true'">
-        <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
+        <PackageReference Include="Whisper.net.Runtime" Version="1.9.0"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.2" />
-        <PackageReference Include="System.CommandLine" Version="2.0.2" />
+        <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.2"/>
+        <PackageReference Include="System.CommandLine" Version="2.0.2"/>
     </ItemGroup>
 
     <ItemGroup>

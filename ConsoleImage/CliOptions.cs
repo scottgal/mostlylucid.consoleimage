@@ -5,10 +5,346 @@ using System.CommandLine;
 namespace ConsoleImage.Cli;
 
 /// <summary>
-/// All CLI option definitions for the consoleimage command.
+///     All CLI option definitions for the consoleimage command.
 /// </summary>
 public class CliOptions
 {
+    public CliOptions()
+    {
+        // Detect console window size for defaults
+        var defaultMaxWidth = 120;
+        var defaultMaxHeight = 40;
+        try
+        {
+            if (Console.WindowWidth > 0) defaultMaxWidth = Console.WindowWidth - 1;
+            if (Console.WindowHeight > 0) defaultMaxHeight = Console.WindowHeight - 2;
+        }
+        catch
+        {
+        }
+
+        // Input
+        Input = new Argument<string?>("input")
+        {
+            Description = "Path to image, GIF, video, or cidz/json document",
+            Arity = ArgumentArity.ZeroOrOne
+        };
+
+        // Dimensions
+        Width = new Option<int?>("--width") { Description = "Output width in characters" };
+        Width.Aliases.Add("-w");
+
+        Height = new Option<int?>("--height") { Description = "Output height in characters" };
+        Height.Aliases.Add("-h");
+
+        MaxWidth = new Option<int>("--max-width") { Description = "Maximum output width" };
+        MaxWidth.DefaultValueFactory = _ => defaultMaxWidth;
+
+        MaxHeight = new Option<int>("--max-height") { Description = "Maximum output height" };
+        MaxHeight.DefaultValueFactory = _ => defaultMaxHeight;
+
+        // Time range - supports: seconds (4.7), mm:ss (6:47), hh:mm:ss (1:30:00)
+        Start = new Option<string?>("--start") { Description = "Start time: seconds (4.7), mm:ss (6:47), or hh:mm:ss" };
+        Start.Aliases.Add("-ss");
+        Start.Aliases.Add("--ss");
+
+        End = new Option<string?>("--end") { Description = "End time: seconds, mm:ss, or hh:mm:ss" };
+        End.Aliases.Add("-to");
+
+        Duration = new Option<string?>("--duration") { Description = "Duration: seconds, mm:ss, or hh:mm:ss" };
+        Duration.Aliases.Add("-t");
+
+        // Decimal minutes (6.47 = 6m 28.2s)
+        StartMinutes = new Option<string?>("--start-minutes")
+            { Description = "Start time in decimal minutes (6.47 = 6m 28.2s)" };
+        StartMinutes.Aliases.Add("-sm");
+
+        EndMinutes = new Option<string?>("--end-minutes") { Description = "End time in decimal minutes" };
+        EndMinutes.Aliases.Add("-em");
+
+        DurationMinutes = new Option<string?>("--duration-minutes") { Description = "Duration in decimal minutes" };
+        DurationMinutes.Aliases.Add("-dm");
+
+        // Frame-based seeking (alternative to time-based)
+        StartFrame = new Option<int?>("--start-frame") { Description = "Start at frame number" };
+        StartFrame.Aliases.Add("-sf");
+
+        EndFrame = new Option<int?>("--end-frame") { Description = "End at frame number" };
+        EndFrame.Aliases.Add("-ef");
+
+        DurationFrames = new Option<int?>("--duration-frames") { Description = "Number of frames to play" };
+        DurationFrames.Aliases.Add("-df");
+
+        // Playback
+        Speed = new Option<float>("--speed") { Description = "Playback speed multiplier" };
+        Speed.DefaultValueFactory = _ => 1.0f;
+        Speed.Aliases.Add("-s");
+
+        Loop = new Option<int>("--loop") { Description = "Number of loops (0 = infinite)" };
+        Loop.DefaultValueFactory = _ => 1;
+        Loop.Aliases.Add("-l");
+
+        NoAnimate = new Option<bool>("--no-animate")
+            { Description = "Show first frame only (don't animate GIFs/videos)" };
+
+        Fps = new Option<double?>("--fps") { Description = "Target framerate" };
+        Fps.Aliases.Add("-r");
+
+        FrameStep = new Option<string>("--frame-step")
+            { Description = "Frame step: 1 (every frame), 2 (every 2nd), s/smart (skip similar frames)" };
+        FrameStep.DefaultValueFactory = _ => "1";
+        FrameStep.Aliases.Add("-f");
+
+        Sampling = new Option<string>("--sampling")
+            { Description = "Sampling strategy: uniform, keyframe, scene, adaptive" };
+        Sampling.DefaultValueFactory = _ => "uniform";
+
+        SceneThreshold = new Option<double>("--scene-threshold")
+            { Description = "Scene detection threshold (0.0-1.0)" };
+        SceneThreshold.DefaultValueFactory = _ => 0.4;
+
+        // Render modes (braille is default - highest detail, smallest output)
+        Ascii = new Option<bool>("--ascii") { Description = "Use ASCII characters instead of braille" };
+        Ascii.Aliases.Add("-a");
+
+        Blocks = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks instead of braille" };
+        Blocks.Aliases.Add("-b");
+
+        Braille = new Option<bool>("--braille")
+            { Description = "Use braille characters (DEFAULT - 2x4 dots per cell, highest detail)" };
+        Braille.Aliases.Add("-B");
+        Braille.DefaultValueFactory = _ => true;
+
+        Matrix = new Option<bool>("--matrix") { Description = "Use Matrix digital rain effect" };
+        Matrix.Aliases.Add("-M");
+
+        Monochrome = new Option<bool>("--monochrome")
+            { Description = "Use braille mode without color (compact, high-detail greyscale)" };
+        Monochrome.Aliases.Add("--mono");
+
+        MatrixColor = new Option<string?>("--matrix-color")
+            { Description = "Matrix color: green, red, blue, amber, cyan, purple, or hex (#RRGGBB)" };
+        MatrixFullColor = new Option<bool>("--matrix-fullcolor")
+            { Description = "Use source image colors with Matrix lighting" };
+        MatrixDensity = new Option<float?>("--matrix-density") { Description = "Rain density (0.1-2.0, default 0.5)" };
+        MatrixSpeed = new Option<float?>("--matrix-speed")
+            { Description = "Rain speed multiplier (0.5-3.0, default 1.0)" };
+        MatrixAlphabet = new Option<string?>("--matrix-alphabet") { Description = "Custom character set for rain" };
+
+        // Color/rendering
+        NoColor = new Option<bool>("--no-color") { Description = "Disable colored output" };
+
+        Colors = new Option<int?>("--colors") { Description = "Max colors in palette (4, 16, 256)" };
+        Colors.Aliases.Add("-c");
+        Colors.Aliases.Add("--colours"); // British English alias
+
+        Contrast = new Option<float>("--contrast") { Description = "Contrast enhancement (1.0 = none)" };
+        Contrast.DefaultValueFactory = _ => 2.5f;
+
+        Gamma = new Option<float?>("--gamma")
+            { Description = "Gamma correction (< 1.0 brighter, default uses calibration or 0.65)" };
+        Gamma.Aliases.Add("-g");
+
+        CharAspect = new Option<float?>("--char-aspect") { Description = "Character aspect ratio (width/height)" };
+        Charset = new Option<string?>("--charset") { Description = "Custom character set (light to dark)" };
+
+        Preset = new Option<string?>("--preset") { Description = "Preset: extended, simple, block, classic" };
+        Preset.Aliases.Add("-p");
+
+        Mode = new Option<string?>("--mode")
+            { Description = "Render mode: ascii, blocks, braille, mono (greyscale braille), matrix" };
+        Mode.Aliases.Add("-m");
+
+        // Performance
+        Buffer = new Option<int>("--buffer") { Description = "Frames to buffer ahead (2-10)" };
+        Buffer.DefaultValueFactory = _ => 3;
+
+        NoHwAccel = new Option<bool>("--no-hwaccel") { Description = "Disable hardware acceleration" };
+        NoAltScreen = new Option<bool>("--no-alt-screen") { Description = "Disable alternate screen buffer" };
+        NoParallel = new Option<bool>("--no-parallel") { Description = "Disable parallel processing" };
+        NoDither = new Option<bool>("--no-dither") { Description = "Disable Floyd-Steinberg dithering" };
+        NoEdgeChars = new Option<bool>("--no-edge-chars") { Description = "Disable directional edge characters" };
+
+        // FFmpeg
+        FfmpegPath = new Option<string?>("--ffmpeg-path") { Description = "Path to FFmpeg executable" };
+        NoFfmpegDownload = new Option<bool>("--no-ffmpeg-download") { Description = "Don't auto-download FFmpeg" };
+        FfmpegYes = new Option<bool>("--yes") { Description = "Auto-confirm FFmpeg/yt-dlp download" };
+        FfmpegYes.Aliases.Add("-y");
+
+        YtdlpPath = new Option<string?>("--ytdlp-path")
+            { Description = "Path to yt-dlp executable (for YouTube URLs)" };
+        CookiesFromBrowser = new Option<string?>("--cookies-from-browser")
+            { Description = "Use cookies from browser (chrome, firefox, edge) for YouTube" };
+        CookiesFile = new Option<string?>("--cookies")
+            { Description = "Path to Netscape cookies.txt file for YouTube" };
+        CacheVideo = new Option<bool>("--cache") { Description = "Cache YouTube videos locally (default: on)" };
+        CacheVideo.DefaultValueFactory = _ => true;
+        NoCacheVideo = new Option<bool>("--no-cache")
+            { Description = "Don't use or create cached videos, always stream" };
+
+        // Subtitles - unified: auto|off|<path>|yt|whisper|whisper+diarize
+        Subs = new Option<string?>("--subs")
+            { Description = "Subtitles: auto, off, <path>, yt, whisper, whisper+diarize" };
+        Subs.Aliases.Add("--sub");
+        Subs.Aliases.Add("--srt");
+
+        SubtitleLang = new Option<string>("--sub-lang") { Description = "Subtitle language (default: en)" };
+        SubtitleLang.DefaultValueFactory = _ => "en";
+
+        // Whisper options (used with --subs whisper)
+        WhisperModel = new Option<string>("--whisper-model")
+            { Description = "Whisper model: tiny, base, small, medium, large" };
+        WhisperModel.DefaultValueFactory = _ => "base";
+        WhisperModel.Aliases.Add("-wm");
+
+        WhisperThreads = new Option<int?>("--whisper-threads")
+            { Description = "CPU threads for Whisper (default: half available)" };
+
+        // Transcript-only mode - generates subtitles, no video rendering
+        Transcript = new Option<bool>("--transcript")
+            { Description = "Transcript only: generate subtitles without video (streams text to stdout)" };
+        Transcript.Aliases.Add("-T");
+        Transcript.Aliases.Add("--transcribe");
+
+        ForceSubs = new Option<bool>("--force-subs")
+            { Description = "Force re-transcription, ignoring cached subtitles" };
+        ForceSubs.Aliases.Add("--force-transcribe");
+
+        SaveSubs = new Option<string?>("--save-subs")
+            { Description = "Save generated subtitles to specified path (VTT format)" };
+        NoSubCache = new Option<bool>("--no-sub-cache")
+            { Description = "Don't cache subtitles (always re-transcribe)" };
+        NoEnhance = new Option<bool>("--no-enhance")
+            { Description = "Disable FFmpeg audio preprocessing filters for Whisper transcription" };
+
+        // Output
+        Output = new Option<string?>("--output") { Description = "Output file (.gif, .cidz, .json)" };
+        Output.Aliases.Add("-o");
+
+        Info = new Option<bool>("--info") { Description = "Show info and exit" };
+        Info.Aliases.Add("-i");
+
+        Json = new Option<bool>("--json") { Description = "Output as JSON" };
+        Json.Aliases.Add("-j");
+
+        Status = new Option<bool>("--status") { Description = "Show status line below output" };
+        Status.Aliases.Add("-S");
+
+        StatusWidth = new Option<int?>("--status-width") { Description = "Status line width (default: video width)" };
+        StatusWidth.Aliases.Add("-Sw");
+
+        // Markdown output (for embedding in docs/READMEs)
+        Markdown = new Option<string?>("--markdown")
+            { Description = "Output markdown file (.md) with rendered ASCII art" };
+        Markdown.Aliases.Add("--md");
+        MarkdownFormat = new Option<string?>("--md-format")
+            { Description = "Markdown format: plain (default), html, svg, ansi" };
+        MarkdownFormat.DefaultValueFactory = _ => "plain";
+
+        // GIF output
+        GifFontSize = new Option<int>("--gif-font-size") { Description = "Font size for GIF output" };
+        GifFontSize.DefaultValueFactory = _ => 10;
+
+        GifScale = new Option<float>("--gif-scale") { Description = "Scale factor for GIF output" };
+        GifScale.DefaultValueFactory = _ => 1.0f;
+
+        GifFps = new Option<int>("--gif-fps") { Description = "Target FPS for GIF output" };
+        GifFps.DefaultValueFactory = _ => 15;
+
+        GifLength = new Option<double?>("--gif-length") { Description = "Max GIF length in seconds" };
+        GifFrames = new Option<int?>("--gif-frames") { Description = "Max frames for GIF output" };
+        GifWidth = new Option<int?>("--gif-width") { Description = "GIF output width in characters" };
+        GifHeight = new Option<int?>("--gif-height") { Description = "GIF output height in characters" };
+
+        // Raw/extract
+        Raw = new Option<bool>("--raw") { Description = "Extract raw frames as GIF (no ASCII)" };
+        Raw.Aliases.Add("--extract");
+
+        RawWidth = new Option<int?>("--raw-width") { Description = "Width for raw GIF output in pixels" };
+        RawHeight = new Option<int?>("--raw-height") { Description = "Height for raw GIF output in pixels" };
+
+        SmartKeyframes = new Option<bool>("--smart-keyframes") { Description = "Use smart scene detection" };
+        SmartKeyframes.Aliases.Add("--smart");
+
+        Quality = new Option<int>("--quality") { Description = "Output quality 1-100 (for JPEG, WebP)" };
+        Quality.DefaultValueFactory = _ => 85;
+        Quality.Aliases.Add("-q");
+
+        // Calibration
+        Calibrate = new Option<bool>("--calibrate")
+            { Description = "Display calibration pattern (Tab to switch aspect/gamma)" };
+        SaveCalibration = new Option<bool>("--save") { Description = "Save calibration to calibration.json" };
+
+        // Image adjustments
+        NoInvert = new Option<bool>("--no-invert") { Description = "Don't invert (for light backgrounds)" };
+        Edge = new Option<bool>("--edge") { Description = "Enable edge detection" };
+        Edge.Aliases.Add("-e");
+
+        BgThreshold = new Option<float?>("--bg-threshold") { Description = "Light background suppression threshold" };
+        DarkBgThreshold = new Option<float?>("--dark-bg-threshold")
+            { Description = "Dark background suppression threshold" };
+        AutoBg = new Option<bool>("--auto-bg") { Description = "Auto-detect and suppress background" };
+        DarkCutoff = new Option<float?>("--dark-cutoff") { Description = "Skip colors below this brightness" };
+        LightCutoff = new Option<float?>("--light-cutoff") { Description = "Skip colors above this brightness" };
+
+        // Temporal stability
+        Dejitter = new Option<bool>("--dejitter")
+            { Description = "Enable temporal stability (reduce flickering in animations)" };
+        Dejitter.Aliases.Add("--stabilize");
+
+        ColorThreshold = new Option<int?>("--color-threshold")
+            { Description = "Color stability threshold (0-255, default 15)" };
+
+        // Slideshow mode
+        SlideDelay = new Option<float>("--slide-delay")
+            { Description = "Delay between images in seconds (0 = manual only, no auto-advance)" };
+        SlideDelay.DefaultValueFactory = _ => 3.0f;
+        SlideDelay.Aliases.Add("--interval");
+        SlideDelay.Aliases.Add("-d");
+
+        Shuffle = new Option<bool>("--shuffle") { Description = "Randomize image order (slideshow mode)" };
+
+        Recursive = new Option<bool>("--recursive") { Description = "Include subdirectories (slideshow mode)" };
+        Recursive.Aliases.Add("-R");
+
+        SortBy = new Option<string>("--sort") { Description = "Sort order: name, date, size, random (slideshow mode)" };
+        SortBy.DefaultValueFactory = _ => "date";
+        SortBy.Aliases.Add("--order-by");
+
+        SortDesc = new Option<bool>("--desc")
+            { Description = "Sort descending (slideshow mode, default: true for newest first)" };
+        SortDesc.DefaultValueFactory = _ => true;
+
+        SortAsc = new Option<bool>("--asc") { Description = "Sort ascending (oldest first, slideshow mode)" };
+
+        VideoPreview = new Option<float>("--video-preview")
+            { Description = "Max video preview duration in seconds (slideshow mode)" };
+        VideoPreview.DefaultValueFactory = _ => 30.0f;
+        VideoPreview.Aliases.Add("--preview");
+
+        GifLoop = new Option<bool>("--gif-loop") { Description = "Loop GIFs in slideshow (default: play once)" };
+
+        HideSlideInfo = new Option<bool>("--hide-info") { Description = "Hide [1/N] filename header in slideshow" };
+        HideSlideInfo.Aliases.Add("--no-header");
+
+        // Easter egg
+        EasterEgg = new Option<bool>("--ee") { Description = "Play animation demo" };
+
+        Debug = new Option<bool>("--debug") { Description = "Enable debug output for smart frame sampling" };
+
+        // Read-only mode
+        NoWrite = new Option<bool>("--no-write")
+            { Description = "Disable all caching and downloading (read-only mode for locked environments)" };
+        NoWrite.Aliases.Add("--readonly");
+
+        // Template support
+        Template = new Option<string?>("--template") { Description = "Load options from a JSON template file" };
+        // No short alias — -T is Transcript, -t is Duration
+
+        SaveTemplate = new Option<string?>("--save-template")
+            { Description = "Save current options to a JSON template file" };
+    }
+
     // Input
     public Argument<string?> Input { get; }
 
@@ -21,11 +357,15 @@ public class CliOptions
     // Time range (video) - accepts seconds (4.7), mm:ss (6:47), or hh:mm:ss (1:30:00)
     public Option<string?> Start { get; }
     public Option<string?> End { get; }
+
     public Option<string?> Duration { get; }
+
     // Decimal minutes (6.47 = 6m 28.2s)
     public Option<string?> StartMinutes { get; }
     public Option<string?> EndMinutes { get; }
+
     public Option<string?> DurationMinutes { get; }
+
     // Frame-based seeking (alternative to time-based)
     public Option<int?> StartFrame { get; }
     public Option<int?> EndFrame { get; }
@@ -163,307 +503,8 @@ public class CliOptions
     public Option<string?> Template { get; }
     public Option<string?> SaveTemplate { get; }
 
-    public CliOptions()
-    {
-        // Detect console window size for defaults
-        var defaultMaxWidth = 120;
-        var defaultMaxHeight = 40;
-        try
-        {
-            if (Console.WindowWidth > 0) defaultMaxWidth = Console.WindowWidth - 1;
-            if (Console.WindowHeight > 0) defaultMaxHeight = Console.WindowHeight - 2;
-        }
-        catch { }
-
-        // Input
-        Input = new Argument<string?>("input")
-        {
-            Description = "Path to image, GIF, video, or cidz/json document",
-            Arity = ArgumentArity.ZeroOrOne
-        };
-
-        // Dimensions
-        Width = new Option<int?>("--width") { Description = "Output width in characters" };
-        Width.Aliases.Add("-w");
-
-        Height = new Option<int?>("--height") { Description = "Output height in characters" };
-        Height.Aliases.Add("-h");
-
-        MaxWidth = new Option<int>("--max-width") { Description = "Maximum output width" };
-        MaxWidth.DefaultValueFactory = _ => defaultMaxWidth;
-
-        MaxHeight = new Option<int>("--max-height") { Description = "Maximum output height" };
-        MaxHeight.DefaultValueFactory = _ => defaultMaxHeight;
-
-        // Time range - supports: seconds (4.7), mm:ss (6:47), hh:mm:ss (1:30:00)
-        Start = new Option<string?>("--start") { Description = "Start time: seconds (4.7), mm:ss (6:47), or hh:mm:ss" };
-        Start.Aliases.Add("-ss");
-        Start.Aliases.Add("--ss");
-
-        End = new Option<string?>("--end") { Description = "End time: seconds, mm:ss, or hh:mm:ss" };
-        End.Aliases.Add("-to");
-
-        Duration = new Option<string?>("--duration") { Description = "Duration: seconds, mm:ss, or hh:mm:ss" };
-        Duration.Aliases.Add("-t");
-
-        // Decimal minutes (6.47 = 6m 28.2s)
-        StartMinutes = new Option<string?>("--start-minutes") { Description = "Start time in decimal minutes (6.47 = 6m 28.2s)" };
-        StartMinutes.Aliases.Add("-sm");
-
-        EndMinutes = new Option<string?>("--end-minutes") { Description = "End time in decimal minutes" };
-        EndMinutes.Aliases.Add("-em");
-
-        DurationMinutes = new Option<string?>("--duration-minutes") { Description = "Duration in decimal minutes" };
-        DurationMinutes.Aliases.Add("-dm");
-
-        // Frame-based seeking (alternative to time-based)
-        StartFrame = new Option<int?>("--start-frame") { Description = "Start at frame number" };
-        StartFrame.Aliases.Add("-sf");
-
-        EndFrame = new Option<int?>("--end-frame") { Description = "End at frame number" };
-        EndFrame.Aliases.Add("-ef");
-
-        DurationFrames = new Option<int?>("--duration-frames") { Description = "Number of frames to play" };
-        DurationFrames.Aliases.Add("-df");
-
-        // Playback
-        Speed = new Option<float>("--speed") { Description = "Playback speed multiplier" };
-        Speed.DefaultValueFactory = _ => 1.0f;
-        Speed.Aliases.Add("-s");
-
-        Loop = new Option<int>("--loop") { Description = "Number of loops (0 = infinite)" };
-        Loop.DefaultValueFactory = _ => 1;
-        Loop.Aliases.Add("-l");
-
-        NoAnimate = new Option<bool>("--no-animate") { Description = "Show first frame only (don't animate GIFs/videos)" };
-
-        Fps = new Option<double?>("--fps") { Description = "Target framerate" };
-        Fps.Aliases.Add("-r");
-
-        FrameStep = new Option<string>("--frame-step") { Description = "Frame step: 1 (every frame), 2 (every 2nd), s/smart (skip similar frames)" };
-        FrameStep.DefaultValueFactory = _ => "1";
-        FrameStep.Aliases.Add("-f");
-
-        Sampling = new Option<string>("--sampling") { Description = "Sampling strategy: uniform, keyframe, scene, adaptive" };
-        Sampling.DefaultValueFactory = _ => "uniform";
-
-        SceneThreshold = new Option<double>("--scene-threshold") { Description = "Scene detection threshold (0.0-1.0)" };
-        SceneThreshold.DefaultValueFactory = _ => 0.4;
-
-        // Render modes (braille is default - highest detail, smallest output)
-        Ascii = new Option<bool>("--ascii") { Description = "Use ASCII characters instead of braille" };
-        Ascii.Aliases.Add("-a");
-
-        Blocks = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks instead of braille" };
-        Blocks.Aliases.Add("-b");
-
-        Braille = new Option<bool>("--braille") { Description = "Use braille characters (DEFAULT - 2x4 dots per cell, highest detail)" };
-        Braille.Aliases.Add("-B");
-        Braille.DefaultValueFactory = _ => true;
-
-        Matrix = new Option<bool>("--matrix") { Description = "Use Matrix digital rain effect" };
-        Matrix.Aliases.Add("-M");
-
-        Monochrome = new Option<bool>("--monochrome") { Description = "Use braille mode without color (compact, high-detail greyscale)" };
-        Monochrome.Aliases.Add("--mono");
-
-        MatrixColor = new Option<string?>("--matrix-color") { Description = "Matrix color: green, red, blue, amber, cyan, purple, or hex (#RRGGBB)" };
-        MatrixFullColor = new Option<bool>("--matrix-fullcolor") { Description = "Use source image colors with Matrix lighting" };
-        MatrixDensity = new Option<float?>("--matrix-density") { Description = "Rain density (0.1-2.0, default 0.5)" };
-        MatrixSpeed = new Option<float?>("--matrix-speed") { Description = "Rain speed multiplier (0.5-3.0, default 1.0)" };
-        MatrixAlphabet = new Option<string?>("--matrix-alphabet") { Description = "Custom character set for rain" };
-
-        // Color/rendering
-        NoColor = new Option<bool>("--no-color") { Description = "Disable colored output" };
-
-        Colors = new Option<int?>("--colors") { Description = "Max colors in palette (4, 16, 256)" };
-        Colors.Aliases.Add("-c");
-        Colors.Aliases.Add("--colours"); // British English alias
-
-        Contrast = new Option<float>("--contrast") { Description = "Contrast enhancement (1.0 = none)" };
-        Contrast.DefaultValueFactory = _ => 2.5f;
-
-        Gamma = new Option<float?>("--gamma") { Description = "Gamma correction (< 1.0 brighter, default uses calibration or 0.65)" };
-        Gamma.Aliases.Add("-g");
-
-        CharAspect = new Option<float?>("--char-aspect") { Description = "Character aspect ratio (width/height)" };
-        Charset = new Option<string?>("--charset") { Description = "Custom character set (light to dark)" };
-
-        Preset = new Option<string?>("--preset") { Description = "Preset: extended, simple, block, classic" };
-        Preset.Aliases.Add("-p");
-
-        Mode = new Option<string?>("--mode") { Description = "Render mode: ascii, blocks, braille, mono (greyscale braille), matrix" };
-        Mode.Aliases.Add("-m");
-
-        // Performance
-        Buffer = new Option<int>("--buffer") { Description = "Frames to buffer ahead (2-10)" };
-        Buffer.DefaultValueFactory = _ => 3;
-
-        NoHwAccel = new Option<bool>("--no-hwaccel") { Description = "Disable hardware acceleration" };
-        NoAltScreen = new Option<bool>("--no-alt-screen") { Description = "Disable alternate screen buffer" };
-        NoParallel = new Option<bool>("--no-parallel") { Description = "Disable parallel processing" };
-        NoDither = new Option<bool>("--no-dither") { Description = "Disable Floyd-Steinberg dithering" };
-        NoEdgeChars = new Option<bool>("--no-edge-chars") { Description = "Disable directional edge characters" };
-
-        // FFmpeg
-        FfmpegPath = new Option<string?>("--ffmpeg-path") { Description = "Path to FFmpeg executable" };
-        NoFfmpegDownload = new Option<bool>("--no-ffmpeg-download") { Description = "Don't auto-download FFmpeg" };
-        FfmpegYes = new Option<bool>("--yes") { Description = "Auto-confirm FFmpeg/yt-dlp download" };
-        FfmpegYes.Aliases.Add("-y");
-
-        YtdlpPath = new Option<string?>("--ytdlp-path") { Description = "Path to yt-dlp executable (for YouTube URLs)" };
-        CookiesFromBrowser = new Option<string?>("--cookies-from-browser") { Description = "Use cookies from browser (chrome, firefox, edge) for YouTube" };
-        CookiesFile = new Option<string?>("--cookies") { Description = "Path to Netscape cookies.txt file for YouTube" };
-        CacheVideo = new Option<bool>("--cache") { Description = "Cache YouTube videos locally (default: on)" };
-        CacheVideo.DefaultValueFactory = _ => true;
-        NoCacheVideo = new Option<bool>("--no-cache") { Description = "Don't use or create cached videos, always stream" };
-
-        // Subtitles - unified: auto|off|<path>|yt|whisper|whisper+diarize
-        Subs = new Option<string?>("--subs") { Description = "Subtitles: auto, off, <path>, yt, whisper, whisper+diarize" };
-        Subs.Aliases.Add("--sub");
-        Subs.Aliases.Add("--srt");
-
-        SubtitleLang = new Option<string>("--sub-lang") { Description = "Subtitle language (default: en)" };
-        SubtitleLang.DefaultValueFactory = _ => "en";
-
-        // Whisper options (used with --subs whisper)
-        WhisperModel = new Option<string>("--whisper-model") { Description = "Whisper model: tiny, base, small, medium, large" };
-        WhisperModel.DefaultValueFactory = _ => "base";
-        WhisperModel.Aliases.Add("-wm");
-
-        WhisperThreads = new Option<int?>("--whisper-threads") { Description = "CPU threads for Whisper (default: half available)" };
-
-        // Transcript-only mode - generates subtitles, no video rendering
-        Transcript = new Option<bool>("--transcript") { Description = "Transcript only: generate subtitles without video (streams text to stdout)" };
-        Transcript.Aliases.Add("-T");
-        Transcript.Aliases.Add("--transcribe");
-
-        ForceSubs = new Option<bool>("--force-subs") { Description = "Force re-transcription, ignoring cached subtitles" };
-        ForceSubs.Aliases.Add("--force-transcribe");
-
-        SaveSubs = new Option<string?>("--save-subs") { Description = "Save generated subtitles to specified path (VTT format)" };
-        NoSubCache = new Option<bool>("--no-sub-cache") { Description = "Don't cache subtitles (always re-transcribe)" };
-        NoEnhance = new Option<bool>("--no-enhance") { Description = "Disable FFmpeg audio preprocessing filters for Whisper transcription" };
-
-        // Output
-        Output = new Option<string?>("--output") { Description = "Output file (.gif, .cidz, .json)" };
-        Output.Aliases.Add("-o");
-
-        Info = new Option<bool>("--info") { Description = "Show info and exit" };
-        Info.Aliases.Add("-i");
-
-        Json = new Option<bool>("--json") { Description = "Output as JSON" };
-        Json.Aliases.Add("-j");
-
-        Status = new Option<bool>("--status") { Description = "Show status line below output" };
-        Status.Aliases.Add("-S");
-
-        StatusWidth = new Option<int?>("--status-width") { Description = "Status line width (default: video width)" };
-        StatusWidth.Aliases.Add("-Sw");
-
-        // Markdown output (for embedding in docs/READMEs)
-        Markdown = new Option<string?>("--markdown") { Description = "Output markdown file (.md) with rendered ASCII art" };
-        Markdown.Aliases.Add("--md");
-        MarkdownFormat = new Option<string?>("--md-format") { Description = "Markdown format: plain (default), html, svg, ansi" };
-        MarkdownFormat.DefaultValueFactory = _ => "plain";
-
-        // GIF output
-        GifFontSize = new Option<int>("--gif-font-size") { Description = "Font size for GIF output" };
-        GifFontSize.DefaultValueFactory = _ => 10;
-
-        GifScale = new Option<float>("--gif-scale") { Description = "Scale factor for GIF output" };
-        GifScale.DefaultValueFactory = _ => 1.0f;
-
-        GifFps = new Option<int>("--gif-fps") { Description = "Target FPS for GIF output" };
-        GifFps.DefaultValueFactory = _ => 15;
-
-        GifLength = new Option<double?>("--gif-length") { Description = "Max GIF length in seconds" };
-        GifFrames = new Option<int?>("--gif-frames") { Description = "Max frames for GIF output" };
-        GifWidth = new Option<int?>("--gif-width") { Description = "GIF output width in characters" };
-        GifHeight = new Option<int?>("--gif-height") { Description = "GIF output height in characters" };
-
-        // Raw/extract
-        Raw = new Option<bool>("--raw") { Description = "Extract raw frames as GIF (no ASCII)" };
-        Raw.Aliases.Add("--extract");
-
-        RawWidth = new Option<int?>("--raw-width") { Description = "Width for raw GIF output in pixels" };
-        RawHeight = new Option<int?>("--raw-height") { Description = "Height for raw GIF output in pixels" };
-
-        SmartKeyframes = new Option<bool>("--smart-keyframes") { Description = "Use smart scene detection" };
-        SmartKeyframes.Aliases.Add("--smart");
-
-        Quality = new Option<int>("--quality") { Description = "Output quality 1-100 (for JPEG, WebP)" };
-        Quality.DefaultValueFactory = _ => 85;
-        Quality.Aliases.Add("-q");
-
-        // Calibration
-        Calibrate = new Option<bool>("--calibrate") { Description = "Display calibration pattern (Tab to switch aspect/gamma)" };
-        SaveCalibration = new Option<bool>("--save") { Description = "Save calibration to calibration.json" };
-
-        // Image adjustments
-        NoInvert = new Option<bool>("--no-invert") { Description = "Don't invert (for light backgrounds)" };
-        Edge = new Option<bool>("--edge") { Description = "Enable edge detection" };
-        Edge.Aliases.Add("-e");
-
-        BgThreshold = new Option<float?>("--bg-threshold") { Description = "Light background suppression threshold" };
-        DarkBgThreshold = new Option<float?>("--dark-bg-threshold") { Description = "Dark background suppression threshold" };
-        AutoBg = new Option<bool>("--auto-bg") { Description = "Auto-detect and suppress background" };
-        DarkCutoff = new Option<float?>("--dark-cutoff") { Description = "Skip colors below this brightness" };
-        LightCutoff = new Option<float?>("--light-cutoff") { Description = "Skip colors above this brightness" };
-
-        // Temporal stability
-        Dejitter = new Option<bool>("--dejitter") { Description = "Enable temporal stability (reduce flickering in animations)" };
-        Dejitter.Aliases.Add("--stabilize");
-
-        ColorThreshold = new Option<int?>("--color-threshold") { Description = "Color stability threshold (0-255, default 15)" };
-
-        // Slideshow mode
-        SlideDelay = new Option<float>("--slide-delay") { Description = "Delay between images in seconds (0 = manual only, no auto-advance)" };
-        SlideDelay.DefaultValueFactory = _ => 3.0f;
-        SlideDelay.Aliases.Add("--interval");
-        SlideDelay.Aliases.Add("-d");
-
-        Shuffle = new Option<bool>("--shuffle") { Description = "Randomize image order (slideshow mode)" };
-
-        Recursive = new Option<bool>("--recursive") { Description = "Include subdirectories (slideshow mode)" };
-        Recursive.Aliases.Add("-R");
-
-        SortBy = new Option<string>("--sort") { Description = "Sort order: name, date, size, random (slideshow mode)" };
-        SortBy.DefaultValueFactory = _ => "date";
-        SortBy.Aliases.Add("--order-by");
-
-        SortDesc = new Option<bool>("--desc") { Description = "Sort descending (slideshow mode, default: true for newest first)" };
-        SortDesc.DefaultValueFactory = _ => true;
-
-        SortAsc = new Option<bool>("--asc") { Description = "Sort ascending (oldest first, slideshow mode)" };
-
-        VideoPreview = new Option<float>("--video-preview") { Description = "Max video preview duration in seconds (slideshow mode)" };
-        VideoPreview.DefaultValueFactory = _ => 30.0f;
-        VideoPreview.Aliases.Add("--preview");
-
-        GifLoop = new Option<bool>("--gif-loop") { Description = "Loop GIFs in slideshow (default: play once)" };
-
-        HideSlideInfo = new Option<bool>("--hide-info") { Description = "Hide [1/N] filename header in slideshow" };
-        HideSlideInfo.Aliases.Add("--no-header");
-
-        // Easter egg
-        EasterEgg = new Option<bool>("--ee") { Description = "Play animation demo" };
-
-        Debug = new Option<bool>("--debug") { Description = "Enable debug output for smart frame sampling" };
-
-        // Read-only mode
-        NoWrite = new Option<bool>("--no-write") { Description = "Disable all caching and downloading (read-only mode for locked environments)" };
-        NoWrite.Aliases.Add("--readonly");
-
-        // Template support
-        Template = new Option<string?>("--template") { Description = "Load options from a JSON template file" };
-        Template.Aliases.Add("-T");
-
-        SaveTemplate = new Option<string?>("--save-template") { Description = "Save current options to a JSON template file" };
-    }
-
     /// <summary>
-    /// Check if input looks like a glob pattern or directory for slideshow mode.
+    ///     Check if input looks like a glob pattern or directory for slideshow mode.
     /// </summary>
     public static bool IsSlideshowInput(string? input)
     {
@@ -484,7 +525,7 @@ public class CliOptions
     }
 
     /// <summary>
-    /// Add all options to a command.
+    ///     Add all options to a command.
     /// </summary>
     public void AddToCommand(RootCommand command)
     {

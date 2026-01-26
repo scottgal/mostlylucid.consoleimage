@@ -24,14 +24,13 @@ public class FrameHasherTests : IDisposable
         var image = new Image<Rgba32>(width, height);
         _disposableImages.Add(image);
 
-        for (int y = 0; y < height; y++)
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
         {
-            for (int x = 0; x < width; x++)
-            {
-                var val = (byte)((x + y) * 255 / (width + height));
-                image[x, y] = new Rgba32(val, val, val);
-            }
+            var val = (byte)((x + y) * 255 / (width + height));
+            image[x, y] = new Rgba32(val, val, val);
         }
+
         return image;
     }
 
@@ -109,7 +108,7 @@ public class FrameHasherTests : IDisposable
     [Fact]
     public void HammingDistance_Returns64_ForCompletelyDifferentHashes()
     {
-        ulong hash1 = 0xFFFFFFFFFFFFFFFF;
+        var hash1 = 0xFFFFFFFFFFFFFFFF;
         ulong hash2 = 0x0000000000000000;
 
         var distance = FrameHasher.HammingDistance(hash1, hash2);
@@ -143,7 +142,7 @@ public class FrameHasherTests : IDisposable
 
         // Verify they are not similar with default threshold
         // (allowing some tolerance for edge cases)
-        Assert.True(distance > 5 || FrameHasher.AreSimilar(hash1, hash2, 5) == (distance <= 5));
+        Assert.True(distance > 5 || FrameHasher.AreSimilar(hash1, hash2) == distance <= 5);
     }
 
     [Fact]
@@ -153,9 +152,9 @@ public class FrameHasherTests : IDisposable
         ulong hash2 = 0b0000_0000; // 0 bits set
         // Hamming distance = 3
 
-        Assert.True(FrameHasher.AreSimilar(hash1, hash2, threshold: 3));
-        Assert.True(FrameHasher.AreSimilar(hash1, hash2, threshold: 5));
-        Assert.False(FrameHasher.AreSimilar(hash1, hash2, threshold: 2));
+        Assert.True(FrameHasher.AreSimilar(hash1, hash2, 3));
+        Assert.True(FrameHasher.AreSimilar(hash1, hash2));
+        Assert.False(FrameHasher.AreSimilar(hash1, hash2, 2));
     }
 
     [Fact]

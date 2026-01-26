@@ -23,7 +23,9 @@ public class AsciiAnimationPlayer : IDisposable
     private const string AltScreenExit = "\x1b[?1049l";
     private const string CursorHome = "\x1b[H";
     private const string CursorHide = "\x1b[?25l";
+
     private const string CursorShow = "\x1b[?25h";
+
     // Pre-cached cursor move escape sequences
     private static readonly string[] CursorMoveCache = BuildCursorMoveCache(300);
 
@@ -114,10 +116,12 @@ public class AsciiAnimationPlayer : IDisposable
         var frameLineCounts = new int[_frames.Count];
         for (var i = 0; i < _frames.Count; i++)
         {
-            frameStrings[i] = _useColor ? _frames[i].ToAnsiString(_darkThreshold, _lightThreshold) : _frames[i].ToString();
+            frameStrings[i] =
+                _useColor ? _frames[i].ToAnsiString(_darkThreshold, _lightThreshold) : _frames[i].ToString();
             var lineCount = 1;
             foreach (var c in frameStrings[i])
-                if (c == '\n') lineCount++;
+                if (c == '\n')
+                    lineCount++;
             frameLineCounts[i] = lineCount;
             if (lineCount > maxHeight)
                 maxHeight = lineCount;
@@ -154,7 +158,7 @@ public class AsciiAnimationPlayer : IDisposable
                 var diffStart = sb.Length;
                 var changes = 0;
 
-                for (int line = 0; line < lineCount; line++)
+                for (var line = 0; line < lineCount; line++)
                 {
                     var currLine = LineUtils.GetLineFromStarts(curr, currStarts, currLineCount, line);
                     var prevLine = LineUtils.GetLineFromStarts(prev, prevStarts, prevLineCount, line);
@@ -305,7 +309,6 @@ public class AsciiAnimationPlayer : IDisposable
         var lineStart = 0;
 
         for (var i = 0; i <= content.Length; i++)
-        {
             if (i == content.Length || content[i] == '\n')
             {
                 sb.Append("\x1b[2K"); // Clear line
@@ -321,7 +324,6 @@ public class AsciiAnimationPlayer : IDisposable
 
                 lineStart = i + 1;
             }
-        }
 
         // Pad remaining lines with clears
         while (lineIdx < maxHeight)

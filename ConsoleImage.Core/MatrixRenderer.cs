@@ -207,6 +207,13 @@ public class MatrixRenderer : IDisposable
 
     // Default background
     private static readonly Rgba32 BackgroundColor = new(0, 0, 0, 255);
+    private readonly Rgba32 _cachedBrightColor;
+    private readonly Rgba32 _cachedDarkColor;
+
+    // Pre-cached rain colors for non-full-color mode (avoids recomputing per cell per frame)
+    private readonly Rgba32 _cachedHeadColor;
+    private readonly Rgba32 _cachedMidColor;
+    private readonly Rgba32 _cachedNearHeadColor;
 
     // Active character set (based on options)
     private readonly char[] _matrixCharacters;
@@ -214,20 +221,13 @@ public class MatrixRenderer : IDisposable
     private readonly RenderOptions _options;
     private readonly Random _random;
     private readonly MatrixRainState _state;
-    private bool _disposed;
 
     // Reusable buffers to reduce GC pressure during video playback
     private float[]? _brightnessBuffer;
     private Rgba32[]? _colorsBuffer;
+    private bool _disposed;
     private float[]? _edgesBuffer;
     private int _lastBufferSize;
-
-    // Pre-cached rain colors for non-full-color mode (avoids recomputing per cell per frame)
-    private readonly Rgba32 _cachedHeadColor;
-    private readonly Rgba32 _cachedNearHeadColor;
-    private readonly Rgba32 _cachedBrightColor;
-    private readonly Rgba32 _cachedMidColor;
-    private readonly Rgba32 _cachedDarkColor;
 
     public MatrixRenderer(RenderOptions? options = null, MatrixOptions? matrixOptions = null, int? seed = null)
     {
@@ -251,12 +251,40 @@ public class MatrixRenderer : IDisposable
         }
     }
 
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // Return pooled buffers
+        if (_brightnessBuffer != null)
+        {
+            ArrayPool<float>.Shared.Return(_brightnessBuffer);
+            _brightnessBuffer = null;
+        }
+
+        if (_colorsBuffer != null)
+        {
+            ArrayPool<Rgba32>.Shared.Return(_colorsBuffer);
+            _colorsBuffer = null;
+        }
+
+        if (_edgesBuffer != null)
+        {
+            ArrayPool<float>.Shared.Return(_edgesBuffer);
+            _edgesBuffer = null;
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
     /// <summary>
-    /// Compute the 5-color rain palette from a base color.
-    /// Called once at construction for non-full-color mode, or per-cell for full-color mode.
+    ///     Compute the 5-color rain palette from a base color.
+    ///     Called once at construction for non-full-color mode, or per-cell for full-color mode.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (Rgba32 head, Rgba32 nearHead, Rgba32 bright, Rgba32 mid, Rgba32 dark) ComputeRainPalette(Rgba32 baseColor)
+    private static (Rgba32 head, Rgba32 nearHead, Rgba32 bright, Rgba32 mid, Rgba32 dark) ComputeRainPalette(
+        Rgba32 baseColor)
     {
         float maxChannel = Math.Max(baseColor.R, Math.Max(baseColor.G, baseColor.B));
         var rRatio = maxChannel > 0 ? baseColor.R / maxChannel : 0;
@@ -289,31 +317,6 @@ public class MatrixRenderer : IDisposable
             255);
 
         return (head, nearHead, bright, mid, dark);
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        // Return pooled buffers
-        if (_brightnessBuffer != null)
-        {
-            ArrayPool<float>.Shared.Return(_brightnessBuffer);
-            _brightnessBuffer = null;
-        }
-        if (_colorsBuffer != null)
-        {
-            ArrayPool<Rgba32>.Shared.Return(_colorsBuffer);
-            _colorsBuffer = null;
-        }
-        if (_edgesBuffer != null)
-        {
-            ArrayPool<float>.Shared.Return(_edgesBuffer);
-            _edgesBuffer = null;
-        }
-
-        GC.SuppressFinalize(this);
     }
 
     private static char[] BuildKatakanaCharacterSet()
@@ -454,7 +457,7 @@ public class MatrixRenderer : IDisposable
             _state.Initialize(charWidth, charHeight, _random, _matrixOptions);
 
         // No image data - use null brightness/colors (pure rain)
-        _state.Advance(_random, _matrixOptions, null);
+        _state.Advance(_random, _matrixOptions);
 
         // Generate frame with no image influence
         var content = RenderFrame(charWidth, charHeight, null, null, null);
@@ -510,7 +513,7 @@ public class MatrixRenderer : IDisposable
 
         for (var i = 0; i < frameCount; i++)
         {
-            _state.Advance(_random, _matrixOptions, null);
+            _state.Advance(_random, _matrixOptions);
             var content = RenderFrame(charWidth, charHeight, null, null, null);
             yield return new MatrixFrame(content, delayMs);
         }
@@ -718,17 +721,13 @@ public class MatrixRenderer : IDisposable
                 var cellBrightness = isPureRain ? 0.5f : brightness![idx];
                 Rgba32 cellColor;
                 if (isPureRain)
-                {
                     // In fullcolor mode without image: use random per-column colors
                     // Otherwise: use the base color (default green)
                     cellColor = _matrixOptions.UseFullColor
                         ? column.RandomColor
-                        : (_matrixOptions.BaseColor ?? new Rgba32(0, 255, 0, 255));
-                }
+                        : _matrixOptions.BaseColor ?? new Rgba32(0, 255, 0, 255);
                 else
-                {
                     cellColor = sourceColors![idx];
-                }
                 var cellEdge = isPureRain ? 0f : edges![idx];
                 var (character, color) = GetCellDisplay(column, y, cellBrightness, cellColor, cellEdge);
 
@@ -891,7 +890,6 @@ public class MatrixRenderer : IDisposable
     ///     Calculate the color for a rain cell based on mode and position.
     ///     Uses authentic Matrix color scheme: white head -> bright green -> dark green
     ///     Based on analysis from https://carlnewton.github.io/digital-rain-analysis/
-    ///
     ///     In full-color/reveal mode: dark areas use base color (green), bright/colored
     ///     areas "reveal" the source image by blending toward source color based on brightness.
     /// </summary>
@@ -1138,12 +1136,12 @@ internal class MatrixColumn
     public List<MatrixDrop> Drops { get; set; } = new();
 
     /// <summary>
-    /// Column speed multiplier - some columns are faster/slower for authentic Matrix effect.
+    ///     Column speed multiplier - some columns are faster/slower for authentic Matrix effect.
     /// </summary>
     public float SpeedMultiplier { get; set; } = 1.0f;
 
     /// <summary>
-    /// Random color for this column (used in fullcolor pure rain mode).
+    ///     Random color for this column (used in fullcolor pure rain mode).
     /// </summary>
     public Rgba32 RandomColor { get; set; }
 }

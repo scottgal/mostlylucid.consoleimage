@@ -8,7 +8,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Gif;
 using SixLabors.ImageSharp.PixelFormats;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -555,7 +554,8 @@ public sealed class ConsoleImageTools
     ///     Extract raw video frames to GIF (no ASCII rendering)
     /// </summary>
     [McpServerTool(Name = "extract_frames")]
-    [Description("Extract raw video frames to an animated GIF file. No ASCII rendering - preserves actual video frames. Useful for creating thumbnails, previews, or scene slideshows.")]
+    [Description(
+        "Extract raw video frames to an animated GIF file. No ASCII rendering - preserves actual video frames. Useful for creating thumbnails, previews, or scene slideshows.")]
     public static async Task<string> ExtractFrames(
         [Description("Path to video file (MP4, MKV, AVI, WebM, etc.)")]
         string inputPath,
@@ -601,14 +601,15 @@ public sealed class ConsoleImageTools
                 if (keyframeTimes.Count > maxFrames)
                     keyframeTimes = keyframeTimes.Take(maxFrames).ToList();
 
-                using var gif = new Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(width, targetHeight);
+                using var gif = new Image<Rgba32>(width, targetHeight);
                 var gifMeta = gif.Metadata.GetGifMetadata();
                 gifMeta.RepeatCount = 0;
 
                 var frameCount = 0;
                 foreach (var timestamp in keyframeTimes)
                 {
-                    var frame = await ffmpeg.ExtractFrameAsync(inputPath, timestamp, width, targetHeight, CancellationToken.None);
+                    var frame = await ffmpeg.ExtractFrameAsync(inputPath, timestamp, width, targetHeight,
+                        CancellationToken.None);
                     if (frame != null)
                     {
                         var frameMeta = frame.Frames.RootFrame.Metadata.GetGifMetadata();
@@ -642,10 +643,15 @@ public sealed class ConsoleImageTools
 
                 var frameCount = 0;
                 await foreach (var frame in ffmpeg.StreamFramesAsync(
-                    inputPath, width, targetHeight, startTime, endTime, 1, targetFps,
-                    videoInfo.VideoCodec, CancellationToken.None))
+                                   inputPath, width, targetHeight, startTime, endTime, 1, targetFps,
+                                   videoInfo.VideoCodec, CancellationToken.None))
                 {
-                    if (streamingGif.ShouldStop) { frame.Dispose(); break; }
+                    if (streamingGif.ShouldStop)
+                    {
+                        frame.Dispose();
+                        break;
+                    }
+
                     await streamingGif.AddFrameAsync(frame, CancellationToken.None);
                     frame.Dispose();
                     frameCount++;
@@ -727,7 +733,8 @@ public sealed class ConsoleImageTools
     ///     Render a video file to an animated GIF with ASCII art
     /// </summary>
     [McpServerTool(Name = "render_video")]
-    [Description("Render a video file (MP4, MKV, AVI, WebM) to an animated ASCII art GIF. Requires FFmpeg (auto-downloads on first use).")]
+    [Description(
+        "Render a video file (MP4, MKV, AVI, WebM) to an animated ASCII art GIF. Requires FFmpeg (auto-downloads on first use).")]
     public static async Task<string> RenderVideo(
         [Description("Path to the video file")]
         string inputPath,
@@ -779,8 +786,8 @@ public sealed class ConsoleImageTools
             var targetHeight = (int)(width / (videoInfo.Width / (double)videoInfo.Height) * 0.5);
 
             await foreach (var frame in ffmpeg.StreamFramesAsync(
-                inputPath, width, targetHeight, startTime, endTime, 1, fps,
-                videoInfo.VideoCodec, CancellationToken.None))
+                               inputPath, width, targetHeight, startTime, endTime, 1, fps,
+                               videoInfo.VideoCodec, CancellationToken.None))
             {
                 var delayMs = (int)(1000.0 / fps);
                 switch (mode.ToLowerInvariant())
@@ -792,6 +799,7 @@ public sealed class ConsoleImageTools
                             var rendered = new ColorBlockFrame(content, delayMs);
                             gifWriter.AddColorBlockFrame(rendered, delayMs);
                         }
+
                         break;
 
                     case "braille":
@@ -800,6 +808,7 @@ public sealed class ConsoleImageTools
                             var rendered = renderer.RenderImageToFrame(frame);
                             gifWriter.AddBrailleFrame(rendered, delayMs);
                         }
+
                         break;
 
                     case "matrix":
@@ -808,6 +817,7 @@ public sealed class ConsoleImageTools
                             var rendered = renderer.RenderImage(frame);
                             gifWriter.AddMatrixFrame(rendered);
                         }
+
                         break;
 
                     default:
@@ -816,6 +826,7 @@ public sealed class ConsoleImageTools
                             var rendered = renderer.RenderImage(frame);
                             gifWriter.AddFrame(rendered, delayMs);
                         }
+
                         break;
                 }
 
@@ -845,8 +856,7 @@ public sealed class ConsoleImageTools
     [McpServerTool(Name = "check_youtube_url")]
     [Description("Check if a URL is a YouTube video and whether yt-dlp is available to process it.")]
     public static string CheckYouTubeUrl(
-        [Description("URL to check")]
-        string url)
+        [Description("URL to check")] string url)
     {
         try
         {
@@ -871,10 +881,10 @@ public sealed class ConsoleImageTools
     ///     Get YouTube video stream URL using yt-dlp
     /// </summary>
     [McpServerTool(Name = "get_youtube_stream")]
-    [Description("Extract the direct video stream URL from a YouTube video using yt-dlp. Requires yt-dlp (auto-downloads on first use).")]
+    [Description(
+        "Extract the direct video stream URL from a YouTube video using yt-dlp. Requires yt-dlp (auto-downloads on first use).")]
     public static async Task<string> GetYouTubeStream(
-        [Description("YouTube video URL")]
-        string url,
+        [Description("YouTube video URL")] string url,
         [Description("Maximum video height (e.g., 720, 1080). Default: best available")]
         int? maxHeight = null)
     {

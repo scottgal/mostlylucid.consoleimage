@@ -64,10 +64,10 @@ public class AsciiRenderer : IDisposable
     private readonly CharacterMap _characterMap;
     private readonly RenderOptions _options;
     private bool _disposed;
+    private int _lastBufferSize;
 
     // Reusable pixel buffer to avoid repeated allocations
     private Rgba32[]? _pixelBuffer;
-    private int _lastBufferSize;
 
     public AsciiRenderer(RenderOptions? options = null)
     {
@@ -938,6 +938,7 @@ public class AsciiRenderer : IDisposable
                 val = (pixel.R * 0.299f + pixel.G * 0.587f + pixel.B * 0.114f) / 255f;
                 return true;
             }
+
             val = 1f;
             return false;
         }

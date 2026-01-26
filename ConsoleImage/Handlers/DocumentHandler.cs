@@ -6,12 +6,12 @@ using ConsoleImage.Core.Subtitles;
 namespace ConsoleImage.Cli.Handlers;
 
 /// <summary>
-/// Handles cidz/json document playback.
+///     Handles cidz/json document playback.
 /// </summary>
 public static class DocumentHandler
 {
     /// <summary>
-    /// Handle JSON/cidz document playback and conversion.
+    ///     Handle JSON/cidz document playback and conversion.
     /// </summary>
     public static async Task<int> HandleAsync(
         string path,
@@ -38,17 +38,13 @@ public static class DocumentHandler
 
             // GIF output mode - convert document to GIF
             if (outputGif != null)
-            {
                 return await ConvertToGif(doc, outputGif, effectiveSpeed, effectiveLoop,
                     gifFontSize, gifScale, gifColors, ct);
-            }
 
             // Auto-detect sidecar subtitle file for playback
             SubtitleTrack? subtitles = null;
             if (doc.Settings.SubtitlesEnabled || !string.IsNullOrEmpty(doc.Settings.SubtitleFile))
-            {
                 subtitles = await FindSidecarSubtitles(path, doc.Settings, ct);
-            }
 
             // Play the document
             using var player = new DocumentPlayer(doc, effectiveSpeed, effectiveLoop, subtitles);
@@ -79,8 +75,8 @@ public static class DocumentHandler
     }
 
     /// <summary>
-    /// Find sidecar subtitle file (.vtt/.srt) alongside a document file.
-    /// Checks: 1) Explicit SubtitleFile from settings, 2) Same-name .vtt, 3) Same-name .srt
+    ///     Find sidecar subtitle file (.vtt/.srt) alongside a document file.
+    ///     Checks: 1) Explicit SubtitleFile from settings, 2) Same-name .vtt, 3) Same-name .srt
     /// </summary>
     private static async Task<SubtitleTrack?> FindSidecarSubtitles(
         string documentPath, DocumentRenderSettings settings, CancellationToken ct)
@@ -154,6 +150,7 @@ public static class DocumentHandler
             frameIndex++;
             Console.Write($"\rConverting frames: {frameIndex}/{doc.FrameCount}");
         }
+
         Console.WriteLine();
 
         await gifWriter.SaveAsync(outputGif.FullName, ct);

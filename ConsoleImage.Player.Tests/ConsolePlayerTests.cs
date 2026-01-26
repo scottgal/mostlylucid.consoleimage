@@ -1,4 +1,3 @@
-using ConsoleImage.Player;
 using Xunit;
 
 namespace ConsoleImage.Player.Tests;
@@ -36,7 +35,7 @@ public class ConsolePlayerTests
         doc.Settings.AnimationSpeedMultiplier = 1.0f;
         doc.Settings.LoopCount = 0;
 
-        var player = new ConsolePlayer(doc, speedMultiplier: 2.5f, loopCount: 3);
+        var player = new ConsolePlayer(doc, 2.5f, 3);
 
         // Overrides should take effect (tested via GetInfo output)
         var info = player.GetInfo();
@@ -126,10 +125,7 @@ public class ConsolePlayerTests
         var player = new ConsolePlayer(doc);
         var eventFired = false;
 
-        player.OnLoopComplete += (loopNum) =>
-        {
-            eventFired = true;
-        };
+        player.OnLoopComplete += loopNum => { eventFired = true; };
 
         Assert.False(eventFired); // Not fired until Play is called
     }
@@ -138,14 +134,14 @@ public class ConsolePlayerTests
     public void FromJson_CreatesPlayerFromJsonString()
     {
         var json = """
-        {
-            "Version": "2.0",
-            "RenderMode": "Matrix",
-            "Frames": [
-                { "Content": "Frame", "DelayMs": 50, "Width": 5, "Height": 1 }
-            ]
-        }
-        """;
+                   {
+                       "Version": "2.0",
+                       "RenderMode": "Matrix",
+                       "Frames": [
+                           { "Content": "Frame", "DelayMs": 50, "Width": 5, "Height": 1 }
+                       ]
+                   }
+                   """;
 
         var player = ConsolePlayer.FromJson(json);
 
@@ -157,17 +153,17 @@ public class ConsolePlayerTests
     public void FromJson_WithOverrides()
     {
         var json = """
-        {
-            "Version": "2.0",
-            "Settings": { "AnimationSpeedMultiplier": 1.0, "LoopCount": 0 },
-            "Frames": [
-                { "Content": "A", "DelayMs": 100 },
-                { "Content": "B", "DelayMs": 100 }
-            ]
-        }
-        """;
+                   {
+                       "Version": "2.0",
+                       "Settings": { "AnimationSpeedMultiplier": 1.0, "LoopCount": 0 },
+                       "Frames": [
+                           { "Content": "A", "DelayMs": 100 },
+                           { "Content": "B", "DelayMs": 100 }
+                       ]
+                   }
+                   """;
 
-        var player = ConsolePlayer.FromJson(json, speedMultiplier: 3.0f, loopCount: 2);
+        var player = ConsolePlayer.FromJson(json, 3.0f, 2);
 
         var info = player.GetInfo();
         Assert.Contains("Speed: 3x", info);
@@ -179,8 +175,7 @@ public class ConsolePlayerTests
     {
         var nonExistent = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
 
-        await Assert.ThrowsAsync<FileNotFoundException>(
-            () => ConsolePlayer.FromFileAsync(nonExistent));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => ConsolePlayer.FromFileAsync(nonExistent));
     }
 
     private static PlayerDocument CreateTestDocument(int frameCount)
@@ -199,8 +194,7 @@ public class ConsolePlayerTests
             }
         };
 
-        for (int i = 0; i < frameCount; i++)
-        {
+        for (var i = 0; i < frameCount; i++)
             doc.Frames.Add(new PlayerFrame
             {
                 Content = $"Frame {i + 1}",
@@ -208,7 +202,6 @@ public class ConsolePlayerTests
                 Width = 10,
                 Height = 1
             });
-        }
 
         return doc;
     }

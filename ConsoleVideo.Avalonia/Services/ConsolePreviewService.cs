@@ -5,12 +5,12 @@ using ConsoleVideo.Avalonia.Models;
 namespace ConsoleVideo.Avalonia.Services;
 
 /// <summary>
-/// Service for launching console preview in external terminal.
+///     Service for launching console preview in external terminal.
 /// </summary>
 public class ConsolePreviewService
 {
     /// <summary>
-    /// Get the path to consolevideo executable.
+    ///     Get the path to consolevideo executable.
     /// </summary>
     private static string GetConsoleVideoPath()
     {
@@ -36,7 +36,7 @@ public class ConsolePreviewService
     }
 
     /// <summary>
-    /// Launch consolevideo in an external terminal window.
+    ///     Launch consolevideo in an external terminal window.
     /// </summary>
     public void LaunchInTerminal(string videoPath, double startTime, double endTime, RenderMode mode)
     {
@@ -88,7 +88,6 @@ public class ConsolePreviewService
                 };
 
                 foreach (var (terminal, termArgs) in terminals)
-                {
                     try
                     {
                         Process.Start(new ProcessStartInfo
@@ -103,7 +102,6 @@ public class ConsolePreviewService
                     {
                         // Try next terminal
                     }
-                }
             }
         }
         catch (Exception ex)
@@ -114,7 +112,7 @@ public class ConsolePreviewService
     }
 
     /// <summary>
-    /// Launch a single frame preview (for testing render output).
+    ///     Launch a single frame preview (for testing render output).
     /// </summary>
     public void LaunchSingleFramePreview(string videoPath, double timestamp, RenderMode mode)
     {

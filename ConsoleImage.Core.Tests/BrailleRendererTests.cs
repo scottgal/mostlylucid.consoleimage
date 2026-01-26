@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -313,10 +314,10 @@ public class BrailleRendererTests : IDisposable
         if (output.Contains("\x1b[38;2;"))
         {
             // Extract color values from ANSI codes
-            var matches = System.Text.RegularExpressions.Regex.Matches(
+            var matches = Regex.Matches(
                 output, @"\x1b\[38;2;(\d+);(\d+);(\d+)m");
 
-            foreach (System.Text.RegularExpressions.Match match in matches)
+            foreach (Match match in matches)
             {
                 var r = int.Parse(match.Groups[1].Value);
                 var g = int.Parse(match.Groups[2].Value);
@@ -348,12 +349,12 @@ public class BrailleRendererTests : IDisposable
         Assert.Contains("\x1b[38;2;", output);
 
         // Extract color values - red channel should be > 100, green/blue should be lower
-        var matches = System.Text.RegularExpressions.Regex.Matches(
+        var matches = Regex.Matches(
             output, @"\x1b\[38;2;(\d+);(\d+);(\d+)m");
 
         Assert.True(matches.Count > 0, "Red image should output color codes");
 
-        foreach (System.Text.RegularExpressions.Match match in matches)
+        foreach (Match match in matches)
         {
             var r = int.Parse(match.Groups[1].Value);
             var g = int.Parse(match.Groups[2].Value);

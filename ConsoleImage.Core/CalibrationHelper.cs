@@ -187,40 +187,36 @@ public static class CalibrationHelper
         var colorBars = new[]
         {
             new Rgba32(191, 191, 191, 255), // 75% Gray
-            new Rgba32(191, 191, 0, 255),   // 75% Yellow
-            new Rgba32(0, 191, 191, 255),   // 75% Cyan
-            new Rgba32(0, 191, 0, 255),     // 75% Green
-            new Rgba32(191, 0, 191, 255),   // 75% Magenta
-            new Rgba32(191, 0, 0, 255),     // 75% Red
-            new Rgba32(0, 0, 191, 255)      // 75% Blue
+            new Rgba32(191, 191, 0, 255), // 75% Yellow
+            new Rgba32(0, 191, 191, 255), // 75% Cyan
+            new Rgba32(0, 191, 0, 255), // 75% Green
+            new Rgba32(191, 0, 191, 255), // 75% Magenta
+            new Rgba32(191, 0, 0, 255), // 75% Red
+            new Rgba32(0, 0, 191, 255) // 75% Blue
         };
         var barWidth = width / colorBars.Length;
         for (var i = 0; i < colorBars.Length; i++)
-        {
-            for (var x = i * barWidth; x < (i + 1) * barWidth && x < width; x++)
-            for (var y = 0; y < topHeight; y++)
-                image[x, y] = colorBars[i];
-        }
+        for (var x = i * barWidth; x < (i + 1) * barWidth && x < width; x++)
+        for (var y = 0; y < topHeight; y++)
+            image[x, y] = colorBars[i];
 
         // Castellations (middle strip - reverse color signal)
         var midStart = topHeight;
         var midHeight = height / 12;
         var castellations = new[]
         {
-            new Rgba32(0, 0, 191, 255),     // Blue
-            new Rgba32(0, 0, 0, 255),       // Black
-            new Rgba32(191, 0, 191, 255),   // Magenta
-            new Rgba32(0, 0, 0, 255),       // Black
-            new Rgba32(0, 191, 191, 255),   // Cyan
-            new Rgba32(0, 0, 0, 255),       // Black
-            new Rgba32(191, 191, 191, 255)  // Gray
+            new Rgba32(0, 0, 191, 255), // Blue
+            new Rgba32(0, 0, 0, 255), // Black
+            new Rgba32(191, 0, 191, 255), // Magenta
+            new Rgba32(0, 0, 0, 255), // Black
+            new Rgba32(0, 191, 191, 255), // Cyan
+            new Rgba32(0, 0, 0, 255), // Black
+            new Rgba32(191, 191, 191, 255) // Gray
         };
         for (var i = 0; i < castellations.Length; i++)
-        {
-            for (var x = i * barWidth; x < (i + 1) * barWidth && x < width; x++)
-            for (var y = midStart; y < midStart + midHeight; y++)
-                image[x, y] = castellations[i];
-        }
+        for (var x = i * barWidth; x < (i + 1) * barWidth && x < width; x++)
+        for (var y = midStart; y < midStart + midHeight; y++)
+            image[x, y] = castellations[i];
 
         // Bottom section: PLUGE bars and grayscale
         var bottomStart = midStart + midHeight;
@@ -231,58 +227,54 @@ public static class CalibrationHelper
         // -4%, 0%, +4% black levels
         var plugeColors = new[]
         {
-            new Rgba32(0, 0, 0, 255),    // Superblack (clipped to 0)
-            new Rgba32(8, 8, 8, 255),    // -4% (should be nearly invisible)
-            new Rgba32(0, 0, 0, 255),    // Black reference
-            new Rgba32(8, 8, 8, 255)     // +4% (should be barely visible if gamma correct)
+            new Rgba32(0, 0, 0, 255), // Superblack (clipped to 0)
+            new Rgba32(8, 8, 8, 255), // -4% (should be nearly invisible)
+            new Rgba32(0, 0, 0, 255), // Black reference
+            new Rgba32(8, 8, 8, 255) // +4% (should be barely visible if gamma correct)
         };
 
         // I and Q bars (for color decoder testing)
-        var iqColor1 = new Rgba32(0, 68, 130, 255);   // -I (dark blue)
+        var iqColor1 = new Rgba32(0, 68, 130, 255); // -I (dark blue)
         var iqColor2 = new Rgba32(255, 255, 255, 255); // White
-        var iqColor3 = new Rgba32(75, 0, 139, 255);    // +Q (purple)
+        var iqColor3 = new Rgba32(75, 0, 139, 255); // +Q (purple)
 
         // Grayscale ramp (right side)
         var grayRampStart = width * 4 / 7;
 
         for (var x = 0; x < width; x++)
-        {
-            for (var y = bottomStart; y < height; y++)
+        for (var y = bottomStart; y < height; y++)
+            if (x < subBarWidth)
             {
-                if (x < subBarWidth)
-                {
-                    // PLUGE super black
-                    image[x, y] = plugeColors[0];
-                }
-                else if (x < subBarWidth * 2)
-                {
-                    // PLUGE 4% below black
-                    image[x, y] = plugeColors[1];
-                }
-                else if (x < subBarWidth * 3)
-                {
-                    // PLUGE black
-                    image[x, y] = plugeColors[2];
-                }
-                else if (x < subBarWidth * 4)
-                {
-                    // PLUGE 4% above black
-                    image[x, y] = plugeColors[3];
-                }
-                else if (x < grayRampStart)
-                {
-                    // White reference
-                    image[x, y] = iqColor2;
-                }
-                else
-                {
-                    // Grayscale ramp (11 steps from black to white)
-                    var rampPos = (float)(x - grayRampStart) / (width - grayRampStart);
-                    var gray = (byte)(255 * rampPos);
-                    image[x, y] = new Rgba32(gray, gray, gray, 255);
-                }
+                // PLUGE super black
+                image[x, y] = plugeColors[0];
             }
-        }
+            else if (x < subBarWidth * 2)
+            {
+                // PLUGE 4% below black
+                image[x, y] = plugeColors[1];
+            }
+            else if (x < subBarWidth * 3)
+            {
+                // PLUGE black
+                image[x, y] = plugeColors[2];
+            }
+            else if (x < subBarWidth * 4)
+            {
+                // PLUGE 4% above black
+                image[x, y] = plugeColors[3];
+            }
+            else if (x < grayRampStart)
+            {
+                // White reference
+                image[x, y] = iqColor2;
+            }
+            else
+            {
+                // Grayscale ramp (11 steps from black to white)
+                var rampPos = (float)(x - grayRampStart) / (width - grayRampStart);
+                var gray = (byte)(255 * rampPos);
+                image[x, y] = new Rgba32(gray, gray, gray, 255);
+            }
 
         return image;
     }

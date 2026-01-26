@@ -3,16 +3,18 @@ using System.Text.RegularExpressions;
 namespace ConsoleImage.Core.Subtitles;
 
 /// <summary>
-/// Parser for SRT and WebVTT subtitle formats.
+///     Parser for SRT and WebVTT subtitle formats.
 /// </summary>
 public static partial class SubtitleParser
 {
     // SRT timecode: 00:00:01,000 --> 00:00:04,000
-    [GeneratedRegex(@"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})", RegexOptions.Compiled)]
+    [GeneratedRegex(@"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})",
+        RegexOptions.Compiled)]
     private static partial Regex SrtTimecodeRegex();
 
     // VTT timecode: 00:00:01.000 --> 00:00:04.000 (or without hours: 00:01.000)
-    [GeneratedRegex(@"(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})", RegexOptions.Compiled)]
+    [GeneratedRegex(@"(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})",
+        RegexOptions.Compiled)]
     private static partial Regex VttTimecodeRegex();
 
     // HTML tags to strip (but not voice tags)
@@ -32,7 +34,7 @@ public static partial class SubtitleParser
     private static partial Regex VttCueSettingsRegex();
 
     /// <summary>
-    /// Parse a subtitle file, auto-detecting format from content.
+    ///     Parse a subtitle file, auto-detecting format from content.
     /// </summary>
     /// <param name="filePath">Path to the subtitle file.</param>
     /// <returns>Parsed subtitle track.</returns>
@@ -43,7 +45,7 @@ public static partial class SubtitleParser
     }
 
     /// <summary>
-    /// Parse subtitle content, auto-detecting format.
+    ///     Parse subtitle content, auto-detecting format.
     /// </summary>
     /// <param name="content">Subtitle file content.</param>
     /// <param name="sourcePath">Optional source path for metadata.</param>
@@ -73,7 +75,7 @@ public static partial class SubtitleParser
     }
 
     /// <summary>
-    /// Parse SRT (SubRip) format subtitles.
+    ///     Parse SRT (SubRip) format subtitles.
     /// </summary>
     /// <param name="content">SRT file content.</param>
     /// <returns>Parsed subtitle track.</returns>
@@ -99,6 +101,7 @@ public static partial class SubtitleParser
                 i++;
                 continue;
             }
+
             i++;
 
             if (i >= lines.Length)
@@ -160,7 +163,7 @@ public static partial class SubtitleParser
     }
 
     /// <summary>
-    /// Parse WebVTT format subtitles.
+    ///     Parse WebVTT format subtitles.
     /// </summary>
     /// <param name="content">VTT file content.</param>
     /// <returns>Parsed subtitle track.</returns>
@@ -184,6 +187,7 @@ public static partial class SubtitleParser
                     break;
                 i++;
             }
+
             // Skip the empty line after header
             if (i < lines.Length && string.IsNullOrWhiteSpace(lines[i]))
                 i++;
@@ -211,10 +215,7 @@ public static partial class SubtitleParser
                     break;
                 currentLine = lines[i].Trim();
                 match = VttTimecodeRegex().Match(currentLine);
-                if (!match.Success)
-                {
-                    continue;
-                }
+                if (!match.Success) continue;
             }
 
             // Parse timecode
@@ -255,18 +256,12 @@ public static partial class SubtitleParser
                 // Extract speaker from VTT voice tag <v SpeakerId>
                 string? speakerId = null;
                 var voiceMatch = VttVoiceTagRegex().Match(rawText);
-                if (voiceMatch.Success)
-                {
-                    speakerId = voiceMatch.Groups[1].Value.Trim();
-                }
+                if (voiceMatch.Success) speakerId = voiceMatch.Groups[1].Value.Trim();
 
                 var text = StripHtmlTags(rawText);
 
                 // Try to extract speaker from text patterns if not found in voice tag
-                if (string.IsNullOrEmpty(speakerId))
-                {
-                    (speakerId, text) = ExtractSpeakerFromText(text);
-                }
+                if (string.IsNullOrEmpty(speakerId)) (speakerId, text) = ExtractSpeakerFromText(text);
 
                 track.Entries.Add(new SubtitleEntry
                 {
@@ -283,7 +278,7 @@ public static partial class SubtitleParser
     }
 
     /// <summary>
-    /// Extract speaker ID from text patterns like "[John]:", "(Speaker 1):", "JOHN:".
+    ///     Extract speaker ID from text patterns like "[John]:", "(Speaker 1):", "JOHN:".
     /// </summary>
     private static (string? speakerId, string text) ExtractSpeakerFromText(string text)
     {
@@ -292,8 +287,8 @@ public static partial class SubtitleParser
         {
             // Group 1: [brackets], Group 2: (parens), Group 3: UPPERCASE:
             var speakerId = match.Groups[1].Success ? match.Groups[1].Value :
-                           match.Groups[2].Success ? match.Groups[2].Value :
-                           match.Groups[3].Success ? match.Groups[3].Value.Trim() : null;
+                match.Groups[2].Success ? match.Groups[2].Value :
+                match.Groups[3].Success ? match.Groups[3].Value.Trim() : null;
 
             if (!string.IsNullOrEmpty(speakerId))
             {
@@ -302,11 +297,12 @@ public static partial class SubtitleParser
                 return (speakerId, text);
             }
         }
+
         return (null, text);
     }
 
     /// <summary>
-    /// Strip HTML tags from subtitle text.
+    ///     Strip HTML tags from subtitle text.
     /// </summary>
     private static string StripHtmlTags(string text)
     {
@@ -315,17 +311,17 @@ public static partial class SubtitleParser
 
         // Handle HTML entities
         text = text.Replace("&amp;", "&")
-                   .Replace("&lt;", "<")
-                   .Replace("&gt;", ">")
-                   .Replace("&quot;", "\"")
-                   .Replace("&apos;", "'")
-                   .Replace("&nbsp;", " ");
+            .Replace("&lt;", "<")
+            .Replace("&gt;", ">")
+            .Replace("&quot;", "\"")
+            .Replace("&apos;", "'")
+            .Replace("&nbsp;", " ");
 
         return text.Trim();
     }
 
     /// <summary>
-    /// Detect if a file is a supported subtitle format.
+    ///     Detect if a file is a supported subtitle format.
     /// </summary>
     public static bool IsSupportedFormat(string filePath)
     {

@@ -1,64 +1,64 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <RootNamespace>ConsoleImage.Transcription</RootNamespace>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <IsAotCompatible>true</IsAotCompatible>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>ConsoleImage.Transcription</RootNamespace>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsAotCompatible>true</IsAotCompatible>
 
-    <!-- NuGet Package Properties -->
-    <PackageId>mostlylucid.consoleimage.transcription</PackageId>
-    <Authors>Scott Galloway</Authors>
-    <MinVerTagPrefix>consoleimage-transcription-v</MinVerTagPrefix>
-    <Description>Whisper-based audio transcription for ConsoleImage. Auto-generates subtitles from video/audio files using OpenAI Whisper models. Supports speaker diarization and multiple output formats (SRT, VTT).</Description>
-    <PackageTags>whisper;transcription;subtitles;srt;vtt;speech-to-text;consoleimage;aot</PackageTags>
-    <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageIcon>icon.png</PackageIcon>
-    <PackageIconUrl>https://raw.githubusercontent.com/scottgal/ConsoleImage/master/icon.png</PackageIconUrl>
-    <RepositoryUrl>https://github.com/scottgal/mostlylucid.consoleimage</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-  </PropertyGroup>
+        <!-- NuGet Package Properties -->
+        <PackageId>mostlylucid.consoleimage.transcription</PackageId>
+        <Authors>Scott Galloway</Authors>
+        <MinVerTagPrefix>consoleimage-transcription-v</MinVerTagPrefix>
+        <Description>Whisper-based audio transcription for ConsoleImage. Auto-generates subtitles from video/audio files using OpenAI Whisper models. Supports speaker diarization and multiple output formats (SRT, VTT).</Description>
+        <PackageTags>whisper;transcription;subtitles;srt;vtt;speech-to-text;consoleimage;aot</PackageTags>
+        <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageIconUrl>https://raw.githubusercontent.com/scottgal/ConsoleImage/master/icon.png</PackageIconUrl>
+        <RepositoryUrl>https://github.com/scottgal/mostlylucid.consoleimage</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    </PropertyGroup>
 
-  <!-- Whisper.NET - managed API only, native runtimes are user's choice -->
-  <ItemGroup>
-    <PackageReference Include="Whisper.net" Version="1.9.0" />
-    <!-- AllRuntimes excluded from package - users install appropriate runtime for their platform -->
-    <!-- Options: Whisper.net.Runtime.Cpu, Whisper.net.Runtime.Cuda, Whisper.net.Runtime.CoreML, etc. -->
-    <!-- For all platforms: Whisper.net.AllRuntimes -->
-  </ItemGroup>
+    <!-- Whisper.NET - managed API only, native runtimes are user's choice -->
+    <ItemGroup>
+        <PackageReference Include="Whisper.net" Version="1.9.0"/>
+        <!-- AllRuntimes excluded from package - users install appropriate runtime for their platform -->
+        <!-- Options: Whisper.net.Runtime.Cpu, Whisper.net.Runtime.Cuda, Whisper.net.Runtime.CoreML, etc. -->
+        <!-- For all platforms: Whisper.net.AllRuntimes -->
+    </ItemGroup>
 
-  <!-- Local development: include AllRuntimes for convenience -->
-  <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
-    <PackageReference Include="Whisper.net.AllRuntimes" Version="1.9.0" />
-  </ItemGroup>
+    <!-- Local development: include AllRuntimes for convenience -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
+        <PackageReference Include="Whisper.net.AllRuntimes" Version="1.9.0"/>
+    </ItemGroup>
 
-  <!-- Audio processing (pure .NET, cross-platform) -->
-  <ItemGroup>
-    <PackageReference Include="NAudio" Version="2.2.1" />
-  </ItemGroup>
+    <!-- Audio processing (pure .NET, cross-platform) -->
+    <ItemGroup>
+        <PackageReference Include="NAudio" Version="2.2.1"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all"/>
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all"/>
+    </ItemGroup>
 
-  <!-- Local development: use ProjectReference -->
-  <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
-    <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj" />
-  </ItemGroup>
+    <!-- Local development: use ProjectReference -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
+        <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj"/>
+    </ItemGroup>
 
-  <!-- NuGet packaging: use PackageReference to the published Core package -->
-  <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
-    <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)"/>
-  </ItemGroup>
+    <!-- NuGet packaging: use PackageReference to the published Core package -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
+        <PackageReference Include="mostlylucid.consoleimage" Version="$(CorePackageVersion)"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <!-- Use NuGet-specific README with proper image URLs -->
-    <None Include="README.nuget.md" Pack="true" PackagePath="README.md"/>
-    <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')"/>
-  </ItemGroup>
+    <ItemGroup>
+        <!-- Use NuGet-specific README with proper image URLs -->
+        <None Include="README.nuget.md" Pack="true" PackagePath="README.md"/>
+        <None Include="..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\icon.png')"/>
+    </ItemGroup>
 
 </Project>

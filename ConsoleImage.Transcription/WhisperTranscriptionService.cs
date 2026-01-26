@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using NAudio.Wave;
@@ -7,22 +8,36 @@ using Whisper.net;
 namespace ConsoleImage.Transcription;
 
 /// <summary>
-/// Whisper transcription service using Whisper.NET.
-/// Supports both batch and streaming transcription.
-/// Cross-platform compatible.
+///     Whisper transcription service using Whisper.NET.
+///     Supports both batch and streaming transcription.
+///     Cross-platform compatible.
 /// </summary>
 public sealed class WhisperTranscriptionService : IDisposable
 {
-    private WhisperFactory? _factory;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _disposed;
+    private string _language = "auto";
 
     private string _modelSize = "base";
-    private string _language = "auto";
     private int _threads = Math.Max(1, Environment.ProcessorCount / 2);
 
     /// <summary>
-    /// Check if Whisper transcription is available (model can be downloaded).
+    ///     Get the loaded WhisperFactory for creating processors.
+    ///     Returns null if not yet initialized.
+    ///     Used by RealtimeTranscriber to create processors without reflection.
+    /// </summary>
+    internal WhisperFactory? Factory { get; private set; }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Factory?.Dispose();
+        _initLock.Dispose();
+    }
+
+    /// <summary>
+    ///     Check if Whisper transcription is available (model can be downloaded).
     /// </summary>
     public static bool IsAvailable()
     {
@@ -32,7 +47,7 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
-    /// Configure model size (tiny, base, small, medium, large).
+    ///     Configure model size (tiny, base, small, medium, large).
     /// </summary>
     public WhisperTranscriptionService WithModel(string modelSize)
     {
@@ -41,7 +56,7 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
-    /// Configure language (en, es, ja, etc. or "auto" for detection).
+    ///     Configure language (en, es, ja, etc. or "auto" for detection).
     /// </summary>
     public WhisperTranscriptionService WithLanguage(string language)
     {
@@ -50,7 +65,7 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
-    /// Configure number of CPU threads.
+    ///     Configure number of CPU threads.
     /// </summary>
     public WhisperTranscriptionService WithThreads(int threads)
     {
@@ -59,18 +74,18 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
-    /// Ensure model is downloaded and loaded.
+    ///     Ensure model is downloaded and loaded.
     /// </summary>
     public async Task InitializeAsync(
         IProgress<(long downloaded, long total, string status)>? progress = null,
         CancellationToken ct = default)
     {
-        if (_factory != null) return;
+        if (Factory != null) return;
 
         await _initLock.WaitAsync(ct);
         try
         {
-            if (_factory != null) return;
+            if (Factory != null) return;
 
             // Step 1: Ensure native runtime is available (downloads if needed)
             if (!WhisperRuntimeDownloader.IsRuntimeAvailable())
@@ -80,10 +95,8 @@ public sealed class WhisperTranscriptionService : IDisposable
 
                 var runtimeSuccess = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
                 if (!runtimeSuccess)
-                {
                     throw new InvalidOperationException(
                         $"Failed to download Whisper runtime. {WhisperRuntimeDownloader.GetManualInstallInstructions(rid)}");
-                }
             }
 
             // Step 2: Configure runtime path so Whisper.NET can find native libs
@@ -96,17 +109,14 @@ public sealed class WhisperTranscriptionService : IDisposable
             progress?.Report((0, 0, "Loading Whisper model..."));
 
             // Check if model file exists and is readable
-            if (!File.Exists(modelPath))
-            {
-                throw new FileNotFoundException($"Model file not found: {modelPath}");
-            }
+            if (!File.Exists(modelPath)) throw new FileNotFoundException($"Model file not found: {modelPath}");
 
             var fileInfo = new FileInfo(modelPath);
             progress?.Report((0, 0, $"Model file: {fileInfo.Length / 1024 / 1024}MB at {modelPath}"));
 
             try
             {
-                _factory = WhisperFactory.FromPath(modelPath);
+                Factory = WhisperFactory.FromPath(modelPath);
             }
             catch (Exception ex)
             {
@@ -129,30 +139,24 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
-    /// Apply quality tuning to a Whisper processor builder.
-    /// These settings reduce hallucinations, skip silent segments, and improve accuracy.
+    ///     Apply quality tuning to a Whisper processor builder.
+    ///     These settings reduce hallucinations, skip silent segments, and improve accuracy.
     /// </summary>
     private WhisperProcessorBuilder ApplyQualityTuning(WhisperProcessorBuilder builder, string? prompt = null)
     {
         builder
             .WithThreads(_threads)
-            .WithNoSpeechThreshold(0.6f)        // Skip segments with <60% speech probability
-            .WithEntropyThreshold(2.4f)          // Skip high-entropy (garbled/hallucinated) segments
-            .WithLogProbThreshold(-1.0f)         // Skip very low confidence output
-            .WithTemperature(0.0f)               // Deterministic (greedy) decoding first
-            .WithTemperatureInc(0.2f);           // Increase temp on fallback attempts
+            .WithNoSpeechThreshold(0.6f) // Skip segments with <60% speech probability
+            .WithEntropyThreshold(2.4f) // Skip high-entropy (garbled/hallucinated) segments
+            .WithLogProbThreshold(-1.0f) // Skip very low confidence output
+            .WithTemperature(0.0f) // Deterministic (greedy) decoding first
+            .WithTemperatureInc(0.2f); // Increase temp on fallback attempts
 
-        if (_language != "auto" && !string.IsNullOrEmpty(_language))
-        {
-            builder.WithLanguage(_language);
-        }
+        if (_language != "auto" && !string.IsNullOrEmpty(_language)) builder.WithLanguage(_language);
 
         // Pass previous chunk's text as context for continuity between chunks.
         // This reduces cold-start hallucinations and improves word accuracy at boundaries.
-        if (!string.IsNullOrWhiteSpace(prompt))
-        {
-            builder.WithPrompt(prompt);
-        }
+        if (!string.IsNullOrWhiteSpace(prompt)) builder.WithPrompt(prompt);
 
         // Use greedy sampling (default) — beam search is 2-5x slower and
         // produces single long segments per chunk, destroying subtitle timing
@@ -162,7 +166,7 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
-    /// Transcribe an audio file (batch mode - processes entire file).
+    ///     Transcribe an audio file (batch mode - processes entire file).
     /// </summary>
     public async Task<TranscriptionResult> TranscribeFileAsync(
         string audioPath,
@@ -172,7 +176,7 @@ public sealed class WhisperTranscriptionService : IDisposable
     {
         await InitializeAsync(null, ct);
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = Stopwatch.StartNew();
         var segments = new List<TranscriptSegment>();
 
         // Convert to 16kHz mono float samples
@@ -183,12 +187,12 @@ public sealed class WhisperTranscriptionService : IDisposable
         progress?.Report((0, audioDuration, "Transcribing..."));
 
         // Create processor with quality tuning and optional context prompt
-        var builder = ApplyQualityTuning(_factory!.CreateBuilder(), prompt);
+        var builder = ApplyQualityTuning(Factory!.CreateBuilder(), prompt);
 
         using var processor = builder.Build();
 
         string? lastText = null;
-        int consecutiveRepeats = 0;
+        var consecutiveRepeats = 0;
 
         await foreach (var result in processor.ProcessAsync(samples, ct))
         {
@@ -241,8 +245,8 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
-    /// Transcribe audio from a stream of float samples (streaming mode).
-    /// Yields segments as they're transcribed.
+    ///     Transcribe audio from a stream of float samples (streaming mode).
+    ///     Yields segments as they're transcribed.
     /// </summary>
     public async IAsyncEnumerable<TranscriptSegment> TranscribeStreamingAsync(
         IAsyncEnumerable<float[]> audioChunks,
@@ -251,7 +255,7 @@ public sealed class WhisperTranscriptionService : IDisposable
     {
         await InitializeAsync(null, ct);
 
-        var builder = ApplyQualityTuning(_factory!.CreateBuilder());
+        var builder = ApplyQualityTuning(Factory!.CreateBuilder());
 
         using var processor = builder.Build();
 
@@ -270,7 +274,6 @@ public sealed class WhisperTranscriptionService : IDisposable
                 accumulatedSamples.Clear();
 
                 await foreach (var result in processor.ProcessAsync(samples, ct))
-                {
                     yield return new TranscriptSegment
                     {
                         StartSeconds = initialOffsetSeconds + processedOffset + result.Start.TotalSeconds,
@@ -278,7 +281,6 @@ public sealed class WhisperTranscriptionService : IDisposable
                         Text = result.Text.Trim(),
                         Confidence = result.Probability
                     };
-                }
 
                 processedOffset += samples.Length / 16000.0;
             }
@@ -290,7 +292,6 @@ public sealed class WhisperTranscriptionService : IDisposable
             var samples = accumulatedSamples.ToArray();
 
             await foreach (var result in processor.ProcessAsync(samples, ct))
-            {
                 yield return new TranscriptSegment
                 {
                     StartSeconds = initialOffsetSeconds + processedOffset + result.Start.TotalSeconds,
@@ -298,15 +299,14 @@ public sealed class WhisperTranscriptionService : IDisposable
                     Text = result.Text.Trim(),
                     Confidence = result.Probability
                 };
-            }
         }
     }
 
     /// <summary>
-    /// Detect text with repetitive hallucination patterns.
-    /// Returns true if the text contains the same short phrase repeated 3+ times.
+    ///     Detect text with repetitive hallucination patterns.
+    ///     Returns true if the text contains the same short phrase repeated 3+ times.
     /// </summary>
-    private static bool IsRepetitiveText(string text)
+    internal static bool IsRepetitiveText(string text)
     {
         if (text.Length < 10) return false;
 
@@ -314,20 +314,19 @@ public sealed class WhisperTranscriptionService : IDisposable
         if (words.Length < 6) return false;
 
         // Check for repeating sequences of 1-4 words
-        for (int gramSize = 1; gramSize <= Math.Min(4, words.Length / 3); gramSize++)
+        for (var gramSize = 1; gramSize <= Math.Min(4, words.Length / 3); gramSize++)
         {
-            int repeatCount = 1;
-            for (int i = gramSize; i + gramSize <= words.Length; i += gramSize)
+            var repeatCount = 1;
+            for (var i = gramSize; i + gramSize <= words.Length; i += gramSize)
             {
-                bool match = true;
-                for (int j = 0; j < gramSize; j++)
-                {
+                var match = true;
+                for (var j = 0; j < gramSize; j++)
                     if (!string.Equals(words[i + j], words[i + j - gramSize], StringComparison.OrdinalIgnoreCase))
                     {
                         match = false;
                         break;
                     }
-                }
+
                 if (match) repeatCount++;
                 else repeatCount = 1;
 
@@ -339,7 +338,7 @@ public sealed class WhisperTranscriptionService : IDisposable
     }
 
     /// <summary>
-    /// Convert audio file to 16kHz mono float samples.
+    ///     Convert audio file to 16kHz mono float samples.
     /// </summary>
     private static async Task<float[]> ConvertToSamplesAsync(string audioPath, CancellationToken ct)
     {
@@ -349,20 +348,15 @@ public sealed class WhisperTranscriptionService : IDisposable
             ISampleProvider provider = reader;
 
             // Resample to 16kHz if needed
-            if (reader.WaveFormat.SampleRate != 16000)
-            {
-                provider = new WdlResamplingSampleProvider(reader, 16000);
-            }
+            if (reader.WaveFormat.SampleRate != 16000) provider = new WdlResamplingSampleProvider(reader, 16000);
 
             // Convert to mono if needed
             if (provider.WaveFormat.Channels > 1)
-            {
                 provider = new StereoToMonoSampleProvider(provider)
                 {
                     LeftVolume = 0.5f,
                     RightVolume = 0.5f
                 };
-            }
 
             // Read all samples
             var samples = new List<float>();
@@ -370,47 +364,28 @@ public sealed class WhisperTranscriptionService : IDisposable
             int samplesRead;
 
             while ((samplesRead = provider.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                for (int i = 0; i < samplesRead; i++)
-                {
+                for (var i = 0; i < samplesRead; i++)
                     samples.Add(buffer[i]);
-                }
-            }
 
             return samples.ToArray();
         }, ct);
     }
-
-    /// <summary>
-    /// Get the loaded WhisperFactory for creating processors.
-    /// Returns null if not yet initialized.
-    /// Used by RealtimeTranscriber to create processors without reflection.
-    /// </summary>
-    internal WhisperFactory? Factory => _factory;
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        _factory?.Dispose();
-        _initLock.Dispose();
-    }
 }
 
 /// <summary>
-/// Realtime transcriber with buffering for live playback.
-/// Accumulates audio and processes ahead of playback.
+///     Realtime transcriber with buffering for live playback.
+///     Accumulates audio and processes ahead of playback.
 /// </summary>
 public class RealtimeTranscriber : IAsyncDisposable
 {
-    private readonly WhisperTranscriptionService _whisper;
     private readonly Channel<(float[] samples, double timestamp)> _audioChannel;
-    private readonly Channel<TranscriptSegment> _outputChannel;
-    private readonly CancellationTokenSource _cts;
-    private Task? _processingTask;
 
     private readonly double _bufferSeconds;
+    private readonly CancellationTokenSource _cts;
+    private readonly Channel<TranscriptSegment> _outputChannel;
     private readonly List<TranscriptSegment> _segments = new();
+    private readonly WhisperTranscriptionService _whisper;
+    private Task? _processingTask;
 
     public RealtimeTranscriber(
         string modelSize = "tiny",
@@ -427,8 +402,26 @@ public class RealtimeTranscriber : IAsyncDisposable
         _cts = new CancellationTokenSource();
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        _cts.Cancel();
+        _audioChannel.Writer.Complete();
+
+        if (_processingTask != null)
+            try
+            {
+                await _processingTask;
+            }
+            catch
+            {
+            }
+
+        _whisper.Dispose();
+        _cts.Dispose();
+    }
+
     /// <summary>
-    /// Start the background transcription task.
+    ///     Start the background transcription task.
     /// </summary>
     public async Task StartAsync(
         IProgress<(long downloaded, long total, string status)>? progress = null,
@@ -442,7 +435,7 @@ public class RealtimeTranscriber : IAsyncDisposable
     }
 
     /// <summary>
-    /// Feed audio samples (call this as FFmpeg produces audio).
+    ///     Feed audio samples (call this as FFmpeg produces audio).
     /// </summary>
     public void AddSamples(float[] samples, double timestamp)
     {
@@ -450,15 +443,12 @@ public class RealtimeTranscriber : IAsyncDisposable
     }
 
     /// <summary>
-    /// Get subtitle for the given playback time.
+    ///     Get subtitle for the given playback time.
     /// </summary>
     public TranscriptSegment? GetSubtitleAt(double playbackSeconds)
     {
         // Drain any new segments from the output channel
-        while (_outputChannel.Reader.TryRead(out var segment))
-        {
-            _segments.Add(segment);
-        }
+        while (_outputChannel.Reader.TryRead(out var segment)) _segments.Add(segment);
 
         // Find segment that covers this time
         return _segments
@@ -467,15 +457,12 @@ public class RealtimeTranscriber : IAsyncDisposable
     }
 
     /// <summary>
-    /// Check if we have enough buffered transcription to start playback.
+    ///     Check if we have enough buffered transcription to start playback.
     /// </summary>
     public bool HasSufficientBuffer(double playbackSeconds)
     {
         // Drain segments
-        while (_outputChannel.Reader.TryRead(out var segment))
-        {
-            _segments.Add(segment);
-        }
+        while (_outputChannel.Reader.TryRead(out var segment)) _segments.Add(segment);
 
         // Check if we have transcription ahead of playback time
         var maxTranscribedTime = _segments.Count > 0
@@ -486,7 +473,7 @@ public class RealtimeTranscriber : IAsyncDisposable
     }
 
     /// <summary>
-    /// Signal that no more audio will be added.
+    ///     Signal that no more audio will be added.
     /// </summary>
     public void Complete()
     {
@@ -569,19 +556,8 @@ public class RealtimeTranscriber : IAsyncDisposable
         }
     }
 
-    private WhisperFactory? GetFactory() => _whisper.Factory;
-
-    public async ValueTask DisposeAsync()
+    private WhisperFactory? GetFactory()
     {
-        _cts.Cancel();
-        _audioChannel.Writer.Complete();
-
-        if (_processingTask != null)
-        {
-            try { await _processingTask; } catch { }
-        }
-
-        _whisper.Dispose();
-        _cts.Dispose();
+        return _whisper.Factory;
     }
 }

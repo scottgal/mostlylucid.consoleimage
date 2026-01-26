@@ -1,4 +1,5 @@
 // AnimatedDocument - Spectre.Console animated IRenderable for PlayerDocument
+
 using System.Diagnostics;
 using Spectre.Console;
 using Spectre.Console.Rendering;
@@ -11,7 +12,6 @@ namespace ConsoleImage.Player.Spectre;
 /// </summary>
 public class AnimatedDocument : IRenderable
 {
-    private readonly PlayerDocument _document;
     private readonly Stopwatch _frameTimer = Stopwatch.StartNew();
     private float? _targetFps;
 
@@ -20,7 +20,60 @@ public class AnimatedDocument : IRenderable
     /// </summary>
     public AnimatedDocument(PlayerDocument document)
     {
-        _document = document;
+        Document = document;
+    }
+
+    /// <summary>
+    ///     The underlying document.
+    /// </summary>
+    public PlayerDocument Document { get; }
+
+    /// <summary>
+    ///     Current frame index.
+    /// </summary>
+    public int CurrentFrame { get; private set; }
+
+    /// <summary>
+    ///     Total frame count.
+    /// </summary>
+    public int FrameCount => Document.FrameCount;
+
+    /// <summary>
+    ///     Whether this document has animation (more than 1 frame).
+    /// </summary>
+    public bool IsAnimated => Document.IsAnimated;
+
+    /// <summary>
+    ///     Target FPS override. If set, ignores embedded timing.
+    /// </summary>
+    public float? TargetFps
+    {
+        get => _targetFps;
+        set => _targetFps = value;
+    }
+
+    public Measurement Measure(RenderOptions options, int maxWidth)
+    {
+        if (Document.FrameCount == 0)
+            return new Measurement(0, 0);
+
+        var frame = Document.Frames[CurrentFrame];
+        // Min = frame width (we need at least this much), Max = capped at maxWidth
+        return new Measurement(frame.Width, Math.Min(frame.Width, maxWidth));
+    }
+
+    public IEnumerable<Segment> Render(RenderOptions options, int maxWidth)
+    {
+        if (Document.FrameCount == 0)
+            yield break;
+
+        var frame = Document.Frames[CurrentFrame];
+        var lines = frame.Content.Split('\n');
+        foreach (var line in lines)
+        {
+            yield return new Segment(line.TrimEnd('\r'));
+            yield return Segment.LineBreak;
+        }
     }
 
     /// <summary>
@@ -42,51 +95,22 @@ public class AnimatedDocument : IRenderable
     }
 
     /// <summary>
-    ///     The underlying document.
-    /// </summary>
-    public PlayerDocument Document => _document;
-
-    /// <summary>
-    ///     Current frame index.
-    /// </summary>
-    public int CurrentFrame { get; private set; }
-
-    /// <summary>
-    ///     Total frame count.
-    /// </summary>
-    public int FrameCount => _document.FrameCount;
-
-    /// <summary>
-    ///     Whether this document has animation (more than 1 frame).
-    /// </summary>
-    public bool IsAnimated => _document.IsAnimated;
-
-    /// <summary>
-    ///     Target FPS override. If set, ignores embedded timing.
-    /// </summary>
-    public float? TargetFps
-    {
-        get => _targetFps;
-        set => _targetFps = value;
-    }
-
-    /// <summary>
     ///     Advance to the next frame if enough time has elapsed.
     ///     Call this in your Live display loop.
     ///     Returns true if frame changed.
     /// </summary>
     public bool TryAdvanceFrame()
     {
-        if (_document.FrameCount <= 1)
+        if (Document.FrameCount <= 1)
             return false;
 
         var currentDelay = _targetFps.HasValue && _targetFps.Value > 0
             ? (int)(1000f / _targetFps.Value)
-            : _document.Frames[CurrentFrame].DelayMs;
+            : Document.Frames[CurrentFrame].DelayMs;
 
         if (_frameTimer.ElapsedMilliseconds >= currentDelay)
         {
-            CurrentFrame = (CurrentFrame + 1) % _document.FrameCount;
+            CurrentFrame = (CurrentFrame + 1) % Document.FrameCount;
             _frameTimer.Restart();
             return true;
         }
@@ -108,34 +132,10 @@ public class AnimatedDocument : IRenderable
     /// </summary>
     public void SetFrame(int frameIndex)
     {
-        if (frameIndex >= 0 && frameIndex < _document.FrameCount)
+        if (frameIndex >= 0 && frameIndex < Document.FrameCount)
         {
             CurrentFrame = frameIndex;
             _frameTimer.Restart();
-        }
-    }
-
-    public Measurement Measure(RenderOptions options, int maxWidth)
-    {
-        if (_document.FrameCount == 0)
-            return new Measurement(0, 0);
-
-        var frame = _document.Frames[CurrentFrame];
-        // Min = frame width (we need at least this much), Max = capped at maxWidth
-        return new Measurement(frame.Width, Math.Min(frame.Width, maxWidth));
-    }
-
-    public IEnumerable<Segment> Render(RenderOptions options, int maxWidth)
-    {
-        if (_document.FrameCount == 0)
-            yield break;
-
-        var frame = _document.Frames[CurrentFrame];
-        var lines = frame.Content.Split('\n');
-        foreach (var line in lines)
-        {
-            yield return new Segment(line.TrimEnd('\r'));
-            yield return Segment.LineBreak;
         }
     }
 }
@@ -219,7 +219,8 @@ public static class AnimatedDocumentExtensions
                     // Update table with current frame and status
                     table.Rows.Clear();
                     table.AddRow(animation);
-                    table.AddRow(new Markup($"[dim]Frame {animation.CurrentFrame + 1}/{animation.FrameCount} | Loop {loops + 1}/{(loopCount == 0 ? "∞" : loopCount.ToString())}[/]"));
+                    table.AddRow(new Markup(
+                        $"[dim]Frame {animation.CurrentFrame + 1}/{animation.FrameCount} | Loop {loops + 1}/{(loopCount == 0 ? "∞" : loopCount.ToString())}[/]"));
 
                     ctx.Refresh();
 

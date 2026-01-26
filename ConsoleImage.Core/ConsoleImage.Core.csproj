@@ -33,7 +33,7 @@
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.2"/>
         <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="all"/>
         <!-- 7z/LZMA compression for optimized document archives -->
-        <PackageReference Include="SharpCompress" Version="0.44.3" />
+        <PackageReference Include="SharpCompress" Version="0.44.3"/>
     </ItemGroup>
 
     <ItemGroup>

@@ -1,42 +1,42 @@
+using System.Runtime.CompilerServices;
 using Avalonia.Media.Imaging;
 using ConsoleImage.Video.Core;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace ConsoleVideo.Avalonia.Services;
 
 /// <summary>
-/// Service for extracting a visual thumbnail timeline across a video.
-/// Extracts many small, low-resolution thumbnails for fast scrubbing.
+///     Service for extracting a visual thumbnail timeline across a video.
+///     Extracts many small, low-resolution thumbnails for fast scrubbing.
 /// </summary>
 public class ThumbnailTimelineService
 {
     private readonly FFmpegService _ffmpeg = new();
 
     /// <summary>
-    /// Thumbnail width in pixels (very small for efficiency).
+    ///     Thumbnail width in pixels (very small for efficiency).
     /// </summary>
     public int ThumbnailWidth { get; set; } = 60;
 
     /// <summary>
-    /// Number of thumbnails across the entire video.
+    ///     Number of thumbnails across the entire video.
     /// </summary>
     public int ThumbnailCount { get; set; } = 60;
 
     /// <summary>
-    /// Extract thumbnails across the video for a visual scrub bar.
-    /// Yields thumbnails as they're extracted for incremental UI updates.
-    /// Uses fast keyframe-only extraction (~100x faster) for better scrubbing.
+    ///     Extract thumbnails across the video for a visual scrub bar.
+    ///     Yields thumbnails as they're extracted for incremental UI updates.
+    ///     Uses fast keyframe-only extraction (~100x faster) for better scrubbing.
     /// </summary>
     public async IAsyncEnumerable<TimelineThumbnail> ExtractTimelineStreamAsync(
         string videoPath,
         double duration,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var interval = duration / ThumbnailCount;
 
-        for (int i = 0; i < ThumbnailCount; i++)
+        for (var i = 0; i < ThumbnailCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -62,7 +62,7 @@ public class ThumbnailTimelineService
                         Index = i,
                         Timestamp = timestamp,
                         Thumbnail = bitmap,
-                        PositionPercent = duration > 0 ? (timestamp / duration) * 100 : 0
+                        PositionPercent = duration > 0 ? timestamp / duration * 100 : 0
                     };
                     frame.Dispose();
                 }
@@ -75,7 +75,7 @@ public class ThumbnailTimelineService
                     Index = i,
                     Timestamp = timestamp,
                     Thumbnail = null,
-                    PositionPercent = duration > 0 ? (timestamp / duration) * 100 : 0
+                    PositionPercent = duration > 0 ? timestamp / duration * 100 : 0
                 };
             }
 
@@ -85,7 +85,7 @@ public class ThumbnailTimelineService
     }
 
     /// <summary>
-    /// Extract thumbnails across the video for a visual scrub bar.
+    ///     Extract thumbnails across the video for a visual scrub bar.
     /// </summary>
     public async Task<List<TimelineThumbnail>> ExtractTimelineAsync(
         string videoPath,
@@ -107,7 +107,7 @@ public class ThumbnailTimelineService
     }
 
     /// <summary>
-    /// Extract a single thumbnail at a specific timestamp (for on-demand scrubbing).
+    ///     Extract a single thumbnail at a specific timestamp (for on-demand scrubbing).
     /// </summary>
     public async Task<Bitmap?> ExtractThumbnailAtAsync(
         string videoPath,
@@ -130,7 +130,10 @@ public class ThumbnailTimelineService
                 return bitmap;
             }
         }
-        catch { }
+        catch
+        {
+        }
+
         return null;
     }
 
@@ -151,7 +154,7 @@ public class ThumbnailTimelineService
 }
 
 /// <summary>
-/// A single thumbnail in the video timeline.
+///     A single thumbnail in the video timeline.
 /// </summary>
 public class TimelineThumbnail
 {

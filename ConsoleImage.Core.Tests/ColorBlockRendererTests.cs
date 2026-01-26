@@ -277,7 +277,7 @@ public class ColorBlockRendererTests : IDisposable
             MaxWidth = 20,
             MaxHeight = 10,
             UseColor = true,
-            Gamma = 1.0f  // No gamma correction
+            Gamma = 1.0f // No gamma correction
         });
 
         var image = CreateTestImage(100, 100, new Rgba32(255, 0, 0)); // Pure red
@@ -297,20 +297,17 @@ public class ColorBlockRendererTests : IDisposable
 
         var colors = new[]
         {
-            new Rgba32(255, 0, 0),   // Red
-            new Rgba32(0, 255, 0),   // Green
-            new Rgba32(0, 0, 255),   // Blue
+            new Rgba32(255, 0, 0), // Red
+            new Rgba32(0, 255, 0), // Green
+            new Rgba32(0, 0, 255), // Blue
             new Rgba32(255, 255, 0), // Yellow
-            new Rgba32(255, 0, 255), // Magenta
+            new Rgba32(255, 0, 255) // Magenta
         };
 
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                image[x, y] = colors[(x + y) % colors.Length];
-            }
-        }
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+            image[x, y] = colors[(x + y) % colors.Length];
+
         return image;
     }
 
@@ -322,20 +319,18 @@ public class ColorBlockRendererTests : IDisposable
 
         var colors = new[]
         {
-            new Rgba32(255, 0, 0),   // Red
-            new Rgba32(0, 255, 0),   // Green
-            new Rgba32(0, 0, 255),   // Blue
+            new Rgba32(255, 0, 0), // Red
+            new Rgba32(0, 255, 0), // Green
+            new Rgba32(0, 0, 255) // Blue
         };
 
         var bandHeight = height / colors.Length;
-        for (int y = 0; y < height; y++)
+        for (var y = 0; y < height; y++)
         {
             var colorIndex = Math.Min(y / bandHeight, colors.Length - 1);
-            for (int x = 0; x < width; x++)
-            {
-                image[x, y] = colors[colorIndex];
-            }
+            for (var x = 0; x < width; x++) image[x, y] = colors[colorIndex];
         }
+
         return image;
     }
 

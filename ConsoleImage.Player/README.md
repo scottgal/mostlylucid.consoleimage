@@ -1,6 +1,7 @@
 # ConsoleImage.Player
 
-A minimal, zero-dependency player for ConsoleImage documents (.cidz, .json). Play pre-rendered ASCII art animations in any terminal without needing the full rendering library.
+A minimal, zero-dependency player for ConsoleImage documents (.cidz, .json). Play pre-rendered ASCII art animations in
+any terminal without needing the full rendering library.
 
 **Use case**: Embed document playback in your own applications without pulling in ImageSharp or FFmpeg dependencies.
 
@@ -166,12 +167,13 @@ Or use the full `mostlylucid.consoleimage` library to create documents programma
 
 ## Complete Example: Animated Startup Logo
 
-This example shows how to add an animated ASCII logo to your console application using a pre-rendered `.cidz` document. The animation plays once on startup before your app begins.
+This example shows how to add an animated ASCII logo to your console application using a pre-rendered `.cidz` document.
+The animation plays once on startup before your app begins.
 
 ### Render Modes
 
-| ASCII Mode | ColorBlocks Mode | Braille Mode |
-|------------|------------------|--------------|
+| ASCII Mode                                                                                                                      | ColorBlocks Mode                                                                                                                  | Braille Mode                                                                                                                        |
+|---------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_ascii.gif" width="200" alt="ASCII"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_blocks.gif" width="200" alt="Blocks"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/moviebill_braille.gif" width="200" alt="Braille"> |
 
 ### Step 1: Create the Document
@@ -296,12 +298,13 @@ await player.PlayAsync(loopCount: 1);
 
 ### Why Use Pre-rendered Documents?
 
-| Approach | Dependencies | Startup Time | File Size |
-|----------|--------------|--------------|-----------|
-| **Player + .cidz** | None (built-in JSON) | ~1-3ms | Small (~50KB) |
-| Full library | ImageSharp (~2MB) | ~50-100ms | Large |
+| Approach           | Dependencies         | Startup Time | File Size     |
+|--------------------|----------------------|--------------|---------------|
+| **Player + .cidz** | None (built-in JSON) | ~1-3ms       | Small (~50KB) |
+| Full library       | ImageSharp (~2MB)    | ~50-100ms    | Large         |
 
 The Player package is ideal for:
+
 - **Splash screens** - Show animated logo during initialization
 - **CLI tools** - Add visual flair without bloating your binary
 - **AOT apps** - No reflection, works with Native AOT

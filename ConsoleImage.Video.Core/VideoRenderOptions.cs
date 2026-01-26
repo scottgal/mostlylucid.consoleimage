@@ -4,147 +4,147 @@ using ConsoleImage.Core.Subtitles;
 namespace ConsoleImage.Video.Core;
 
 /// <summary>
-/// Frame sampling mode for video playback.
+///     Frame sampling mode for video playback.
 /// </summary>
 public enum FrameSamplingMode
 {
     /// <summary>
-    /// Render every frame (or use uniform FrameStep).
+    ///     Render every frame (or use uniform FrameStep).
     /// </summary>
     Uniform,
 
     /// <summary>
-    /// Smart frame skipping using perceptual hashing.
-    /// Skips visually similar frames while maintaining timing.
+    ///     Smart frame skipping using perceptual hashing.
+    ///     Skips visually similar frames while maintaining timing.
     /// </summary>
     Smart
 }
 
 /// <summary>
-/// Configuration options for video-to-ASCII rendering.
-/// Extends RenderOptions with video-specific settings.
+///     Configuration options for video-to-ASCII rendering.
+///     Extends RenderOptions with video-specific settings.
 /// </summary>
 public class VideoRenderOptions
 {
     /// <summary>
-    /// Base render options for ASCII conversion.
+    ///     Base render options for ASCII conversion.
     /// </summary>
     public RenderOptions RenderOptions { get; set; } = RenderOptions.Default.Clone();
 
     /// <summary>
-    /// Start time in seconds. Null = start of video.
+    ///     Start time in seconds. Null = start of video.
     /// </summary>
     public double? StartTime { get; set; }
 
     /// <summary>
-    /// End time in seconds. Null = end of video.
+    ///     End time in seconds. Null = end of video.
     /// </summary>
     public double? EndTime { get; set; }
 
     /// <summary>
-    /// Target playback FPS. Null = use video's native framerate.
-    /// Lower values reduce CPU/memory usage.
+    ///     Target playback FPS. Null = use video's native framerate.
+    ///     Lower values reduce CPU/memory usage.
     /// </summary>
     public double? TargetFps { get; set; }
 
     /// <summary>
-    /// Frame sampling rate. 1 = every frame, 2 = every 2nd frame, etc.
-    /// Applied at decode time for efficiency.
-    /// Default: 1 (no skipping)
+    ///     Frame sampling rate. 1 = every frame, 2 = every 2nd frame, etc.
+    ///     Applied at decode time for efficiency.
+    ///     Default: 1 (no skipping)
     /// </summary>
     public int FrameStep { get; set; } = 1;
 
     /// <summary>
-    /// Frame sampling strategy for intelligent sampling.
+    ///     Frame sampling strategy for intelligent sampling.
     /// </summary>
     public FrameSamplingStrategy SamplingStrategy { get; set; } = FrameSamplingStrategy.Uniform;
 
     /// <summary>
-    /// Frame sampling mode: Uniform (fixed step) or Smart (perceptual hash skip).
+    ///     Frame sampling mode: Uniform (fixed step) or Smart (perceptual hash skip).
     /// </summary>
     public FrameSamplingMode SamplingMode { get; set; } = FrameSamplingMode.Uniform;
 
     /// <summary>
-    /// Hash similarity threshold for smart frame skipping (0-64).
-    /// Lower = stricter matching (only nearly identical frames skipped).
-    /// Higher = more aggressive (may cause visible stuttering).
-    /// Default: 2 (conservative - only skip nearly identical frames)
+    ///     Hash similarity threshold for smart frame skipping (0-64).
+    ///     Lower = stricter matching (only nearly identical frames skipped).
+    ///     Higher = more aggressive (may cause visible stuttering).
+    ///     Default: 2 (conservative - only skip nearly identical frames)
     /// </summary>
     public int SmartSkipThreshold { get; set; } = 2;
 
     /// <summary>
-    /// Enable debug output for smart frame sampling.
+    ///     Enable debug output for smart frame sampling.
     /// </summary>
     public bool DebugMode { get; set; }
 
     /// <summary>
-    /// Number of frames to buffer ahead during playback.
-    /// Higher values provide smoother playback but use more memory.
-    /// Default: 3
+    ///     Number of frames to buffer ahead during playback.
+    ///     Higher values provide smoother playback but use more memory.
+    ///     Default: 3
     /// </summary>
     public int BufferAheadFrames { get; set; } = 3;
 
     /// <summary>
-    /// Animation speed multiplier. 1.0 = normal speed.
+    ///     Animation speed multiplier. 1.0 = normal speed.
     /// </summary>
     public float SpeedMultiplier { get; set; } = 1.0f;
 
     /// <summary>
-    /// Number of loops. 0 = infinite.
+    ///     Number of loops. 0 = infinite.
     /// </summary>
     public int LoopCount { get; set; } = 1;
 
     /// <summary>
-    /// Use alternate screen buffer for playback.
-    /// When true, preserves terminal scrollback.
+    ///     Use alternate screen buffer for playback.
+    ///     When true, preserves terminal scrollback.
     /// </summary>
     public bool UseAltScreen { get; set; } = true;
 
     /// <summary>
-    /// Enable hardware acceleration for video decoding.
+    ///     Enable hardware acceleration for video decoding.
     /// </summary>
     public bool UseHardwareAcceleration { get; set; } = true;
 
     /// <summary>
-    /// Rendering mode for output.
+    ///     Rendering mode for output.
     /// </summary>
     public VideoRenderMode RenderMode { get; set; } = VideoRenderMode.Ascii;
 
     /// <summary>
-    /// Scene change detection threshold (0.0-1.0).
-    /// Used for scene-aware sampling. Lower = more sensitive.
+    ///     Scene change detection threshold (0.0-1.0).
+    ///     Used for scene-aware sampling. Lower = more sensitive.
     /// </summary>
     public double SceneThreshold { get; set; } = 0.4;
 
     /// <summary>
-    /// Show status line below the rendered output with progress, timing, etc.
+    ///     Show status line below the rendered output with progress, timing, etc.
     /// </summary>
     public bool ShowStatus { get; set; }
 
     /// <summary>
-    /// Width for status line (null = auto-detect from video width).
+    ///     Width for status line (null = auto-detect from video width).
     /// </summary>
     public int? StatusWidth { get; set; }
 
     /// <summary>
-    /// Source filename for status display.
+    ///     Source filename for status display.
     /// </summary>
     public string? SourceFileName { get; set; }
 
     /// <summary>
-    /// Subtitle track to display during playback.
+    ///     Subtitle track to display during playback.
     /// </summary>
     public SubtitleTrack? Subtitles { get; set; }
 
     /// <summary>
-    /// Live subtitle provider for streaming transcription.
-    /// When set, subtitles are generated dynamically during playback.
-    /// Takes precedence over the static Subtitles property.
+    ///     Live subtitle provider for streaming transcription.
+    ///     When set, subtitles are generated dynamically during playback.
+    ///     Takes precedence over the static Subtitles property.
     /// </summary>
     public ILiveSubtitleProvider? LiveSubtitleProvider { get; set; }
 
     /// <summary>
-    /// Create default options suitable for most videos.
+    ///     Create default options suitable for most videos.
     /// </summary>
     public static VideoRenderOptions Default => new()
     {
@@ -155,8 +155,8 @@ public class VideoRenderOptions
     };
 
     /// <summary>
-    /// Create options optimized for low-resource playback.
-    /// Uses frame skipping and reduced buffer.
+    ///     Create options optimized for low-resource playback.
+    ///     Uses frame skipping and reduced buffer.
     /// </summary>
     public static VideoRenderOptions LowResource => new()
     {
@@ -174,7 +174,7 @@ public class VideoRenderOptions
     };
 
     /// <summary>
-    /// Create options for high-quality preview.
+    ///     Create options for high-quality preview.
     /// </summary>
     public static VideoRenderOptions HighQuality => new()
     {
@@ -191,18 +191,21 @@ public class VideoRenderOptions
     };
 
     /// <summary>
-    /// Create options with time range.
+    ///     Create options with time range.
     /// </summary>
-    public static VideoRenderOptions ForTimeRange(double start, double end) => new()
+    public static VideoRenderOptions ForTimeRange(double start, double end)
     {
-        RenderOptions = RenderOptions.ForAnimation(1),
-        StartTime = start,
-        EndTime = end,
-        LoopCount = 1
-    };
+        return new VideoRenderOptions
+        {
+            RenderOptions = RenderOptions.ForAnimation(1),
+            StartTime = start,
+            EndTime = end,
+            LoopCount = 1
+        };
+    }
 
     /// <summary>
-    /// Calculate effective duration based on start/end times and video duration.
+    ///     Calculate effective duration based on start/end times and video duration.
     /// </summary>
     public double GetEffectiveDuration(double videoDuration)
     {
@@ -212,7 +215,7 @@ public class VideoRenderOptions
     }
 
     /// <summary>
-    /// Create a copy with modifications.
+    ///     Create a copy with modifications.
     /// </summary>
     public VideoRenderOptions With(Action<VideoRenderOptions> configure)
     {
@@ -222,80 +225,83 @@ public class VideoRenderOptions
     }
 
     /// <summary>
-    /// Create a deep copy.
+    ///     Create a deep copy.
     /// </summary>
-    public VideoRenderOptions Clone() => new()
+    public VideoRenderOptions Clone()
     {
-        RenderOptions = RenderOptions.Clone(),
-        StartTime = StartTime,
-        EndTime = EndTime,
-        TargetFps = TargetFps,
-        FrameStep = FrameStep,
-        SamplingStrategy = SamplingStrategy,
-        SamplingMode = SamplingMode,
-        SmartSkipThreshold = SmartSkipThreshold,
-        DebugMode = DebugMode,
-        BufferAheadFrames = BufferAheadFrames,
-        SpeedMultiplier = SpeedMultiplier,
-        LoopCount = LoopCount,
-        UseAltScreen = UseAltScreen,
-        UseHardwareAcceleration = UseHardwareAcceleration,
-        RenderMode = RenderMode,
-        SceneThreshold = SceneThreshold,
-        ShowStatus = ShowStatus,
-        SourceFileName = SourceFileName,
-        Subtitles = Subtitles, // Shared reference, not deep copy
-        LiveSubtitleProvider = LiveSubtitleProvider // Shared reference
-    };
+        return new VideoRenderOptions
+        {
+            RenderOptions = RenderOptions.Clone(),
+            StartTime = StartTime,
+            EndTime = EndTime,
+            TargetFps = TargetFps,
+            FrameStep = FrameStep,
+            SamplingStrategy = SamplingStrategy,
+            SamplingMode = SamplingMode,
+            SmartSkipThreshold = SmartSkipThreshold,
+            DebugMode = DebugMode,
+            BufferAheadFrames = BufferAheadFrames,
+            SpeedMultiplier = SpeedMultiplier,
+            LoopCount = LoopCount,
+            UseAltScreen = UseAltScreen,
+            UseHardwareAcceleration = UseHardwareAcceleration,
+            RenderMode = RenderMode,
+            SceneThreshold = SceneThreshold,
+            ShowStatus = ShowStatus,
+            SourceFileName = SourceFileName,
+            Subtitles = Subtitles, // Shared reference, not deep copy
+            LiveSubtitleProvider = LiveSubtitleProvider // Shared reference
+        };
+    }
 }
 
 /// <summary>
-/// Frame sampling strategy for video playback.
+///     Frame sampling strategy for video playback.
 /// </summary>
 public enum FrameSamplingStrategy
 {
     /// <summary>
-    /// Uniform sampling at fixed intervals.
-    /// Fastest, most predictable timing.
+    ///     Uniform sampling at fixed intervals.
+    ///     Fastest, most predictable timing.
     /// </summary>
     Uniform,
 
     /// <summary>
-    /// Sample at keyframes (I-frames) for better quality.
-    /// Uses codec structure for natural breakpoints.
+    ///     Sample at keyframes (I-frames) for better quality.
+    ///     Uses codec structure for natural breakpoints.
     /// </summary>
     Keyframe,
 
     /// <summary>
-    /// Scene-aware sampling - prioritize frames at scene changes.
-    /// Uses FFmpeg scene detection.
+    ///     Scene-aware sampling - prioritize frames at scene changes.
+    ///     Uses FFmpeg scene detection.
     /// </summary>
     SceneAware,
 
     /// <summary>
-    /// Adaptive sampling based on motion.
-    /// More frames during high-motion, fewer during static scenes.
+    ///     Adaptive sampling based on motion.
+    ///     More frames during high-motion, fewer during static scenes.
     /// </summary>
     Adaptive
 }
 
 /// <summary>
-/// Rendering mode for video output.
+///     Rendering mode for video output.
 /// </summary>
 public enum VideoRenderMode
 {
     /// <summary>
-    /// Standard ASCII character rendering.
+    ///     Standard ASCII character rendering.
     /// </summary>
     Ascii,
 
     /// <summary>
-    /// Colored Unicode block characters (higher fidelity).
+    ///     Colored Unicode block characters (higher fidelity).
     /// </summary>
     ColorBlocks,
 
     /// <summary>
-    /// Braille characters (highest resolution, 2x4 dots per cell).
+    ///     Braille characters (highest resolution, 2x4 dots per cell).
     /// </summary>
     Braille
 }

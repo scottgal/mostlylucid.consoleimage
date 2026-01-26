@@ -1,6 +1,10 @@
 // ConsolePlayer - Plays PlayerDocument frames to the console
 // Zero dependencies beyond .NET runtime
 
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+
 namespace ConsoleImage.Player;
 
 /// <summary>
@@ -9,7 +13,6 @@ namespace ConsoleImage.Player;
 /// </summary>
 public class ConsolePlayer : IDisposable
 {
-    private readonly PlayerDocument _document;
     private readonly int _loopCount;
     private readonly float _speedMultiplier;
     private readonly PlayerSubtitleTrack? _subtitles;
@@ -29,16 +32,26 @@ public class ConsolePlayer : IDisposable
         int? loopCount = null,
         string? subtitlePath = null)
     {
-        _document = document;
+        Document = document;
         _speedMultiplier = speedMultiplier ?? document.Settings.AnimationSpeedMultiplier;
         _loopCount = loopCount ?? document.Settings.LoopCount;
         _subtitleWidth = document.Settings.MaxWidth > 0 ? document.Settings.MaxWidth : 80;
 
         // Load external subtitles if provided
         if (!string.IsNullOrEmpty(subtitlePath) && File.Exists(subtitlePath))
-        {
             _subtitles = LoadSubtitlesFromFile(subtitlePath);
-        }
+    }
+
+    /// <summary>
+    ///     The document being played
+    /// </summary>
+    public PlayerDocument Document { get; }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -52,34 +65,22 @@ public class ConsolePlayer : IDisposable
     public event Action<int>? OnLoopComplete;
 
     /// <summary>
-    ///     The document being played
-    /// </summary>
-    public PlayerDocument Document => _document;
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        GC.SuppressFinalize(this);
-    }
-
-    /// <summary>
     ///     Play the document asynchronously with animation support.
     /// </summary>
     public async Task PlayAsync(CancellationToken ct = default)
     {
-        if (_document.Frames.Count == 0)
+        if (Document.Frames.Count == 0)
             return;
 
         // Single frame - just display it
-        if (!_document.IsAnimated)
+        if (!Document.IsAnimated)
         {
-            Console.Write(_document.Frames[0].Content);
+            Console.Write(Document.Frames[0].Content);
             DisplaySubtitle(0);
             return;
         }
 
-        var maxHeight = _document.Frames.Max(f => f.Height);
+        var maxHeight = Document.Frames.Max(f => f.Height);
         var subtitleLines = _subtitles != null ? 2 : 0;
         var totalHeight = maxHeight + subtitleLines;
 
@@ -95,11 +96,11 @@ public class ConsolePlayer : IDisposable
             while (loopsRemaining > 0 && !ct.IsCancellationRequested)
             {
                 elapsedMs = 0;
-                for (var i = 0; i < _document.Frames.Count && !ct.IsCancellationRequested; i++)
+                for (var i = 0; i < Document.Frames.Count && !ct.IsCancellationRequested; i++)
                 {
-                    var frame = _document.Frames[i];
+                    var frame = Document.Frames[i];
 
-                    OnFrameChanged?.Invoke(i, _document.Frames.Count);
+                    OnFrameChanged?.Invoke(i, Document.Frames.Count);
 
                     // Move cursor to start (except first frame of first loop)
                     if (i > 0 || currentLoop > 0)
@@ -110,10 +111,7 @@ public class ConsolePlayer : IDisposable
                     Console.Write(frame.Content);
 
                     // Display subtitle if available
-                    if (_subtitles != null)
-                    {
-                        DisplaySubtitle(elapsedMs / 1000.0);
-                    }
+                    if (_subtitles != null) DisplaySubtitle(elapsedMs / 1000.0);
 
                     Console.Write("\x1b[?2026l");
                     Console.Out.Flush();
@@ -247,14 +245,12 @@ public class ConsolePlayer : IDisposable
         var line2 = "";
 
         foreach (var word in words)
-        {
             if (line1.Length + word.Length + 1 <= maxWidth)
                 line1 = line1.Length == 0 ? word : line1 + " " + word;
             else if (line2.Length + word.Length + 1 <= maxWidth)
                 line2 = line2.Length == 0 ? word : line2 + " " + word;
             else
                 break; // Text too long, truncate
-        }
 
         return string.IsNullOrEmpty(line2) ? new[] { line1 } : new[] { line1, line2 };
     }
@@ -280,10 +276,8 @@ public class ConsolePlayer : IDisposable
 
         // Skip VTT header
         if (isVtt)
-        {
             while (i < lines.Length && !lines[i].Contains("-->"))
                 i++;
-        }
 
         while (i < lines.Length)
         {
@@ -307,13 +301,13 @@ public class ConsolePlayer : IDisposable
 
                     // Collect text lines
                     i++;
-                    var text = new System.Text.StringBuilder();
+                    var text = new StringBuilder();
                     while (i < lines.Length && !string.IsNullOrEmpty(lines[i].Trim()) &&
                            !int.TryParse(lines[i].Trim(), out _) && !lines[i].Contains("-->"))
                     {
                         if (text.Length > 0) text.Append(' ');
                         // Strip HTML tags
-                        var cleaned = System.Text.RegularExpressions.Regex.Replace(lines[i], "<[^>]+>", "");
+                        var cleaned = Regex.Replace(lines[i], "<[^>]+>", "");
                         text.Append(cleaned.Trim());
                         i++;
                     }
@@ -328,6 +322,7 @@ public class ConsolePlayer : IDisposable
                     continue;
                 }
             }
+
             i++;
         }
 
@@ -347,14 +342,14 @@ public class ConsolePlayer : IDisposable
         {
             long.TryParse(parts[0], out hours);
             long.TryParse(parts[1], out minutes);
-            double.TryParse(parts[2], System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out seconds);
+            double.TryParse(parts[2], NumberStyles.Any,
+                CultureInfo.InvariantCulture, out seconds);
         }
         else if (parts.Length == 2)
         {
             long.TryParse(parts[0], out minutes);
-            double.TryParse(parts[1], System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out seconds);
+            double.TryParse(parts[1], NumberStyles.Any,
+                CultureInfo.InvariantCulture, out seconds);
         }
 
         return (hours * 3600 + minutes * 60) * 1000 + (long)(seconds * 1000);
@@ -365,16 +360,16 @@ public class ConsolePlayer : IDisposable
     /// </summary>
     public void Display(bool showAllFrames = false)
     {
-        if (_document.Frames.Count == 0)
+        if (Document.Frames.Count == 0)
             return;
 
-        if (!showAllFrames || !_document.IsAnimated)
+        if (!showAllFrames || !Document.IsAnimated)
         {
-            Console.Write(_document.Frames[0].Content);
+            Console.Write(Document.Frames[0].Content);
             return;
         }
 
-        foreach (var frame in _document.Frames)
+        foreach (var frame in Document.Frames)
         {
             Console.Write(frame.Content);
             Console.WriteLine();
@@ -387,22 +382,22 @@ public class ConsolePlayer : IDisposable
     /// </summary>
     public string GetInfo()
     {
-        var info = new System.Text.StringBuilder();
-        info.AppendLine($"Version: {_document.Version}");
-        info.AppendLine($"Created: {_document.Created:O}");
-        if (!string.IsNullOrEmpty(_document.SourceFile))
-            info.AppendLine($"Source: {_document.SourceFile}");
-        info.AppendLine($"Render Mode: {_document.RenderMode}");
-        info.AppendLine($"Frames: {_document.FrameCount}");
-        if (_document.IsAnimated)
+        var info = new StringBuilder();
+        info.AppendLine($"Version: {Document.Version}");
+        info.AppendLine($"Created: {Document.Created:O}");
+        if (!string.IsNullOrEmpty(Document.SourceFile))
+            info.AppendLine($"Source: {Document.SourceFile}");
+        info.AppendLine($"Render Mode: {Document.RenderMode}");
+        info.AppendLine($"Frames: {Document.FrameCount}");
+        if (Document.IsAnimated)
         {
-            info.AppendLine($"Duration: {_document.TotalDurationMs}ms");
+            info.AppendLine($"Duration: {Document.TotalDurationMs}ms");
             info.AppendLine($"Speed: {_speedMultiplier}x");
             info.AppendLine($"Loop Count: {(_loopCount == 0 ? "infinite" : _loopCount.ToString())}");
         }
 
-        info.AppendLine($"Size: {_document.Settings.MaxWidth}x{_document.Settings.MaxHeight}");
-        info.AppendLine($"Color: {(_document.Settings.UseColor ? "yes" : "no")}");
+        info.AppendLine($"Size: {Document.Settings.MaxWidth}x{Document.Settings.MaxHeight}");
+        info.AppendLine($"Color: {(Document.Settings.UseColor ? "yes" : "no")}");
 
         return info.ToString();
     }

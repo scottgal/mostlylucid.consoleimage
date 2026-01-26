@@ -1,22 +1,22 @@
+using System.Diagnostics;
+using ConsoleImage.Video.Core;
 using Whisper.net;
 using Whisper.net.Ggml;
 
 namespace ConsoleVideo.Avalonia.Services;
 
 /// <summary>
-/// Service for speech recognition using Whisper.net.
-/// Handles automatic model download and transcription.
+///     Service for speech recognition using Whisper.net.
+///     Handles automatic model download and transcription.
 /// </summary>
 public class WhisperService : IDisposable
 {
-    private WhisperProcessor? _processor;
-    private string? _modelPath;
     private static readonly string ModelsFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ConsoleVideo", "whisper-models");
 
     /// <summary>
-    /// Available model sizes with their approximate sizes.
+    ///     Available model sizes with their approximate sizes.
     /// </summary>
     public static readonly Dictionary<GgmlType, string> ModelSizes = new()
     {
@@ -27,8 +27,17 @@ public class WhisperService : IDisposable
         { GgmlType.LargeV3, "~3 GB" }
     };
 
+    private string? _modelPath;
+    private WhisperProcessor? _processor;
+
+    public void Dispose()
+    {
+        _processor?.Dispose();
+        _processor = null;
+    }
+
     /// <summary>
-    /// Check if a model is already downloaded.
+    ///     Check if a model is already downloaded.
     /// </summary>
     public static bool IsModelDownloaded(GgmlType modelType)
     {
@@ -37,7 +46,7 @@ public class WhisperService : IDisposable
     }
 
     /// <summary>
-    /// Get the path where a model would be stored.
+    ///     Get the path where a model would be stored.
     /// </summary>
     public static string GetModelPath(GgmlType modelType)
     {
@@ -46,7 +55,7 @@ public class WhisperService : IDisposable
     }
 
     /// <summary>
-    /// Download a Whisper model from Hugging Face.
+    ///     Download a Whisper model from Hugging Face.
     /// </summary>
     public async Task DownloadModelAsync(
         GgmlType modelType,
@@ -93,15 +102,20 @@ public class WhisperService : IDisposable
         {
             // Clean up partial download
             if (File.Exists(modelPath))
-            {
-                try { File.Delete(modelPath); } catch { }
-            }
+                try
+                {
+                    File.Delete(modelPath);
+                }
+                catch
+                {
+                }
+
             throw;
         }
     }
 
     /// <summary>
-    /// Initialize the Whisper processor with a model.
+    ///     Initialize the Whisper processor with a model.
     /// </summary>
     public async Task InitializeAsync(
         GgmlType modelType = GgmlType.Base,
@@ -110,10 +124,7 @@ public class WhisperService : IDisposable
     {
         _modelPath = GetModelPath(modelType);
 
-        if (!File.Exists(_modelPath))
-        {
-            await DownloadModelAsync(modelType, progress, ct);
-        }
+        if (!File.Exists(_modelPath)) await DownloadModelAsync(modelType, progress, ct);
 
         progress?.Report(("Loading model...", 0.9));
 
@@ -126,8 +137,8 @@ public class WhisperService : IDisposable
     }
 
     /// <summary>
-    /// Transcribe audio from a video file.
-    /// Extracts audio using FFmpeg first.
+    ///     Transcribe audio from a video file.
+    ///     Extracts audio using FFmpeg first.
     /// </summary>
     public async Task<List<TranscriptionSegment>> TranscribeVideoAsync(
         string videoPath,
@@ -137,9 +148,7 @@ public class WhisperService : IDisposable
         CancellationToken ct = default)
     {
         if (_processor == null)
-        {
             throw new InvalidOperationException("Whisper not initialized. Call InitializeAsync first.");
-        }
 
         // Extract audio to temp WAV file
         var tempWav = Path.Combine(Path.GetTempPath(), $"whisper_{Guid.NewGuid():N}.wav");
@@ -166,7 +175,7 @@ public class WhisperService : IDisposable
                 });
 
                 // Report progress (estimate based on segments)
-                var progressPct = 0.3 + (0.7 * Math.Min(1.0, segments.Count / 100.0));
+                var progressPct = 0.3 + 0.7 * Math.Min(1.0, segments.Count / 100.0);
                 progress?.Report(($"Transcribed {segments.Count} segments...", progressPct));
             }
 
@@ -176,12 +185,18 @@ public class WhisperService : IDisposable
         finally
         {
             // Clean up temp file
-            try { if (File.Exists(tempWav)) File.Delete(tempWav); } catch { }
+            try
+            {
+                if (File.Exists(tempWav)) File.Delete(tempWav);
+            }
+            catch
+            {
+            }
         }
     }
 
     /// <summary>
-    /// Extract audio from video to WAV format using FFmpeg.
+    ///     Extract audio from video to WAV format using FFmpeg.
     /// </summary>
     private static async Task ExtractAudioAsync(
         string videoPath,
@@ -190,7 +205,7 @@ public class WhisperService : IDisposable
         double? endTime,
         CancellationToken ct)
     {
-        var ffmpegPath = await ConsoleImage.Video.Core.FFmpegProvider.GetFFmpegPathAsync(ct: ct);
+        var ffmpegPath = await FFmpegProvider.GetFFmpegPathAsync(ct: ct);
 
         var args = new List<string> { "-y" }; // Overwrite output
 
@@ -207,9 +222,9 @@ public class WhisperService : IDisposable
         // Output: 16kHz mono WAV (Whisper's expected format)
         args.AddRange(new[] { "-ar", "16000", "-ac", "1", "-f", "wav", $"\"{outputPath}\"" });
 
-        var process = new System.Diagnostics.Process
+        var process = new Process
         {
-            StartInfo = new System.Diagnostics.ProcessStartInfo
+            StartInfo = new ProcessStartInfo
             {
                 FileName = ffmpegPath,
                 Arguments = string.Join(" ", args),
@@ -228,16 +243,10 @@ public class WhisperService : IDisposable
             throw new Exception($"FFmpeg audio extraction failed: {error}");
         }
     }
-
-    public void Dispose()
-    {
-        _processor?.Dispose();
-        _processor = null;
-    }
 }
 
 /// <summary>
-/// A segment of transcribed speech.
+///     A segment of transcribed speech.
 /// </summary>
 public record TranscriptionSegment
 {

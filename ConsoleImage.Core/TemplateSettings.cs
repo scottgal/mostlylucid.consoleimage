@@ -7,8 +7,8 @@ using System.Text.Json.Serialization;
 namespace ConsoleImage.Core;
 
 /// <summary>
-/// Serializable template for CLI options.
-/// All properties are nullable - only set properties are saved/applied.
+///     Serializable template for CLI options.
+///     All properties are nullable - only set properties are saved/applied.
 /// </summary>
 public record TemplateSettings
 {
@@ -95,7 +95,7 @@ public record TemplateSettings
 }
 
 /// <summary>
-/// JSON serialization context for AOT compatibility
+///     JSON serialization context for AOT compatibility
 /// </summary>
 [JsonSerializable(typeof(TemplateSettings))]
 [JsonSourceGenerationOptions(
@@ -106,12 +106,12 @@ public partial class TemplateJsonContext : JsonSerializerContext
 }
 
 /// <summary>
-/// Helper for loading and saving template files
+///     Helper for loading and saving template files
 /// </summary>
 public static class TemplateHelper
 {
     /// <summary>
-    /// Load template settings from a JSON file
+    ///     Load template settings from a JSON file
     /// </summary>
     public static TemplateSettings? Load(string path)
     {
@@ -130,7 +130,7 @@ public static class TemplateHelper
     }
 
     /// <summary>
-    /// Save template settings to a JSON file
+    ///     Save template settings to a JSON file
     /// </summary>
     public static void Save(TemplateSettings settings, string path)
     {

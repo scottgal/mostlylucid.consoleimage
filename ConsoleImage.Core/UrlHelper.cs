@@ -179,5 +179,8 @@ public static class UrlHelper
     ///     Check if the URL is a YouTube video URL.
     ///     Delegates to YtdlpProvider for consistency.
     /// </summary>
-    public static bool IsYouTubeUrl(string? url) => YtdlpProvider.IsYouTubeUrl(url);
+    public static bool IsYouTubeUrl(string? url)
+    {
+        return YtdlpProvider.IsYouTubeUrl(url);
+    }
 }

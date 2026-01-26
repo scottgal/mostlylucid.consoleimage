@@ -111,10 +111,7 @@ public class PlayerDocument
         checkStream.Position = 0;
 
         // GZip magic: 0x1F 0x8B
-        if (read >= 2 && magic[0] == 0x1F && magic[1] == 0x8B)
-        {
-            return await LoadCompressedAsync(checkStream, ct);
-        }
+        if (read >= 2 && magic[0] == 0x1F && magic[1] == 0x8B) return await LoadCompressedAsync(checkStream, ct);
 
         checkStream.Close();
 
@@ -140,9 +137,7 @@ public class PlayerDocument
         // Check for optimized format
         if (json.Contains("\"@type\":\"OptimizedConsoleImageDocument\"") ||
             json.Contains("\"@type\": \"OptimizedConsoleImageDocument\""))
-        {
             return LoadOptimizedFromString(json);
-        }
 
         return JsonSerializer.Deserialize(json, PlayerJsonContext.Default.PlayerDocument)
                ?? throw new InvalidOperationException("Failed to deserialize document");
@@ -165,7 +160,7 @@ public class PlayerDocument
     /// </summary>
     public static async Task<PlayerDocument> FromCompressedStreamAsync(Stream stream, CancellationToken ct = default)
     {
-        await using var gzip = new GZipStream(stream, CompressionMode.Decompress, leaveOpen: true);
+        await using var gzip = new GZipStream(stream, CompressionMode.Decompress, true);
         using var reader = new StreamReader(gzip, Encoding.UTF8);
         var json = await reader.ReadToEndAsync(ct);
         return FromJson(json);
@@ -182,7 +177,7 @@ public class PlayerDocument
 
     private static async Task<PlayerDocument> LoadCompressedAsync(Stream stream, CancellationToken ct)
     {
-        await using var gzip = new GZipStream(stream, CompressionMode.Decompress, leaveOpen: true);
+        await using var gzip = new GZipStream(stream, CompressionMode.Decompress, true);
         using var reader = new StreamReader(gzip, Encoding.UTF8);
         var json = await reader.ReadToEndAsync(ct);
         return FromJson(json);
@@ -400,8 +395,7 @@ public class StreamingFooter
 /// </summary>
 public class OptimizedDocument
 {
-    [JsonPropertyName("@type")]
-    public string Type { get; set; } = "OptimizedConsoleImageDocument";
+    [JsonPropertyName("@type")] public string Type { get; set; } = "OptimizedConsoleImageDocument";
 
     public string Version { get; set; } = "3.1";
     public DateTime Created { get; set; }
@@ -458,10 +452,8 @@ public class OptimizedDocument
             {
                 // Delta frame - apply changes to previous frame
                 if (prevChars == null || prevIndices == null)
-                {
                     // No previous frame - skip this delta (shouldn't happen in valid files)
                     continue;
-                }
                 (chars, indices) = ApplyDelta(prevChars, prevIndices, frame.Delta ?? "");
             }
 
@@ -494,7 +486,7 @@ public class OptimizedDocument
             var parts = run.Split(',');
             var idx = int.Parse(parts[0]);
             var count = parts.Length > 1 ? int.Parse(parts[1]) : 1;
-            for (int i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
                 result.Add(idx);
         }
 
@@ -526,7 +518,7 @@ public class OptimizedDocument
                 var colorIdx = int.Parse(parts[1]);
                 var count = parts.Length > 2 ? int.Parse(parts[2]) : 1;
 
-                for (int i = 0; i < count && pos + i < chars.Length; i++)
+                for (var i = 0; i < count && pos + i < chars.Length; i++)
                 {
                     chars[pos + i] = i < newChars.Length ? newChars[i] : ' ';
                     while (indices.Count <= pos + i) indices.Add(0);
@@ -541,8 +533,7 @@ public class OptimizedDocument
     private static string UnescapeDeltaChars(string s)
     {
         var sb = new StringBuilder();
-        for (int i = 0; i < s.Length; i++)
-        {
+        for (var i = 0; i < s.Length; i++)
             if (s[i] == '\\' && i + 1 < s.Length)
             {
                 sb.Append(s[i + 1] switch
@@ -561,7 +552,7 @@ public class OptimizedDocument
             {
                 sb.Append(s[i]);
             }
-        }
+
         return sb.ToString();
     }
 
@@ -570,7 +561,7 @@ public class OptimizedDocument
         var sb = new StringBuilder();
         var lastColorIdx = -1;
 
-        for (int i = 0; i < chars.Length; i++)
+        for (var i = 0; i < chars.Length; i++)
         {
             var colorIdx = i < indices.Count ? indices[i] : 0;
 
@@ -591,6 +582,7 @@ public class OptimizedDocument
                         sb.Append($"\x1b[38;2;{r};{g};{b}m");
                     }
                 }
+
                 lastColorIdx = colorIdx;
             }
 
@@ -604,10 +596,7 @@ public class OptimizedDocument
             }
         }
 
-        if (lastColorIdx != 0)
-        {
-            sb.Append("\x1b[0m");
-        }
+        if (lastColorIdx != 0) sb.Append("\x1b[0m");
 
         return sb.ToString();
     }

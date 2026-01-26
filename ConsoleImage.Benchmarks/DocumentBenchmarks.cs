@@ -6,8 +6,6 @@ using System.IO.Compression;
 using System.Text;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace ConsoleImage.Benchmarks;
 
@@ -46,24 +44,22 @@ public static class DocumentBenchmarks
             // Benchmark save with Optimal compression (default)
             var sw = Stopwatch.StartNew();
             for (var i = 0; i < saveIterations; i++)
-            {
                 CompressedDocumentArchive.SaveAsync(doc, tempOptimal, 30, subtitleTrack,
                     compressionLevel: CompressionLevel.Optimal).GetAwaiter().GetResult();
-            }
             sw.Stop();
             var optimalSize = new FileInfo(tempOptimal).Length;
-            Console.WriteLine($"Save Optimal   ({doc.FrameCount}f): {sw.Elapsed.TotalMilliseconds / saveIterations:F1} ms/save, {optimalSize / 1024:N0} KB");
+            Console.WriteLine(
+                $"Save Optimal   ({doc.FrameCount}f): {sw.Elapsed.TotalMilliseconds / saveIterations:F1} ms/save, {optimalSize / 1024:N0} KB");
 
             // Benchmark save with SmallestSize compression
             sw.Restart();
             for (var i = 0; i < saveIterations; i++)
-            {
                 CompressedDocumentArchive.SaveAsync(doc, tempSmallest, 30, subtitleTrack,
                     compressionLevel: CompressionLevel.SmallestSize).GetAwaiter().GetResult();
-            }
             sw.Stop();
             var smallestSize = new FileInfo(tempSmallest).Length;
-            Console.WriteLine($"Save Smallest  ({doc.FrameCount}f): {sw.Elapsed.TotalMilliseconds / saveIterations:F1} ms/save, {smallestSize / 1024:N0} KB");
+            Console.WriteLine(
+                $"Save Smallest  ({doc.FrameCount}f): {sw.Elapsed.TotalMilliseconds / saveIterations:F1} ms/save, {smallestSize / 1024:N0} KB");
 
             // Show size comparison
             var sizeDelta = (double)(optimalSize - smallestSize) / smallestSize * 100;
@@ -73,15 +69,14 @@ public static class DocumentBenchmarks
             sw.Restart();
             const int loadIterations = 10;
             for (var i = 0; i < loadIterations; i++)
-            {
                 CompressedDocumentArchive.LoadAsync(tempOptimal).GetAwaiter().GetResult();
-            }
             sw.Stop();
             Console.WriteLine($"Load ({doc.FrameCount}f): {sw.Elapsed.TotalMilliseconds / loadIterations:F1} ms/load");
 
             // Compression ratio (using Optimal as the default)
             var rawSize = EstimateRawSize(doc);
-            Console.WriteLine($"Compression ratio (Optimal): {rawSize / (double)optimalSize:F1}:1 ({rawSize / 1024:N0} KB raw -> {optimalSize / 1024:N0} KB)");
+            Console.WriteLine(
+                $"Compression ratio (Optimal): {rawSize / (double)optimalSize:F1}:1 ({rawSize / 1024:N0} KB raw -> {optimalSize / 1024:N0} KB)");
         }
         finally
         {
@@ -94,12 +89,12 @@ public static class DocumentBenchmarks
     {
         Console.WriteLine("--- SubtitleRenderer ---");
 
-        var renderer = new SubtitleRenderer(80, 2, true);
+        var renderer = new SubtitleRenderer(80);
         var entry = new SubtitleEntry
         {
             Text = "This is a test subtitle line that should be balanced across two lines for display",
             StartTime = TimeSpan.FromSeconds(1),
-            EndTime = TimeSpan.FromSeconds(5),
+            EndTime = TimeSpan.FromSeconds(5)
         };
 
         // Warm up
@@ -118,30 +113,26 @@ public static class DocumentBenchmarks
 
         const int iterations = 10000;
         var sw = Stopwatch.StartNew();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderEntry(i % 3 == 0 ? null : entry);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderEntry(i % 3 == 0 ? null : entry);
         sw.Stop();
         var gen0After = GC.CollectionCount(0);
-        Console.WriteLine($"RenderEntry:      {sw.Elapsed.TotalMicroseconds / iterations:F2} µs/call, Gen0: {gen0After - gen0Before}");
+        Console.WriteLine(
+            $"RenderEntry:      {sw.Elapsed.TotalMicroseconds / iterations:F2} µs/call, Gen0: {gen0After - gen0Before}");
 
         gen0Before = GC.CollectionCount(0);
         sw.Restart();
-        for (var i = 0; i < iterations; i++)
-        {
-            renderer.RenderAtPosition(i % 3 == 0 ? null : entry, 40);
-        }
+        for (var i = 0; i < iterations; i++) renderer.RenderAtPosition(i % 3 == 0 ? null : entry, 40);
         sw.Stop();
         gen0After = GC.CollectionCount(0);
-        Console.WriteLine($"RenderAtPosition: {sw.Elapsed.TotalMicroseconds / iterations:F2} µs/call, Gen0: {gen0After - gen0Before}");
+        Console.WriteLine(
+            $"RenderAtPosition: {sw.Elapsed.TotalMicroseconds / iterations:F2} µs/call, Gen0: {gen0After - gen0Before}");
     }
 
     private static void RunStatusLineBenchmark()
     {
         Console.WriteLine("--- StatusLine ---");
 
-        var statusLine = new StatusLine(120, true);
+        var statusLine = new StatusLine(120);
         var info = new StatusLine.StatusInfo
         {
             FileName = "test-video-file-name.mp4",
@@ -169,9 +160,11 @@ public static class DocumentBenchmarks
             info.ClipProgress = (double)i / iterations;
             statusLine.Render(info);
         }
+
         sw.Stop();
         var gen0After = GC.CollectionCount(0);
-        Console.WriteLine($"Render: {sw.Elapsed.TotalMicroseconds / iterations:F2} µs/call, Gen0: {gen0After - gen0Before} over {iterations} calls");
+        Console.WriteLine(
+            $"Render: {sw.Elapsed.TotalMicroseconds / iterations:F2} µs/call, Gen0: {gen0After - gen0Before} over {iterations} calls");
     }
 
     private static void RunDocumentPlayerFrameBuffer()
@@ -186,17 +179,11 @@ public static class DocumentBenchmarks
         const int iterations = 1000;
 
         // Warm up
-        for (var i = 0; i < 50; i++)
-        {
-            DiffRenderWithOffsets(sb, frame1, frame2);
-        }
+        for (var i = 0; i < 50; i++) DiffRenderWithOffsets(sb, frame1, frame2);
 
         // Benchmark: offset-based O(N) single-pass diff
         var sw = Stopwatch.StartNew();
-        for (var i = 0; i < iterations; i++)
-        {
-            DiffRenderWithOffsets(sb, frame1, frame2);
-        }
+        for (var i = 0; i < iterations; i++) DiffRenderWithOffsets(sb, frame1, frame2);
         sw.Stop();
         Console.WriteLine($"Diff render (80x40): {sw.Elapsed.TotalMicroseconds / iterations:F1} µs/frame");
     }
@@ -219,7 +206,7 @@ public static class DocumentBenchmarks
         var diffStart = sb.Length;
         var changedLines = 0;
 
-        for (int line = 0; line < maxLines; line++)
+        for (var line = 0; line < maxLines; line++)
         {
             var curr = GetLineFromStarts(frame1, currStarts, currLineCount, line);
             var prev = GetLineFromStarts(frame2, prevStarts, prevLineCount, line);
@@ -233,6 +220,7 @@ public static class DocumentBenchmarks
                     sb.Append(frame1);
                     break;
                 }
+
                 sb.Append("\x1b[");
                 sb.Append(line + 1);
                 sb.Append(";1H");
@@ -248,20 +236,18 @@ public static class DocumentBenchmarks
     private static int BuildLineStarts(string content, Span<int> starts)
     {
         if (string.IsNullOrEmpty(content)) return 0;
-        int count = 0;
+        var count = 0;
         starts[count++] = 0;
-        for (int i = 0; i < content.Length && count < starts.Length; i++)
-        {
+        for (var i = 0; i < content.Length && count < starts.Length; i++)
             if (content[i] == '\n')
                 starts[count++] = i + 1;
-        }
         return count;
     }
 
     private static ReadOnlySpan<char> GetLineFromStarts(string content, Span<int> starts, int lineCount, int lineIndex)
     {
         if (lineIndex >= lineCount) return ReadOnlySpan<char>.Empty;
-        int start = starts[lineIndex];
+        var start = starts[lineIndex];
         int end;
         if (lineIndex + 1 < lineCount)
         {
@@ -273,6 +259,7 @@ public static class DocumentBenchmarks
             end = content.Length;
             if (end > start && content[end - 1] == '\r') end--;
         }
+
         return content.AsSpan(start, end - start);
     }
 
@@ -314,14 +301,12 @@ public static class DocumentBenchmarks
         var totalMs = frameCount * frameDelayMs;
 
         for (var i = 0; i < totalMs; i += 3000)
-        {
             entries.Add(new SubtitleEntry
             {
                 Text = $"Test subtitle at {i / 1000}s - some dialog text here",
                 StartTime = TimeSpan.FromMilliseconds(i),
                 EndTime = TimeSpan.FromMilliseconds(i + 2500)
             });
-        }
 
         return new SubtitleTrack { Entries = entries };
     }
@@ -341,6 +326,7 @@ public static class DocumentBenchmarks
                 sb.Append($"\x1b[38;2;{r};{g};{b}m");
                 sb.Append((char)('!' + random.Next(94)));
             }
+
             sb.Append("\x1b[0m");
             if (y < height - 1)
                 sb.AppendLine();
@@ -356,5 +342,4 @@ public static class DocumentBenchmarks
             size += frame.Content.Length * 2; // UTF-16
         return size;
     }
-
 }

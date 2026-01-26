@@ -3,12 +3,12 @@ using System.Text;
 namespace ConsoleImage.Transcription;
 
 /// <summary>
-/// Formats transcription segments to WebVTT subtitle format.
+///     Formats transcription segments to WebVTT subtitle format.
 /// </summary>
 public static class VttFormatter
 {
     /// <summary>
-    /// Format segments as VTT file content.
+    ///     Format segments as VTT file content.
     /// </summary>
     public static string Format(IEnumerable<TranscriptSegment> segments, bool includeSpeakerIds = false)
     {
@@ -24,10 +24,7 @@ public static class VttFormatter
             sb.AppendLine($"{FormatTimestamp(segment.StartSeconds)} --> {FormatTimestamp(segment.EndSeconds)}");
 
             var text = segment.Text;
-            if (includeSpeakerIds && !string.IsNullOrEmpty(segment.SpeakerId))
-            {
-                text = $"<v {segment.SpeakerId}>{text}";
-            }
+            if (includeSpeakerIds && !string.IsNullOrEmpty(segment.SpeakerId)) text = $"<v {segment.SpeakerId}>{text}";
             sb.AppendLine(text);
             sb.AppendLine();
 
@@ -38,7 +35,7 @@ public static class VttFormatter
     }
 
     /// <summary>
-    /// Write segments to VTT file.
+    ///     Write segments to VTT file.
     /// </summary>
     public static async Task WriteAsync(
         string path,
