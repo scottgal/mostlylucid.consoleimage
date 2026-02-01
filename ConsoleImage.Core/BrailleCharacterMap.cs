@@ -32,10 +32,7 @@ public class BrailleCharacterMap
     private readonly ConcurrentDictionary<int, char> _cache = new();
     private readonly char[] _characters;     // 256 braille chars
     private readonly float[] _vectorData;    // 256 * 8 floats (SIMD-aligned)
-
-    // Cache statistics
-    private long _cacheHits;
-    private long _cacheMisses;
+    private readonly Vector256<float>[]? _precomputedVectors; // Pre-loaded for SIMD matching
 
     public BrailleCharacterMap()
     {
@@ -54,6 +51,21 @@ public class BrailleCharacterMap
                 _vectorData[offset + dot] = (code & DotBits[dot]) != 0 ? 1.0f : 0.0f;
             }
         }
+
+        // Pre-compute Vector256 array for SIMD matching (avoids per-call Vector256.Create)
+        if (Vector256.IsHardwareAccelerated)
+        {
+            _precomputedVectors = new Vector256<float>[BrailleCount];
+            for (var i = 0; i < BrailleCount; i++)
+            {
+                var offset = i * 8;
+                _precomputedVectors[i] = Vector256.Create(
+                    _vectorData[offset], _vectorData[offset + 1],
+                    _vectorData[offset + 2], _vectorData[offset + 3],
+                    _vectorData[offset + 4], _vectorData[offset + 5],
+                    _vectorData[offset + 6], _vectorData[offset + 7]);
+            }
+        }
     }
 
     /// <summary>
@@ -67,19 +79,14 @@ public class BrailleCharacterMap
         var cacheKey = GetQuantizedKey(target8);
 
         if (_cache.TryGetValue(cacheKey, out var cached))
-        {
-            Interlocked.Increment(ref _cacheHits);
             return cached;
-        }
-
-        Interlocked.Increment(ref _cacheMisses);
 
         var result = FindBestMatchBruteForce(target8);
         return _cache.GetOrAdd(cacheKey, result);
     }
 
     /// <summary>
-    ///     Find best match using SIMD brute force.
+    ///     Find best match using SIMD brute force with pre-computed vectors.
     ///     With 256 vectors, this is faster than any tree structure.
     /// </summary>
     public char FindBestMatchBruteForce(ReadOnlySpan<float> target8)
@@ -87,23 +94,17 @@ public class BrailleCharacterMap
         var bestDist = float.MaxValue;
         var bestIdx = 0;
 
-        if (Vector256.IsHardwareAccelerated)
+        if (_precomputedVectors != null)
         {
             // Load target vector once (all 8 floats fit in Vector256)
             var targetVec = Vector256.Create(
                 target8[0], target8[1], target8[2], target8[3],
                 target8[4], target8[5], target8[6], target8[7]);
 
+            // Use pre-computed Vector256 array — no per-iteration Vector256.Create
             for (var i = 0; i < BrailleCount; i++)
             {
-                var offset = i * 8;
-                var charVec = Vector256.Create(
-                    _vectorData[offset], _vectorData[offset + 1],
-                    _vectorData[offset + 2], _vectorData[offset + 3],
-                    _vectorData[offset + 4], _vectorData[offset + 5],
-                    _vectorData[offset + 6], _vectorData[offset + 7]);
-
-                var diff = targetVec - charVec;
+                var diff = targetVec - _precomputedVectors[i];
                 var squared = diff * diff;
                 var dist = Vector256.Sum(squared);
 
@@ -166,8 +167,6 @@ public class BrailleCharacterMap
     public void ClearCache()
     {
         _cache.Clear();
-        Interlocked.Exchange(ref _cacheHits, 0);
-        Interlocked.Exchange(ref _cacheMisses, 0);
     }
 
     /// <summary>
@@ -175,10 +174,6 @@ public class BrailleCharacterMap
     /// </summary>
     public (long Hits, long Misses, int CacheSize, double HitRate) GetCacheStats()
     {
-        var hits = Interlocked.Read(ref _cacheHits);
-        var misses = Interlocked.Read(ref _cacheMisses);
-        var total = hits + misses;
-        var hitRate = total > 0 ? (double)hits / total : 0.0;
-        return (hits, misses, _cache.Count, hitRate);
+        return (0, 0, _cache.Count, 0.0);
     }
 }

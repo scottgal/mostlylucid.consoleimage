@@ -77,6 +77,19 @@ public static class RenderHelpers
     {
         if (frames.Count == 0) return;
 
+        // Pre-compute line counts for all frames (avoids iterating large ANSI strings every frame)
+        var lineCounts = new int[frames.Count];
+        var maxLineCount = 0;
+        for (var f = 0; f < frames.Count; f++)
+        {
+            var count = 1;
+            var content = frames[f].Content;
+            for (var i = 0; i < content.Length; i++)
+                if (content[i] == '\n') count++;
+            lineCounts[f] = count;
+            if (count > maxLineCount) maxLineCount = count;
+        }
+
         // Enter alternate screen buffer
         Console.Write("\x1b[?1049h"); // Enter alt screen
         Console.Write("\x1b[?25l"); // Hide cursor
@@ -89,9 +102,11 @@ public static class RenderHelpers
 
             while (!ct.IsCancellationRequested && (loopCount == 0 || loops < loopCount))
             {
-                foreach (var frame in frames)
+                for (var fi = 0; fi < frames.Count; fi++)
                 {
                     if (ct.IsCancellationRequested) break;
+
+                    var frame = frames[fi];
 
                     // Begin synchronized output (atomic frame render)
                     Console.Write("\x1b[?2026h");
@@ -100,17 +115,11 @@ public static class RenderHelpers
                     Console.Write("\x1b[H");
 
                     // Write entire frame at once — no per-line clearing needed.
-                    // Each cell has its own ANSI color codes, so content fully
-                    // overwrites the previous frame. Matches slideshow approach.
                     Console.Write(frame.Content);
                     Console.Write("\x1b[0m"); // Reset colors after frame
 
-                    // Count lines for trailing cleanup
-                    var lineCount = 1;
-                    foreach (var c in frame.Content)
-                        if (c == '\n') lineCount++;
-
                     // Clear any remaining lines from a previous taller frame
+                    var lineCount = lineCounts[fi];
                     for (var i = lineCount; i < prevLineCount; i++)
                     {
                         Console.Write('\n');

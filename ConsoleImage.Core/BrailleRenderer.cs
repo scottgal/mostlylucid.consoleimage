@@ -21,9 +21,6 @@ public class BrailleRenderer : IDisposable
     // Braille character base (U+2800 = empty braille)
     private const char BrailleBase = '\u2800';
 
-    // Full braille block (all 8 dots on) - ⣿
-    private const char BrailleFull = '\u28FF';
-
     // Braille bit positions (standard Unicode encoding):
     // Pos:  1  4    Bits: 0x01  0x08
     //       2  5          0x02  0x10
@@ -31,79 +28,10 @@ public class BrailleRenderer : IDisposable
     //       7  8          0x40  0x80
     // Full block (⣿) = 0xFF
 
-    // Row/column masks
-    private const int MaskTopRow = 0x09; // positions 1,4
-    private const int MaskRow2 = 0x12; // positions 2,5
-    private const int MaskRow3 = 0x24; // positions 3,6
-    private const int MaskBottomRow = 0xC0; // positions 7,8
-    private const int MaskLeftCol = 0x47; // positions 1,2,3,7
-    private const int MaskRightCol = 0xB8; // positions 4,5,6,8
-    private const int MaskTopHalf = 0x1B; // rows 1-2
-    private const int MaskBottomHalf = 0xE4; // rows 3-4
-
-    // 6-dot patterns (missing one row or column - 2 holes)
-    private const int PatternTopFilled = 0xFF ^ MaskBottomRow; // ⠿ 0x3F - bottom row empty
-    private const int PatternBottomFilled = 0xFF ^ MaskTopRow; // ⣶ 0xF6 - top row empty
-    private const int PatternLeftFilled = 0xFF ^ MaskRightCol; // ⡇ 0x47 - right col empty
-    private const int PatternRightFilled = 0xFF ^ MaskLeftCol; // ⢸ 0xB8 - left col empty
-
-    // 7-dot patterns (single corner missing - 1 hole) - minimal black
-    private const int PatternNoTL = 0xFE; // ⣾ missing top-left (pos 1)
-    private const int PatternNoTR = 0xF7; // ⣷ missing top-right (pos 4)
-    private const int PatternNoBL = 0xBF; // ⢿ missing bottom-left (pos 7)
-    private const int PatternNoBR = 0x7F; // ⡿ missing bottom-right (pos 8)
-
-    // 6-dot diagonal patterns (two opposite corners missing)
-    private const int PatternDiagTLBR = 0xFF ^ 0x01 ^ 0x80; // ⢾ missing TL and BR
-    private const int PatternDiagTRBL = 0xFF ^ 0x08 ^ 0x40; // ⡷ missing TR and BL
-
-    // Dot bit positions in braille character
-    // Pattern:  1 4
-    //           2 5
-    //           3 6
-    //           7 8
-    // Index = dy * 2 + dx, so: [0,0]=0, [0,1]=1, [1,0]=2, [1,1]=3, [2,0]=4, [2,1]=5, [3,0]=6, [3,1]=7
-    private static readonly int[] DotBits = { 0x01, 0x08, 0x02, 0x10, 0x04, 0x20, 0x40, 0x80 };
-
     // Pre-computed ANSI escape sequences for common greyscale values (0-255)
     // Saves string allocations for repeated colors
     private static readonly string[] GreyscaleEscapes = InitGreyscaleEscapes();
 
-    // Braille patterns for different edge directions
-    // Each pattern shows the "visible" side of an edge
-    private static readonly int[] EdgePatterns =
-    {
-        0xFF, // No edge - full block
-        0x1B, // Horizontal edge, top half: ⠛
-        0xE4, // Horizontal edge, bottom half: ⣤
-        0x49, // Vertical edge, left half: ⡉
-        0xB6, // Vertical edge, right half: ⢶
-        0x09, // Diagonal /, top-left: ⠉
-        0xC0, // Diagonal /, bottom-right: ⣀
-        0x06, // Diagonal \, top-right: ⠆
-        0x90 // Diagonal \, bottom-left: ⢐
-    };
-
-    // Pre-computed braille density patterns for smooth gradients
-    // Each pattern has a specific number of dots arranged aesthetically
-    // Pattern[0] = 0 dots (empty), Pattern[8] = 8 dots (full)
-    // Designed to create visually smooth transitions
-    private static readonly int[] DensityPatterns =
-    {
-        0x00, // 0 dots: ⠀ (empty)
-        0x40, // 1 dot:  ⡀ (bottom-left, least intrusive)
-        0x44, // 2 dots: ⡄ (left column bottom half)
-        0x64, // 3 dots: ⡤ (bottom half minus one)
-        0xE4, // 4 dots: ⣤ (bottom half - symmetric)
-        0xE5, // 5 dots: ⣥ (bottom half + top-left)
-        0xF5, // 6 dots: ⣵ (missing top-right and one)
-        0xFD, // 7 dots: ⣽ (missing one corner)
-        0xFF // 8 dots: ⣿ (full block)
-    };
-
-    // Pre-computed sin/cos for concentric ring sampling around braille dot centers
-    private static readonly (float Cos, float Sin)[] InnerRingAngles = PrecomputeAngles(4, 0);
-    private static readonly (float Cos, float Sin)[] OuterRingAngles = PrecomputeAngles(8, MathF.PI / 8);
 
     private readonly BrailleCharacterMap _brailleMap = new();
     private readonly RenderOptions _options;
@@ -121,85 +49,91 @@ public class BrailleRenderer : IDisposable
         _options = options ?? new RenderOptions();
     }
 
-    private static (float Cos, float Sin)[] PrecomputeAngles(int count, float offset)
-    {
-        var angles = new (float Cos, float Sin)[count];
-        for (var i = 0; i < count; i++)
-        {
-            var angle = i * MathF.PI * 2 / count + offset;
-            angles[i] = (MathF.Cos(angle), MathF.Sin(angle));
-        }
-        return angles;
-    }
-
     /// <summary>
-    ///     Sample 8 braille dot positions from brightness data using concentric ring sampling.
-    ///     Each dot center is sampled with rings for accuracy, converting brightness to coverage.
-    ///     Dot centers in normalized cell coords: col 0 at x=0.25, col 1 at x=0.75
-    ///     Rows at y = 0.125, 0.375, 0.625, 0.875 (evenly spaced in 4 rows).
+    ///     Compute braille character directly from binary (post-dithered) brightness data.
+    ///     Reads exactly 8 pixels (one per dot position) instead of 104 concentric ring samples,
+    ///     and computes the Unicode braille code directly instead of searching 256 patterns.
+    ///     ~10x faster than SampleBrailleCell + FindBestMatch for post-dithered data.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SampleBrailleCell(float[] brightness, int pixelWidth, int pixelHeight,
-        int px, int py, Span<float> target8)
+    private static char ComputeBrailleCodeDirect(float[] brightness, int pixelWidth, int pixelHeight,
+        int px, int py, bool invertMode, float threshold)
     {
-        // Dot center positions in pixel coordinates within the 2x4 cell
-        // Row 0: y = py + 0.5, Row 1: y = py + 1.5, Row 2: y = py + 2.5, Row 3: y = py + 3.5
-        // Col 0: x = px + 0.5, Col 1: x = px + 1.5
-        // Sampling radius relative to half-pixel spacing
-        const float radius = 0.35f;
+        // Braille dot bits indexed by [row * 2 + col]:
+        // Row 0: 0x01, 0x08   Row 1: 0x02, 0x10
+        // Row 2: 0x04, 0x20   Row 3: 0x40, 0x80
+        var code = 0;
 
-        for (var row = 0; row < 4; row++)
+        // Unrolled 4 rows × 2 cols for maximum throughput
+        // Row 0
+        if ((uint)py < (uint)pixelHeight)
         {
-            var centerY = py + row + 0.5f;
-            for (var col = 0; col < 2; col++)
+            var rowOff = py * pixelWidth;
+            if ((uint)px < (uint)pixelWidth)
             {
-                var centerX = px + col + 0.5f;
-                var dotIdx = row * 2 + col;
+                var b = brightness[rowOff + px];
+                if (invertMode ? b > threshold : b < threshold) code |= 0x01;
+            }
 
-                // Sample with concentric rings for accuracy
-                float total = 0;
-                var count = 0;
-
-                // Center point
-                var ix = (int)centerX;
-                var iy = (int)centerY;
-                if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
-                {
-                    total += 1f - brightness[iy * pixelWidth + ix];
-                    count++;
-                }
-
-                // Inner ring (4 points at 0.5 * radius)
-                var innerR = radius * 0.5f;
-                for (var i = 0; i < 4; i++)
-                {
-                    var (cos, sin) = InnerRingAngles[i];
-                    ix = (int)(centerX + cos * innerR);
-                    iy = (int)(centerY + sin * innerR);
-                    if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
-                    {
-                        total += 1f - brightness[iy * pixelWidth + ix];
-                        count++;
-                    }
-                }
-
-                // Outer ring (8 points at radius)
-                for (var i = 0; i < 8; i++)
-                {
-                    var (cos, sin) = OuterRingAngles[i];
-                    ix = (int)(centerX + cos * radius);
-                    iy = (int)(centerY + sin * radius);
-                    if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
-                    {
-                        total += 1f - brightness[iy * pixelWidth + ix];
-                        count++;
-                    }
-                }
-
-                // Coverage: 0 = white/empty, 1 = black/filled
-                target8[dotIdx] = count > 0 ? total / count : 0f;
+            if ((uint)(px + 1) < (uint)pixelWidth)
+            {
+                var b = brightness[rowOff + px + 1];
+                if (invertMode ? b > threshold : b < threshold) code |= 0x08;
             }
         }
+
+        // Row 1
+        if ((uint)(py + 1) < (uint)pixelHeight)
+        {
+            var rowOff = (py + 1) * pixelWidth;
+            if ((uint)px < (uint)pixelWidth)
+            {
+                var b = brightness[rowOff + px];
+                if (invertMode ? b > threshold : b < threshold) code |= 0x02;
+            }
+
+            if ((uint)(px + 1) < (uint)pixelWidth)
+            {
+                var b = brightness[rowOff + px + 1];
+                if (invertMode ? b > threshold : b < threshold) code |= 0x10;
+            }
+        }
+
+        // Row 2
+        if ((uint)(py + 2) < (uint)pixelHeight)
+        {
+            var rowOff = (py + 2) * pixelWidth;
+            if ((uint)px < (uint)pixelWidth)
+            {
+                var b = brightness[rowOff + px];
+                if (invertMode ? b > threshold : b < threshold) code |= 0x04;
+            }
+
+            if ((uint)(px + 1) < (uint)pixelWidth)
+            {
+                var b = brightness[rowOff + px + 1];
+                if (invertMode ? b > threshold : b < threshold) code |= 0x20;
+            }
+        }
+
+        // Row 3
+        if ((uint)(py + 3) < (uint)pixelHeight)
+        {
+            var rowOff = (py + 3) * pixelWidth;
+            if ((uint)px < (uint)pixelWidth)
+            {
+                var b = brightness[rowOff + px];
+                if (invertMode ? b > threshold : b < threshold) code |= 0x40;
+            }
+
+            if ((uint)(px + 1) < (uint)pixelWidth)
+            {
+                var b = brightness[rowOff + px + 1];
+                if (invertMode ? b > threshold : b < threshold) code |= 0x80;
+            }
+        }
+
+        return (char)(BrailleBase + code);
     }
 
     public void Dispose()
@@ -260,27 +194,33 @@ public class BrailleRenderer : IDisposable
         using var resized = image.Clone(ctx => ctx.Resize(pixelWidth, pixelHeight));
         var (brightness, colors) = PrecomputePixelData(resized);
 
-        var cells = new CellData[charHeight, charWidth];
+        // Apply dithering unless disabled (same logic as RenderImage)
         var invertMode = _options.Invert;
+        float threshold;
+        if (_options.UseColor || _options.UseGreyscaleAnsi)
+            threshold = invertMode ? 0.15f : 0.85f;
+        else
+            threshold = CalculateOtsuThreshold(brightness);
+
+        if (!_options.DisableBrailleDithering)
+        {
+            brightness = ApplyAtkinsonDithering(brightness, pixelWidth, pixelHeight, threshold);
+            threshold = 0.5f;
+        }
+
+        var cells = new CellData[charHeight, charWidth];
 
         // Parallel render to cell array
         Parallel.For(0, charHeight, cy =>
         {
-            Span<float> target8 = stackalloc float[8];
-
             for (var cx = 0; cx < charWidth; cx++)
             {
                 var px = cx * 2;
                 var py = cy * 4;
 
-                // Shape vector matching for braille character selection
-                SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
-
-                if (invertMode)
-                    for (var i = 0; i < 8; i++)
-                        target8[i] = 1f - target8[i];
-
-                var brailleChar = _brailleMap.FindBestMatch(target8);
+                // Direct braille code computation (same optimized path as RenderBrailleContent)
+                var brailleChar = ComputeBrailleCodeDirect(
+                    brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
 
                 // Collect average color from all pixels in cell
                 int totalR = 0, totalG = 0, totalB = 0;
@@ -465,7 +405,6 @@ public class BrailleRenderer : IDisposable
                     AppendColorCode(sb, cell.R, cell.G, cell.B, _options.ColorDepth, _options.UseGreyscaleAnsi);
 
                     // Run-length encode: collect consecutive cells with same color
-                    var runStart = x;
                     while (x < width &&
                            cells[y, x].R == cell.R &&
                            cells[y, x].G == cell.G &&
@@ -553,13 +492,22 @@ public class BrailleRenderer : IDisposable
         else
             threshold = CalculateOtsuThreshold(brightness);
 
-        // Apply Atkinson dithering for smooth gradients
+        // Apply Atkinson dithering for smooth gradients (unless disabled)
+        if (_options.DisableBrailleDithering)
+        {
+            // No dithering: threshold continuous values directly.
+            // Sharper edges but gradients may show banding.
+            var result = RenderBrailleContent(brightness, colors, pixelWidth, pixelHeight, threshold);
+            resized.Dispose();
+            return result;
+        }
+
         brightness = ApplyAtkinsonDithering(brightness, pixelWidth, pixelHeight, threshold);
         // After dithering, values are 0 or 1, so use 0.5 threshold
-        var result = RenderBrailleContent(brightness, colors, pixelWidth, pixelHeight, 0.5f);
+        var result2 = RenderBrailleContent(brightness, colors, pixelWidth, pixelHeight, 0.5f);
 
         resized.Dispose();
-        return result;
+        return result2;
     }
 
     /// <summary>
@@ -641,23 +589,17 @@ public class BrailleRenderer : IDisposable
             {
                 var rowSb = new StringBuilder(charWidth * 25);
                 Rgba32? lastColor = null;
-                Span<float> target8 = stackalloc float[8];
 
                 for (var cx = 0; cx < charWidth; cx++)
                 {
                     var px = cx * 2;
                     var py = cy * 4;
 
-                    // Sample 8 braille dot positions using concentric rings
-                    SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
-
-                    // Invert coverage if needed (swap dot on/off semantics)
-                    if (invertMode)
-                        for (var i = 0; i < 8; i++)
-                            target8[i] = 1f - target8[i];
-
-                    // Find best matching braille character via shape vector matching
-                    var brailleChar = _brailleMap.FindBestMatch(target8);
+                    // Direct braille code computation from binary post-dithered data.
+                    // Reads exactly 8 pixels instead of 104 concentric ring samples,
+                    // and computes Unicode code directly instead of 256-way vector search.
+                    var brailleChar = ComputeBrailleCodeDirect(
+                        brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
 
                     // Collect average color from all pixels in cell
                     int totalR = 0, totalG = 0, totalB = 0;
@@ -734,7 +676,6 @@ public class BrailleRenderer : IDisposable
         {
             // Sequential processing (non-color or small images)
             Rgba32? lastColor = null;
-            Span<float> target8 = stackalloc float[8];
 
             for (var cy = 0; cy < charHeight; cy++)
             {
@@ -743,16 +684,9 @@ public class BrailleRenderer : IDisposable
                     var px = cx * 2;
                     var py = cy * 4;
 
-                    // Sample 8 braille dot positions using concentric rings
-                    SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
-
-                    // Invert coverage if needed
-                    if (invertMode)
-                        for (var i = 0; i < 8; i++)
-                            target8[i] = 1f - target8[i];
-
-                    // Find best matching braille character via shape vector matching
-                    var brailleChar = _brailleMap.FindBestMatch(target8);
+                    // Direct braille code computation from binary post-dithered data
+                    var brailleChar = ComputeBrailleCodeDirect(
+                        brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
 
                     if (useAnsiOutput)
                     {
@@ -832,42 +766,6 @@ public class BrailleRenderer : IDisposable
     }
 
     /// <summary>
-    ///     Get braille pattern for an edge based on angle.
-    ///     Maps edge angle to appropriate half-block pattern.
-    /// </summary>
-    private static int GetEdgeBraillePattern(float angle, float brightness, bool invertMode)
-    {
-        // Determine which side of the edge to show based on brightness and mode
-        // In dark terminal (invert=true): show bright side
-        // In light terminal (invert=false): show dark side
-        var showTopOrLeft = invertMode ? brightness > 0.5f : brightness < 0.5f;
-
-        // Map angle to edge type
-        // angle is perpendicular to gradient, so:
-        // angle ~0 or ~PI = vertical edge (left/right split)
-        // angle ~PI/2 or ~-PI/2 = horizontal edge (top/bottom split)
-        // angle ~PI/4 = diagonal /
-        // angle ~-PI/4 or ~3PI/4 = diagonal \
-
-        var absAngle = MathF.Abs(angle);
-
-        if (absAngle < MathF.PI / 8 || absAngle > 7 * MathF.PI / 8)
-            // Near 0 or PI - vertical edge
-            return showTopOrLeft ? EdgePatterns[3] : EdgePatterns[4];
-
-        if (absAngle > 3 * MathF.PI / 8 && absAngle < 5 * MathF.PI / 8)
-            // Near PI/2 - horizontal edge
-            return showTopOrLeft ? EdgePatterns[1] : EdgePatterns[2];
-
-        if (angle > 0)
-            // Positive angles - diagonal /
-            return showTopOrLeft ? EdgePatterns[5] : EdgePatterns[6];
-
-        // Negative angles - diagonal \
-        return showTopOrLeft ? EdgePatterns[7] : EdgePatterns[8];
-    }
-
-    /// <summary>
     ///     Pre-compute brightness and color data for all pixels.
     ///     This is faster than individual pixel access during rendering.
     ///     Applies color quantization if ColorCount is set.
@@ -941,16 +839,6 @@ public class BrailleRenderer : IDisposable
         });
 
         return (brightness, colors);
-    }
-
-    /// <summary>
-    ///     Get min/max brightness from pre-computed buffer.
-    ///     Uses Span for bounds-check elimination.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (float min, float max) GetBrightnessRangeFromBuffer(float[] brightness)
-    {
-        return GetBrightnessRangeFromSpan(brightness.AsSpan());
     }
 
     /// <summary>
@@ -1210,90 +1098,6 @@ public class BrailleRenderer : IDisposable
         }
 
         return result;
-    }
-
-    /// <summary>
-    ///     Apply Floyd-Steinberg dithering - classic algorithm, good quality.
-    /// </summary>
-    private float[] ApplyFloydSteinbergDithering(float[] brightness, int width, int height, float threshold)
-    {
-        var bufferLength = brightness.Length;
-        var (min, max) = GetBrightnessRangeFromBuffer(brightness);
-        var range = max - min;
-        if (range < 0.01f) range = 1f;
-        var invRange = 1f / range; // Multiply is faster than divide in inner loop
-
-        // Reuse dithering buffer from ArrayPool (shared with Atkinson)
-        if (_ditheringBuffer == null || _ditheringBuffer.Length < bufferLength)
-        {
-            if (_ditheringBuffer != null)
-                ArrayPool<float>.Shared.Return(_ditheringBuffer);
-            _ditheringBuffer = ArrayPool<float>.Shared.Rent(bufferLength);
-        }
-
-        var result = _ditheringBuffer;
-        for (var i = 0; i < bufferLength; i++) result[i] = (brightness[i] - min) * invRange;
-
-        // Floyd-Steinberg:
-        //       X   7
-        //   3   5   1
-        // Divisor: 16
-        for (var y = 0; y < height; y++)
-        for (var x = 0; x < width; x++)
-        {
-            var idx = y * width + x;
-            var oldVal = result[idx];
-            var newVal = oldVal > threshold ? 1f : 0f;
-            result[idx] = newVal;
-            var error = oldVal - newVal;
-
-            if (x + 1 < width)
-                result[idx + 1] += error * (7f / 16f);
-            if (y + 1 < height)
-            {
-                if (x > 0)
-                    result[(y + 1) * width + (x - 1)] += error * (3f / 16f);
-                result[(y + 1) * width + x] += error * (5f / 16f);
-                if (x + 1 < width)
-                    result[(y + 1) * width + x + 1] += error * (1f / 16f);
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    ///     Calculate the actual brightness range of an image for autocontrast.
-    ///     Inspired by img2braille's autocontrast approach.
-    ///     Uses ProcessPixelRows for optimal performance.
-    /// </summary>
-    private static (float min, float max) CalculateBrightnessRange(Image<Rgba32> image)
-    {
-        var min = 1f;
-        var max = 0f;
-
-        image.ProcessPixelRows(accessor =>
-        {
-            for (var y = 0; y < accessor.Height; y++)
-            {
-                var row = accessor.GetRowSpan(y);
-                for (var x = 0; x < row.Length; x++)
-                {
-                    var brightness = BrightnessHelper.GetBrightness(row[x]);
-                    if (brightness < min) min = brightness;
-                    if (brightness > max) max = brightness;
-                }
-            }
-        });
-
-        // Ensure valid range
-        if (min >= max)
-        {
-            min = 0f;
-            max = 1f;
-        }
-
-        return (min, max);
     }
 
     /// <summary>

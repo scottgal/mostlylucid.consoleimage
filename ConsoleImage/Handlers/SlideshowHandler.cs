@@ -57,6 +57,9 @@ public record SlideshowOptions
     public string? SubsValue { get; init; } // auto|off|<path>|whisper|yt
     public string SubtitleLang { get; init; } = "en";
 
+    // Performance
+    public bool NoDither { get; init; }
+
     // Calibration
     public CalibrationSettings? SavedCalibration { get; init; }
 }
@@ -900,7 +903,7 @@ public static class SlideshowHandler
             frames.Add(new BrailleFrame(content, delayMs));
         }
 
-        return frames.ToList();
+        return frames;
     }
 
     private static List<IAnimationFrame> RenderGifFrames(Image<Rgba32> image, ColorBlockRenderer renderer,
@@ -925,7 +928,7 @@ public static class SlideshowHandler
             frames.Add(new ColorBlockFrame(content, delayMs));
         }
 
-        return frames.ToList();
+        return frames;
     }
 
     /// <summary>
@@ -1058,7 +1061,9 @@ public static class SlideshowHandler
             CharacterAspectRatio = effectiveAspect,
             ContrastPower = options.Contrast,
             Gamma = options.Gamma,
-            LoopCount = 1
+            LoopCount = 1,
+            DisableBrailleDithering = options.NoDither,
+            EnableDithering = !options.NoDither
         };
     }
 

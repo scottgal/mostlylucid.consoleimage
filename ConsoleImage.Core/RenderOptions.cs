@@ -179,6 +179,16 @@ public class RenderOptions
     public bool EnableDithering { get; set; }
 
     /// <summary>
+    ///     Disable Atkinson dithering in braille mode.
+    ///     When true, braille characters are selected by thresholding continuous brightness
+    ///     directly — sharper edges but gradients may band.
+    ///     When false (default), Atkinson error-diffusion dithering is applied first
+    ///     for smoother tonal transitions.
+    ///     Use --no-dither to enable.
+    /// </summary>
+    public bool DisableBrailleDithering { get; set; }
+
+    /// <summary>
     ///     Enable edge-direction aware character selection.
     ///     Uses directional characters (/ \ | -) based on detected edge angles.
     ///     NOTE: Currently disabled by default pending stability fixes.
@@ -515,6 +525,7 @@ public class RenderOptions
             PreBufferFrames = PreBufferFrames,
             FrameSampleRate = FrameSampleRate,
             EnableDithering = EnableDithering,
+            DisableBrailleDithering = DisableBrailleDithering,
             EnableEdgeDirectionChars = EnableEdgeDirectionChars,
             DarkTerminalBrightnessThreshold = DarkTerminalBrightnessThreshold,
             LightTerminalBrightnessThreshold = LightTerminalBrightnessThreshold,

@@ -33,6 +33,7 @@ public static class ImageHandler
         bool interlace, int? interlaceFrames, float? interlaceSpread, float? interlaceFps,
         Core.ColorDepth colorDepth,
         bool useGreyscaleAnsi,
+        bool noDither,
         CancellationToken ct)
     {
         ConsoleHelper.EnableAnsiSupport();
@@ -60,7 +61,9 @@ public static class ImageHandler
             AnimationSpeedMultiplier = speed,
             ColorCount = colorCount,
             ColorDepth = colorDepth,
-            UseGreyscaleAnsi = useGreyscaleAnsi
+            UseGreyscaleAnsi = useGreyscaleAnsi,
+            DisableBrailleDithering = noDither,
+            EnableDithering = !noDither
         };
 
         // Check if it's an animated GIF

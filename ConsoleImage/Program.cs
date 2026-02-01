@@ -469,6 +469,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             // Subtitle options
             SubsValue = subsValue,
             SubtitleLang = subtitleLang ?? "en",
+            // Performance
+            NoDither = noDither,
             // Calibration
             SavedCalibration = savedCalibration
         };
@@ -833,6 +835,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             interlace, interlaceFrames, interlaceSpread, interlaceFps,
             colorDepth,
             useGreyscaleAnsi,
+            noDither,
             cancellationToken);
     }
 

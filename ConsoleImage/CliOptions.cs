@@ -162,7 +162,7 @@ public class CliOptions
         NoHwAccel = new Option<bool>("--no-hwaccel") { Description = "Disable hardware acceleration" };
         NoAltScreen = new Option<bool>("--no-alt-screen") { Description = "Disable alternate screen buffer" };
         NoParallel = new Option<bool>("--no-parallel") { Description = "Disable parallel processing" };
-        NoDither = new Option<bool>("--no-dither") { Description = "Disable Floyd-Steinberg dithering" };
+        NoDither = new Option<bool>("--no-dither") { Description = "Disable dithering (Atkinson for braille, Floyd-Steinberg for ASCII)" };
         NoEdgeChars = new Option<bool>("--no-edge-chars") { Description = "Disable directional edge characters" };
 
         // FFmpeg
