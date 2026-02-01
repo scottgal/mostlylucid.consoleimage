@@ -132,7 +132,7 @@ For the complete CLI guide covering all modes, subtitles, YouTube, slideshow, ex
 - **Shape-matching algorithm**: Characters selected by visual shape similarity, not just brightness
 - **SIMD braille vectorization**: 8D shape vectors for all 256 braille patterns with `Vector256<float>` hardware acceleration
 - **Expanded ASCII character sets**: Full 95 printable ASCII characters with disk-cached shape vectors
-- **Braille interlace mode**: Temporal super-resolution via rapid frame cycling (FRC-inspired)
+- **Braille interlace mode** (experimental): Temporal super-resolution via rapid frame cycling (FRC-inspired)
 - **Multiple render modes**: ASCII, ColorBlocks, Braille, Matrix, iTerm2, Kitty, Sixel
 - **Animated GIF/video support**: Flicker-free DECSET 2026 synchronized output
 - **Dynamic resize**: Animations re-render when you resize the console window
@@ -160,12 +160,14 @@ The braille renderer now uses **SIMD-accelerated shape vector matching** instead
 
 With only 256 vectors, SIMD brute force outperforms tree-based search. Benchmarks show ~6 us per 1000 lookups with zero allocations.
 
-### Braille Interlace Mode (Temporal Super-Resolution)
+### Braille Interlace Mode (Experimental)
+
+> **Status: Experimental** — Known issues: black horizontal bars appear between frames due to a screen clearing/cursor positioning bug. The underlying frame generation works, but the playback player has visual artifacts.
 
 Inspired by LCD FRC (Frame Rate Control) and DLP temporal dithering, interlace mode generates multiple braille subframes with slightly different dithering thresholds. When cycled rapidly, the human visual system integrates the frames, perceiving more tonal detail than any single braille frame can display.
 
 ```bash
-# Interlace mode for still images (dramatic quality improvement)
+# Interlace mode for still images (experimental)
 consoleimage photo.jpg --interlace
 
 # Configure interlace parameters
@@ -364,7 +366,7 @@ ConsoleImage.Core              # Core library (NuGet: mostlylucid.consoleimage)
 ├── ColorBlockRenderer         # Unicode half-block renderer
 ├── BrailleRenderer            # SIMD shape-vector braille renderer (2x4 dots per cell)
 ├── BrailleCharacterMap        # 8D vector generation + SIMD matching for 256 patterns
-├── BrailleInterlacePlayer     # Temporal super-resolution playback (FRC-inspired)
+├── BrailleInterlacePlayer     # [EXPERIMENTAL] Temporal super-resolution playback (FRC-inspired)
 ├── CharacterMap               # Font shape analysis with disk-cached vectors
 ├── MatrixRenderer             # Digital rain effect
 ├── MarkdownRenderer           # SVG/HTML/Markdown export

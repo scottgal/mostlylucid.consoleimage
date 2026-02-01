@@ -483,8 +483,10 @@ public static class ImageHandler
             using var renderer = new BrailleRenderer(options);
 
             // Interlace mode: generate subframes and play them rapidly
+            // EXPERIMENTAL: known issues with black bars / clearing artifacts
             if (interlace && string.IsNullOrEmpty(markdownPath))
             {
+                Console.Error.WriteLine("WARNING: Interlace mode is experimental. Known issues: black bars between frames.");
                 using var image = Image.Load<Rgba32>(input.FullName);
                 var frames = renderer.RenderInterlaceFrames(image);
                 using var player = new BrailleInterlacePlayer(frames);

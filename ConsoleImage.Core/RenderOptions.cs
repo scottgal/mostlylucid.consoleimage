@@ -242,16 +242,18 @@ public class RenderOptions
     public int? ColorCount { get; set; }
 
     /// <summary>
-    ///     Enable perceptual braille interlacing (temporal super-resolution).
+    ///     EXPERIMENTAL: Enable perceptual braille interlacing (temporal super-resolution).
     ///     Generates multiple braille frames with slightly different brightness thresholds
     ///     and plays them rapidly. The human visual system integrates the frames,
     ///     perceiving more detail than any single frame can show.
+    ///     Known issues: black horizontal bars appear between frames due to a screen
+    ///     clearing/positioning bug in BrailleInterlacePlayer.
     ///     Default: false
     /// </summary>
     public bool InterlaceEnabled { get; set; }
 
     /// <summary>
-    ///     Number of interlace subframes per visible frame (2-8).
+    ///     EXPERIMENTAL: Number of interlace subframes per visible frame (2-8).
     ///     More frames = more perceived brightness levels (N frames → N+1 levels per dot).
     ///     4 is the industry standard for LCD FRC (Frame Rate Control).
     ///     Default: 4
@@ -259,7 +261,7 @@ public class RenderOptions
     public int InterlaceFrameCount { get; set; } = 4;
 
     /// <summary>
-    ///     Threshold spread range for interlace frames (0.01-0.2).
+    ///     EXPERIMENTAL: Threshold spread range for interlace frames (0.01-0.2).
     ///     Controls how much the brightness threshold varies between subframes.
     ///     Higher values show more tonal range but may cause visible flicker.
     ///     Default: 0.06 (6% of brightness range)
@@ -267,7 +269,7 @@ public class RenderOptions
     public float InterlaceSpread { get; set; } = 0.06f;
 
     /// <summary>
-    ///     Target visible FPS for interlace playback.
+    ///     EXPERIMENTAL: Target visible FPS for interlace playback.
     ///     Actual subframe rate = InterlaceFps * InterlaceFrameCount.
     ///     Minimum 60 Hz subframe rate recommended for flicker-free display.
     ///     Default: 20 fps (80 Hz subframes with 4 frames)

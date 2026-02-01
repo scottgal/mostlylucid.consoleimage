@@ -334,19 +334,19 @@ public class CliOptions
             { Description = "Terminal color depth: true (24-bit, default), 256 (xterm-256), 16 (standard ANSI)" };
         ColorDepthOpt.Aliases.Add("--depth");
 
-        // Interlace (temporal super-resolution for braille)
+        // Interlace (temporal super-resolution for braille) — EXPERIMENTAL
         Interlace = new Option<bool>("--interlace")
-            { Description = "Enable temporal interlacing for braille (rapid threshold cycling)" };
+            { Description = "[EXPERIMENTAL] Enable temporal interlacing for braille (known issues: black bars, clearing artifacts)" };
         Interlace.Aliases.Add("--interleave");
 
         InterlaceFrames = new Option<int?>("--interlace-frames")
-            { Description = "Number of interlace subframes (2-8, default 4)" };
+            { Description = "[EXPERIMENTAL] Number of interlace subframes (2-8, default 4)" };
 
         InterlaceSpread = new Option<float?>("--interlace-spread")
-            { Description = "Threshold spread across subframes (0.01-0.2, default 0.06)" };
+            { Description = "[EXPERIMENTAL] Threshold spread across subframes (0.01-0.2, default 0.06)" };
 
         InterlaceFps = new Option<float?>("--interlace-fps")
-            { Description = "Visible frame rate for interlace cycling (default 20)" };
+            { Description = "[EXPERIMENTAL] Visible frame rate for interlace cycling (default 20)" };
 
         // Easter egg
         EasterEgg = new Option<bool>("--ee") { Description = "Play animation demo" };

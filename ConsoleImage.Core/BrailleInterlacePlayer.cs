@@ -1,8 +1,12 @@
-// BrailleInterlacePlayer - Temporal super-resolution via rapid threshold cycling.
+// EXPERIMENTAL: BrailleInterlacePlayer - Temporal super-resolution via rapid threshold cycling.
 // Generates N braille frames with different Atkinson dithering thresholds and cycles
 // them rapidly. The human visual system integrates the subframes, perceiving more
 // tonal depth than any single frame can display. Modeled after LCD FRC and DLP
 // temporal dithering techniques.
+//
+// Known issues:
+// - Black horizontal bars appear between frames (screen clearing/cursor positioning bug)
+// - Frame height mismatch between subframes causes visual artifacts
 
 using System.Diagnostics;
 using System.Text;
@@ -10,9 +14,10 @@ using System.Text;
 namespace ConsoleImage.Core;
 
 /// <summary>
-///     Plays braille interlace frames in a continuous rapid cycle for temporal super-resolution.
+///     EXPERIMENTAL: Plays braille interlace frames in a continuous rapid cycle for temporal super-resolution.
 ///     Each subframe uses a different brightness threshold; the viewer's eye averages them,
 ///     producing the illusion of more grey levels than braille dots can represent.
+///     Known issues: black bars between frames due to screen clearing bug; frame height mismatches.
 /// </summary>
 public class BrailleInterlacePlayer : IDisposable
 {

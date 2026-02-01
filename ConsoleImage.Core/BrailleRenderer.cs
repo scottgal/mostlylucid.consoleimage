@@ -563,11 +563,12 @@ public class BrailleRenderer : IDisposable
     }
 
     /// <summary>
-    ///     Generate multiple braille frames with different brightness thresholds
+    ///     EXPERIMENTAL: Generate multiple braille frames with different brightness thresholds
     ///     for temporal super-resolution (perceptual interlacing).
     ///     Each frame uses a slightly different dithering threshold; when played
     ///     rapidly, the human visual system integrates the frames and perceives
     ///     more tonal detail than any single frame can display.
+    ///     Known issues: playback produces black bars due to clearing bugs in BrailleInterlacePlayer.
     /// </summary>
     public List<BrailleFrame> RenderInterlaceFrames(Image<Rgba32> image)
     {
