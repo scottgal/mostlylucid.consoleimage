@@ -32,6 +32,7 @@ public class ConsolePlayer : IDisposable
         int? loopCount = null,
         string? subtitlePath = null)
     {
+        ConsoleHelper.EnableAnsiSupport();
         Document = document;
         _speedMultiplier = speedMultiplier ?? document.Settings.AnimationSpeedMultiplier;
         _loopCount = loopCount ?? document.Settings.LoopCount;
@@ -158,9 +159,8 @@ public class ConsolePlayer : IDisposable
             return;
         }
 
-        Console.WriteLine($"Playing subtitles: {Path.GetFileName(subtitlePath)}");
-        Console.WriteLine($"Entries: {subtitles.Entries.Count}");
-        Console.WriteLine();
+        Console.Error.WriteLine($"Playing subtitles: {Path.GetFileName(subtitlePath)}");
+        Console.Error.WriteLine($"Entries: {subtitles.Entries.Count}");
 
         var lastEntry = -1;
         var startTime = DateTime.UtcNow;
@@ -433,4 +433,5 @@ public class ConsolePlayer : IDisposable
         var doc = PlayerDocument.FromJson(json);
         return new ConsolePlayer(doc, speedMultiplier, loopCount, subtitlePath);
     }
+
 }

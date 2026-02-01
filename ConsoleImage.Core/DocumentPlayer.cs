@@ -45,6 +45,7 @@ public class DocumentPlayer : IDisposable
         int? loopCount = null,
         SubtitleTrack? subtitles = null)
     {
+        ConsoleHelper.EnableAnsiSupport();
         _document = document;
         _speedMultiplier = speedMultiplier ?? document.Settings.AnimationSpeedMultiplier;
         _loopCount = loopCount ?? document.Settings.LoopCount;

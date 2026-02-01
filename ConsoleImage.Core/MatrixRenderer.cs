@@ -231,6 +231,7 @@ public class MatrixRenderer : IDisposable
 
     public MatrixRenderer(RenderOptions? options = null, MatrixOptions? matrixOptions = null, int? seed = null)
     {
+        ConsoleHelper.EnableAnsiSupport();
         _options = options ?? new RenderOptions();
         _matrixOptions = matrixOptions ?? new MatrixOptions();
         _random = seed.HasValue ? new Random(seed.Value) : new Random();

@@ -16,6 +16,7 @@ public class UnifiedRenderer : IDisposable
 
     public UnifiedRenderer(RenderOptions options, RenderMode mode)
     {
+        ConsoleHelper.EnableAnsiSupport();
         _options = options ?? throw new ArgumentNullException(nameof(options));
         Mode = mode;
     }

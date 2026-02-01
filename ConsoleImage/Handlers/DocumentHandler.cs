@@ -155,10 +155,10 @@ public static class DocumentHandler
             var delayMs = (int)(frame.DelayMs / effectiveSpeed);
             gifWriter.AddFrame(frame.Content, delayMs);
             frameIndex++;
-            Console.Write($"\rConverting frames: {frameIndex}/{doc.FrameCount}");
+            Console.Error.Write($"\rConverting frames: {frameIndex}/{doc.FrameCount}");
         }
 
-        Console.WriteLine();
+        Console.Error.WriteLine();
 
         await gifWriter.SaveAsync(outputGif.FullName, ct);
         Console.Error.WriteLine($"Saved to {outputGif.FullName}");
