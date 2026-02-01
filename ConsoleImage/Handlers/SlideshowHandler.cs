@@ -383,10 +383,16 @@ public static class SlideshowHandler
                 Console.Write("\x1b[?2026h"); // Begin sync
                 Console.Write("\x1b[H"); // Home position
                 Console.Write("\x1b[2J"); // Clear screen
-                Console.Write("\x1b[?2026l"); // End sync
 
-                // Content starts at line 1 (no header - status is at the bottom)
-                var contentStartLine = 1;
+                // Content starts at line 2 (line 1 reserved for filename header)
+                var contentStartLine = 2;
+
+                // Render filename header at row 1
+                var headerWidth = Math.Max(renderOptions.MaxWidth, 30);
+                var headerText = FormatFilenameHeader(fileName, currentIndex + 1, fileCount, headerWidth);
+                Console.Write("\x1b[1;1H"); // Position at row 1
+                Console.Write(headerText);
+                Console.Write("\x1b[?2026l"); // End sync
 
                 // Check cache first for instant display
                 CachedSlide? cached = null;
@@ -948,6 +954,7 @@ public static class SlideshowHandler
                 SpeedMultiplier = options.Speed,
                 UseAltScreen = false,
                 Subtitles = subtitles,
+                ContentStartRow = 2, // Reserve row 1 for filename header
                 RenderMode = options.UseBraille ? VideoRenderMode.Braille
                     : options.UseBlocks ? VideoRenderMode.ColorBlocks
                     : VideoRenderMode.Ascii
@@ -1047,6 +1054,47 @@ public static class SlideshowHandler
             Gamma = options.Gamma,
             LoopCount = 1
         };
+    }
+
+    /// <summary>
+    ///     Format the filename header displayed at the top of the slideshow.
+    ///     Format: "[1/10] filename.ext" — dim, constrained to maxWidth.
+    /// </summary>
+    private static string FormatFilenameHeader(string fileName, int current, int total, int maxWidth)
+    {
+        var indexStr = $"[{current}/{total}] ";
+        var availableForName = maxWidth - indexStr.Length;
+
+        string namePart;
+        if (availableForName < 4)
+        {
+            namePart = "";
+        }
+        else if (fileName.Length <= availableForName)
+        {
+            namePart = fileName;
+        }
+        else
+        {
+            var ext = Path.GetExtension(fileName);
+            var nameOnly = Path.GetFileNameWithoutExtension(fileName);
+            var maxNameLen = availableForName - ext.Length - 1; // 1 for "…"
+            if (maxNameLen > 3)
+                namePart = string.Concat(nameOnly.AsSpan(0, maxNameLen), "\u2026", ext);
+            else
+                namePart = string.Concat(fileName.AsSpan(0, Math.Max(1, availableForName - 1)), "\u2026");
+        }
+
+        var sb = new StringBuilder(maxWidth + 16);
+        sb.Append("\x1b[2m"); // Dim
+        sb.Append(indexStr);
+        sb.Append(namePart);
+        // Pad to full width to overwrite any previous content
+        var visibleLen = indexStr.Length + namePart.Length;
+        if (visibleLen < maxWidth)
+            sb.Append(' ', maxWidth - visibleLen);
+        sb.Append("\x1b[0m"); // Reset
+        return sb.ToString();
     }
 
     /// <summary>

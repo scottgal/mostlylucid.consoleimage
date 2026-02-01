@@ -154,7 +154,8 @@
       "WebFetch(domain:surma.dev)",
       "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\test-publish\\\\consoleimage.exe\" tools --verify)",
       "Bash(git stash:*)",
-      "WebFetch(domain:news.ycombinator.com)"
+      "WebFetch(domain:news.ycombinator.com)",
+      "Bash(git status:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

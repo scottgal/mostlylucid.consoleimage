@@ -108,8 +108,12 @@ public static class EdgeDirection
                 magnitudes[cy, cx] = MathF.Sqrt(avgGx * avgGx + avgGy * avgGy);
 
                 // Angle: direction of edge (perpendicular to gradient)
-                // Add PI/2 to get edge direction instead of gradient direction
-                angles[cy, cx] = MathF.Atan2(avgGy, avgGx);
+                // Add PI/2 to rotate from gradient direction to edge direction
+                var angle = MathF.Atan2(avgGy, avgGx) + MathF.PI / 2;
+                // Normalize to [-PI, PI]
+                if (angle > MathF.PI) angle -= 2 * MathF.PI;
+                else if (angle < -MathF.PI) angle += 2 * MathF.PI;
+                angles[cy, cx] = angle;
             }
         }
 

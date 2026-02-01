@@ -344,6 +344,7 @@ public class RenderOptions
             "simple" => CharacterMap.SimpleCharacterSet,
             "block" => CharacterMap.BlockCharacterSet,
             "extended" => CharacterMap.ExtendedCharacterSet,
+            "classic" => CharacterMap.ClassicCharacterSet,
             _ => CharacterMap.DefaultCharacterSet
         };
     }

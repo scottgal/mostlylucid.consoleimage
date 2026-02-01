@@ -144,6 +144,14 @@ public class VideoRenderOptions
     public ILiveSubtitleProvider? LiveSubtitleProvider { get; set; }
 
     /// <summary>
+    ///     Row offset for content rendering (1-based).
+    ///     When set, video frames start at this row instead of row 1.
+    ///     Used by slideshow to reserve header rows above the video.
+    ///     Default: 1 (no offset, content starts at top).
+    /// </summary>
+    public int ContentStartRow { get; set; } = 1;
+
+    /// <summary>
     ///     Create default options suitable for most videos.
     /// </summary>
     public static VideoRenderOptions Default => new()
@@ -250,7 +258,8 @@ public class VideoRenderOptions
             ShowStatus = ShowStatus,
             SourceFileName = SourceFileName,
             Subtitles = Subtitles, // Shared reference, not deep copy
-            LiveSubtitleProvider = LiveSubtitleProvider // Shared reference
+            LiveSubtitleProvider = LiveSubtitleProvider, // Shared reference
+            ContentStartRow = ContentStartRow
         };
     }
 }

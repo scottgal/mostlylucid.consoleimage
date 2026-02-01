@@ -1075,7 +1075,7 @@ public static class VideoHandler
             {
                 "simple" => CharacterMap.SimpleCharacterSet,
                 "block" => CharacterMap.BlockCharacterSet,
-                "classic" => CharacterMap.DefaultCharacterSet,
+                "classic" => CharacterMap.ClassicCharacterSet,
                 _ => CharacterMap.ExtendedCharacterSet
             };
 

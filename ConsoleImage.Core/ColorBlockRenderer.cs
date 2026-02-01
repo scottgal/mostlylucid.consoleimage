@@ -31,6 +31,7 @@ public class ColorBlockRenderer : IDisposable
 
     public ColorBlockRenderer(RenderOptions? options = null)
     {
+        ConsoleHelper.EnableAnsiSupport();
         _options = options ?? RenderOptions.Default;
     }
 
@@ -274,6 +275,8 @@ public class ColorBlockRenderer : IDisposable
         }
 
         // Both visible - use upper half block with upper as foreground, lower as background
+        // Reset first to prevent background color bleed from previous character
+        sb.Append("\x1b[0m");
         AnsiCodes.AppendForegroundAndBackgroundAdaptive(sb, upper, lower, depth);
         sb.Append(UpperHalfBlock);
     }

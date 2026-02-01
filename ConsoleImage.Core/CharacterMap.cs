@@ -5,6 +5,10 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
@@ -29,19 +33,26 @@ public class CharacterMap
     //          [3]  [4]  [5]   <- Bottom row
     private static readonly (float X, float Y)[] SamplingPositions =
     [
-        (0.17f, 0.30f), // Top-left (lowered)
+        (0.17f, 0.25f), // Top-left
         (0.50f, 0.25f), // Top-center
-        (0.83f, 0.20f), // Top-right (raised)
-        (0.17f, 0.80f), // Bottom-left (lowered)
+        (0.83f, 0.25f), // Top-right
+        (0.17f, 0.75f), // Bottom-left
         (0.50f, 0.75f), // Bottom-center
-        (0.83f, 0.70f) // Bottom-right (raised)
+        (0.83f, 0.75f)  // Bottom-right
     ];
 
     /// <summary>
-    ///     Default ASCII character set suitable for art rendering
-    ///     Ordered from lightest to darkest
+    ///     Default ASCII character set: all printable ASCII (32-126).
+    ///     Shape vectors are font-rendered and disk-cached, so the full set
+    ///     gives the matching algorithm the best possible character for each cell.
     /// </summary>
-    public static readonly string DefaultCharacterSet =
+    public static readonly string DefaultCharacterSet = BuildFullPrintableAscii();
+
+    /// <summary>
+    ///     Classic character set from Alex Harri's article (70 chars, lightest to darkest).
+    ///     Use this if you want the traditional curated look.
+    /// </summary>
+    public static readonly string ClassicCharacterSet =
         " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
     /// <summary>
@@ -61,6 +72,19 @@ public class CharacterMap
     /// </summary>
     public static readonly string ExtendedCharacterSet =
         " `.-':_,^=;><+!rc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
+
+    /// <summary>
+    ///     Build the full printable ASCII character set (32-126, 95 characters).
+    ///     Every monospace-renderable character is included so the shape matching
+    ///     algorithm has maximum freedom to find the best visual match.
+    /// </summary>
+    private static string BuildFullPrintableAscii()
+    {
+        var sb = new System.Text.StringBuilder(95);
+        for (var c = 32; c <= 126; c++)
+            sb.Append((char)c);
+        return sb.ToString();
+    }
 
     private readonly ConcurrentDictionary<int, char> _cache = new();
     private readonly int _cacheBits;
@@ -131,6 +155,12 @@ public class CharacterMap
 
     private void GenerateVectors(string characterSet, string? fontFamily, int cellSize)
     {
+        // Try loading from disk cache first
+        var cacheKey = ComputeCacheKey(characterSet, fontFamily, cellSize);
+        if (TryLoadFromDiskCache(cacheKey, characterSet))
+            return;
+
+        // Cache miss - generate by rendering font
         var font = GetFont(fontFamily, cellSize);
 
         foreach (var c in characterSet.Distinct())
@@ -141,6 +171,88 @@ public class CharacterMap
 
         // Normalize vectors
         NormalizeVectors();
+
+        // Save to disk cache for next time
+        SaveToDiskCache(cacheKey);
+    }
+
+    private static string CacheDirectory
+    {
+        get
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrEmpty(appData))
+                return Path.Combine(appData, "consoleimage", "shapevectors");
+
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrEmpty(home))
+                return Path.Combine(home, ".local", "share", "consoleimage", "shapevectors");
+
+            return Path.Combine(Path.GetTempPath(), "consoleimage", "shapevectors");
+        }
+    }
+
+    private static string ComputeCacheKey(string characterSet, string? fontFamily, int cellSize)
+    {
+        var input = $"{characterSet}|{fontFamily ?? "system"}|{cellSize}|v2";
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(hashBytes)[..16].ToLowerInvariant();
+    }
+
+    private bool TryLoadFromDiskCache(string cacheKey, string characterSet)
+    {
+        try
+        {
+            var cachePath = Path.Combine(CacheDirectory, $"{cacheKey}.json");
+            if (!File.Exists(cachePath))
+                return false;
+
+            var json = File.ReadAllText(cachePath);
+            var cached = JsonSerializer.Deserialize(json, ShapeVectorCacheContext.Default.CachedShapeVectors);
+            if (cached?.Vectors == null || cached.Version != "2")
+                return false;
+
+            // Restore vectors for characters in the set
+            foreach (var c in characterSet.Distinct())
+            {
+                var key = c.ToString();
+                if (cached.Vectors.TryGetValue(key, out var floats) && floats.Length == 6)
+                    _vectors[c] = new ShapeVector(floats[0], floats[1], floats[2],
+                        floats[3], floats[4], floats[5]);
+            }
+
+            return _vectors.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void SaveToDiskCache(string cacheKey)
+    {
+        try
+        {
+            var dir = CacheDirectory;
+            Directory.CreateDirectory(dir);
+            var cachePath = Path.Combine(dir, $"{cacheKey}.json");
+
+            var cached = new CachedShapeVectors
+            {
+                Version = "2",
+                Vectors = new Dictionary<string, float[]>()
+            };
+
+            foreach (var (c, v) in _vectors)
+                cached.Vectors[c.ToString()] = [v[0], v[1], v[2], v[3], v[4], v[5]];
+
+            var json = JsonSerializer.Serialize(cached, ShapeVectorCacheContext.Default.CachedShapeVectors);
+            File.WriteAllText(cachePath, json);
+        }
+        catch
+        {
+            // Non-critical - caching is best-effort
+        }
     }
 
     private static Font GetFont(string? fontFamily, int cellSize)
@@ -439,4 +551,19 @@ public class CharacterMap
 
         return _characters[bestIdx];
     }
+}
+
+/// <summary>
+///     Disk cache format for shape vectors. AOT-compatible via source generation.
+/// </summary>
+public class CachedShapeVectors
+{
+    public string Version { get; set; } = "2";
+    public Dictionary<string, float[]> Vectors { get; set; } = new();
+}
+
+[JsonSerializable(typeof(CachedShapeVectors))]
+[JsonSourceGenerationOptions(WriteIndented = false)]
+public partial class ShapeVectorCacheContext : JsonSerializerContext
+{
 }

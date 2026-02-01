@@ -237,7 +237,7 @@ public static class AnsiCodes
     public static void AppendForeground16(StringBuilder sb, byte r, byte g, byte b)
     {
         var idx = RgbTo16(r, g, b);
-        sb.Append(idx < 8 ? "\x1b[" : "\x1b[");
+        sb.Append("\x1b[");
         sb.Append(idx < 8 ? 30 + idx : 82 + idx); // 30-37 or 90-97
         sb.Append('m');
     }
