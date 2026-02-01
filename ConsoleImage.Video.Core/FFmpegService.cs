@@ -31,6 +31,8 @@ public sealed class FFmpegService : IDisposable
         "apng", // Animated PNG
         "mpeg4", // MPEG-4 part 2 / DivX - hwdownload nv12 format issues
         "av1", // AV1 - hwdownload nv12 format issues
+        "hevc", // H.265/HEVC - hwdownload nv12 format issues on many GPUs
+        "h265", // H.265 alternate name
         "mjpeg", // Motion JPEG - CUDA decoder fails on many systems
         "mjpegb", // Motion JPEG B
         "jpeg2000", // JPEG 2000
@@ -415,6 +417,7 @@ public sealed class FFmpegService : IDisposable
     ///     Stream frames from video using pipe - no temp files needed.
     ///     Most efficient method for sequential playback.
     ///     Outputs RGBA32 for compatibility with renderers.
+    ///     Automatically retries without hardware acceleration if hwaccel fails.
     /// </summary>
     /// <param name="codec">Optional codec hint to detect problematic codecs for hwaccel.</param>
     public async IAsyncEnumerable<Image<Rgba32>> StreamFramesAsync(
@@ -434,8 +437,88 @@ public sealed class FFmpegService : IDisposable
         if (!SecurityHelper.IsValidFilePath(videoPath) && !SecurityHelper.IsValidUrl(videoPath))
             throw new ArgumentException("Invalid video path", nameof(videoPath));
 
-        var hwAccel = GetHwAccelArgs(codec);
-        var hwDownload = GetHwDownloadFilter(codec);
+        var useHwAccel = _useHardwareAcceleration && !string.IsNullOrEmpty(HardwareAccelerationType);
+
+        // Try with hwaccel first, fall back to software if it fails
+        if (useHwAccel)
+        {
+            var hwAccelFailed = false;
+            string? hwAccelError = null;
+
+            await foreach (var result in StreamFramesCoreAsync(
+                               videoPath, outputWidth, outputHeight,
+                               startTime, endTime, frameStep, targetFps,
+                               codec, useHwAccel: true, ct))
+            {
+                if (result.IsHwAccelFailure)
+                {
+                    hwAccelFailed = true;
+                    hwAccelError = result.ErrorMessage;
+                    break;
+                }
+
+                yield return result.Image!;
+            }
+
+            if (!hwAccelFailed)
+                yield break;
+
+            // hwaccel failed - retry without it
+            Console.Error.WriteLine(
+                $"[FFmpeg] Hardware acceleration failed ({hwAccelError ?? "unknown error"}), retrying with software decoding...");
+        }
+
+        // Software decoding path (also the retry path after hwaccel failure)
+        await foreach (var result in StreamFramesCoreAsync(
+                           videoPath, outputWidth, outputHeight,
+                           startTime, endTime, frameStep, targetFps,
+                           codec, useHwAccel: false, ct))
+        {
+            if (result.IsHwAccelFailure)
+            {
+                // Software path should never signal hwaccel failure, but if FFmpeg errors
+                // on this path too, throw the original error
+                var errorMsg = result.ErrorMessage ?? "FFmpeg failed without producing any frames";
+                throw new InvalidOperationException(errorMsg);
+            }
+
+            yield return result.Image!;
+        }
+    }
+
+    /// <summary>
+    ///     Result from frame streaming that can signal hwaccel failure for retry.
+    /// </summary>
+    private readonly struct StreamFrameResult
+    {
+        public Image<Rgba32>? Image { get; init; }
+        public bool IsHwAccelFailure { get; init; }
+        public string? ErrorMessage { get; init; }
+
+        public static StreamFrameResult FromImage(Image<Rgba32> image) => new() { Image = image };
+
+        public static StreamFrameResult HwAccelFailure(string error) =>
+            new() { IsHwAccelFailure = true, ErrorMessage = error };
+    }
+
+    /// <summary>
+    ///     Core frame streaming implementation. Returns StreamFrameResult to allow
+    ///     the caller to distinguish between successful frames and hwaccel failures.
+    /// </summary>
+    private async IAsyncEnumerable<StreamFrameResult> StreamFramesCoreAsync(
+        string videoPath,
+        int outputWidth,
+        int outputHeight,
+        double? startTime,
+        double? endTime,
+        int frameStep,
+        double? targetFps,
+        string? codec,
+        bool useHwAccel,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var hwAccel = useHwAccel ? GetHwAccelArgs(codec) : "";
+        var hwDownload = useHwAccel ? GetHwDownloadFilter(codec) : "";
 
         // Build filter chain
         var filters = new List<string>();
@@ -523,9 +606,17 @@ public sealed class FFmpegService : IDisposable
                             if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(stderr))
                             {
                                 var errorMsg = !string.IsNullOrWhiteSpace(stderr)
-                                    ? $"FFmpeg error: {stderr.Trim()}"
+                                    ? stderr.Trim()
                                     : $"FFmpeg exited with code {process.ExitCode} without producing any frames";
-                                throw new InvalidOperationException(errorMsg);
+
+                                // Signal hwaccel failure so caller can retry without it
+                                if (useHwAccel)
+                                {
+                                    yield return StreamFrameResult.HwAccelFailure(errorMsg);
+                                    yield break;
+                                }
+
+                                throw new InvalidOperationException($"FFmpeg error: {errorMsg}");
                             }
                         }
 
@@ -548,7 +639,7 @@ public sealed class FFmpegService : IDisposable
                 }
 
                 framesProduced++;
-                yield return image;
+                yield return StreamFrameResult.FromImage(image);
             }
 
             try
@@ -626,6 +717,7 @@ public sealed class FFmpegService : IDisposable
     /// <summary>
     ///     Extract a single frame at a specific timestamp.
     ///     Returns the frame as an Image for direct processing.
+    ///     Automatically retries without hardware acceleration if hwaccel fails.
     /// </summary>
     public async Task<Image<Rgba32>?> ExtractFrameAsync(
         string videoPath,
@@ -639,9 +731,6 @@ public sealed class FFmpegService : IDisposable
         // Validate path to prevent command injection (allow URLs for streaming)
         if (!SecurityHelper.IsValidFilePath(videoPath) && !SecurityHelper.IsValidUrl(videoPath))
             throw new ArgumentException("Invalid video path", nameof(videoPath));
-
-        var hwAccel = GetHwAccelArgs();
-        var hwDownload = GetHwDownloadFilter();
 
         // Get video dimensions if not specified
         var outputWidth = width ?? 0;
@@ -666,6 +755,33 @@ public sealed class FFmpegService : IDisposable
                 outputHeight = (int)(info.Height * ((double)outputWidth / info.Width));
             }
         }
+
+        // Try with hwaccel first, then fall back to software
+        var result = await ExtractFrameCoreAsync(videoPath, timestamp, outputWidth, outputHeight, useHwAccel: true, ct);
+        if (result != null)
+            return result;
+
+        // If hwaccel was active, retry without it
+        if (_useHardwareAcceleration && !string.IsNullOrEmpty(HardwareAccelerationType))
+        {
+            Console.Error.WriteLine(
+                "[FFmpeg] Hardware acceleration failed for frame extraction, retrying with software decoding...");
+            return await ExtractFrameCoreAsync(videoPath, timestamp, outputWidth, outputHeight, useHwAccel: false, ct);
+        }
+
+        return null;
+    }
+
+    private async Task<Image<Rgba32>?> ExtractFrameCoreAsync(
+        string videoPath,
+        double timestamp,
+        int outputWidth,
+        int outputHeight,
+        bool useHwAccel,
+        CancellationToken ct)
+    {
+        var hwAccel = useHwAccel ? GetHwAccelArgs() : "";
+        var hwDownload = useHwAccel ? GetHwDownloadFilter() : "";
 
         var filters = new List<string>();
         if (!string.IsNullOrEmpty(hwDownload))

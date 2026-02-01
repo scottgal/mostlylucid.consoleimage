@@ -1075,7 +1075,7 @@ public static class VideoHandler
             {
                 "simple" => CharacterMap.SimpleCharacterSet,
                 "block" => CharacterMap.BlockCharacterSet,
-                "classic" => CharacterMap.DefaultCharacterSet,
+                "classic" => CharacterMap.ClassicCharacterSet,
                 _ => CharacterMap.ExtendedCharacterSet
             };
 
@@ -1117,6 +1117,7 @@ public static class VideoHandler
                 ContrastPower = opts.Contrast,
                 Gamma = opts.Gamma,
                 UseColor = !opts.NoColor,
+                UseGreyscaleAnsi = opts.UseGreyscaleAnsi,
                 ColorCount = opts.ColorCount,
                 Invert = !opts.NoInvert,
                 UseParallelProcessing = !opts.NoParallel,
@@ -1189,6 +1190,7 @@ public static class VideoHandler
             ContrastPower = opts.Contrast,
             Gamma = opts.Gamma,
             UseColor = !opts.NoColor,
+            UseGreyscaleAnsi = opts.UseGreyscaleAnsi,
             ColorCount = opts.ColorCount,
             Invert = !opts.NoInvert,
             UseParallelProcessing = !opts.NoParallel,
@@ -1475,6 +1477,7 @@ public class VideoHandlerOptions
 
     // Color/rendering
     public bool NoColor { get; init; }
+    public bool UseGreyscaleAnsi { get; init; }
     public int? ColorCount { get; init; }
     public float Contrast { get; init; } = 2.5f;
     public float Gamma { get; init; } = 0.65f;

@@ -1,6 +1,6 @@
 # mostlylucid.consoleimage
 
-**Version 4.1** - High-quality ASCII art renderer for .NET 10 with live AI transcription.
+**Version 4.5** - High-quality ASCII art renderer for .NET 10 with SIMD-accelerated braille vectorization, live AI transcription, and temporal super-resolution.
 
 [![NuGet](https://img.shields.io/nuget/v/mostlylucid.consoleimage.svg)](https://www.nuget.org/packages/mostlylucid.consoleimage/)
 [![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue.svg)](https://unlicense.org)
@@ -18,6 +18,7 @@
 - [Documentation](#documentation)
 - [Architecture](#architecture)
 - [Building from Source](#building-from-source)
+- [Braille Shape Vector Matching](#braille-shape-vector-matching-v45)
 
 ## Quick Start
 
@@ -129,18 +130,76 @@ For the complete CLI guide covering all modes, subtitles, YouTube, slideshow, ex
 ## Features
 
 - **Shape-matching algorithm**: Characters selected by visual shape similarity, not just brightness
-- **3x2 staggered sampling grid**: 6 sampling circles per [Alex Harri's article](https://alexharri.com/blog/ascii-rendering)
-- **K-D tree optimization**: Fast nearest-neighbor search in 6D vector space
+- **SIMD braille vectorization**: 8D shape vectors for all 256 braille patterns with `Vector256<float>` hardware acceleration
+- **Expanded ASCII character sets**: Full 95 printable ASCII characters with disk-cached shape vectors
+- **Braille interlace mode** (experimental): Temporal super-resolution via rapid frame cycling (FRC-inspired)
 - **Multiple render modes**: ASCII, ColorBlocks, Braille, Matrix, iTerm2, Kitty, Sixel
 - **Animated GIF/video support**: Flicker-free DECSET 2026 synchronized output
 - **Dynamic resize**: Animations re-render when you resize the console window
 - **Live AI subtitles**: Real-time Whisper transcription during video playback
 - **YouTube integration**: Play YouTube videos with auto-downloaded yt-dlp
+- **Hardware acceleration**: CUDA/D3D11VA/VAAPI with automatic software fallback
 - **Slideshow mode**: Browse directories with keyboard navigation
 - **Markdown/SVG export**: Embeddable output for documentation and READMEs
 - **Document format**: Save/load rendered art as `.cidz` compressed documents
 - **AOT compiled**: Native binaries, no .NET runtime required
 - **Cross-platform**: Windows, Linux, macOS (x64 and ARM64)
+
+<details>
+<summary><strong>What's New in v4.5</strong></summary>
+
+### Braille Shape Vector Matching
+
+The braille renderer now uses **SIMD-accelerated shape vector matching** instead of simple brightness thresholding. Each of the 256 Unicode braille patterns is represented as an 8D vector (one component per dot in the 2x4 grid), and the renderer finds the best-matching pattern using hardware-accelerated distance calculations.
+
+**How it works:**
+1. For each character cell, 8 dot positions are sampled using concentric ring sampling (13 samples per dot, 104 total per cell)
+2. Brightness values are converted to coverage vectors (0.0-1.0 per dot)
+3. The coverage vector is matched against all 256 braille patterns via SIMD brute force
+4. A quantized cache (8 components x 4 bits = 32-bit key) prevents redundant calculations
+
+With only 256 vectors, SIMD brute force outperforms tree-based search. Benchmarks show ~6 us per 1000 lookups with zero allocations.
+
+### Braille Interlace Mode (Experimental)
+
+> **Status: Experimental** — Known issues: black horizontal bars appear between frames due to a screen clearing/cursor positioning bug. The underlying frame generation works, but the playback player has visual artifacts.
+
+Inspired by LCD FRC (Frame Rate Control) and DLP temporal dithering, interlace mode generates multiple braille subframes with slightly different dithering thresholds. When cycled rapidly, the human visual system integrates the frames, perceiving more tonal detail than any single braille frame can display.
+
+```bash
+# Interlace mode for still images (experimental)
+consoleimage photo.jpg --interlace
+
+# Configure interlace parameters
+consoleimage photo.jpg --interlace --interlace-frames 6 --interlace-fps 30
+```
+
+### Expanded ASCII Character Sets
+
+ASCII shape matching now uses **all 95 printable ASCII characters** by default (up from 70). More characters means more shape options for the matching algorithm, improving output quality with no performance cost.
+
+- **Full (default)**: 95 printable ASCII chars (space through ~)
+- **Classic**: Original 70-char curated set from Alex Harri's article
+- **Extended**: 93-char set with additional gradations
+
+Shape vectors are **cached to disk** (`%LOCALAPPDATA%\consoleimage\shapevectors\`) to avoid re-rendering fonts on every startup.
+
+### Hardware Acceleration with Auto-Fallback
+
+FFmpeg hardware acceleration (CUDA, D3D11VA, VAAPI) now automatically falls back to software decoding when GPU decoding fails. HEVC/H.265 and other problematic codecs are proactively blocklisted to avoid known compatibility issues.
+
+### Greyscale ANSI Mode
+
+256-color greyscale output using ANSI palette indices 232-255 for terminals without full RGB support.
+
+### Other Improvements
+
+- **ConsoleHelper auto-init**: Renderers auto-enable Windows ANSI support (no manual setup for NuGet consumers)
+- **Edge direction fix**: Corrected gradient-to-edge rotation (PI/2 offset) for sharper directional characters
+- **Symmetric sampling grid**: Fixed asymmetric stagger in ASCII sampling that caused `\` where `/` should appear
+
+See [CHANGELOG.md](CHANGELOG.md) for full history.
+</details>
 
 <details>
 <summary><strong>What's New in v3.0</strong></summary>
@@ -303,9 +362,12 @@ For presets, full options, Spectre.Console integration, GIF control, and configu
 
 ```
 ConsoleImage.Core              # Core library (NuGet: mostlylucid.consoleimage)
-├── AsciiRenderer              # Shape-matching ASCII renderer
+├── AsciiRenderer              # Shape-matching ASCII renderer (95-char default set)
 ├── ColorBlockRenderer         # Unicode half-block renderer
-├── BrailleRenderer            # 2x4 dot braille renderer
+├── BrailleRenderer            # SIMD shape-vector braille renderer (2x4 dots per cell)
+├── BrailleCharacterMap        # 8D vector generation + SIMD matching for 256 patterns
+├── BrailleInterlacePlayer     # [EXPERIMENTAL] Temporal super-resolution playback (FRC-inspired)
+├── CharacterMap               # Font shape analysis with disk-cached vectors
 ├── MatrixRenderer             # Digital rain effect
 ├── MarkdownRenderer           # SVG/HTML/Markdown export
 ├── Protocol renderers         # iTerm2, Kitty, Sixel support
@@ -314,14 +376,15 @@ ConsoleImage.Core              # Core library (NuGet: mostlylucid.consoleimage)
 ├── DocumentPlayer             # Document playback
 ├── GifWriter                  # Animated GIF output
 ├── Subtitles/                 # SRT/VTT parsing, rendering, embedded extraction
-└── ConsoleHelper              # Windows ANSI support
+└── ConsoleHelper              # Windows ANSI support (auto-initialized by renderers)
 
 ConsoleImage                   # Unified CLI (images, GIFs, videos, documents)
-ConsoleImage.Video.Core        # FFmpeg video decoding (optional, for video files)
+ConsoleImage.Video.Core        # FFmpeg video decoding with hwaccel auto-fallback
 ConsoleImage.Transcription     # Whisper AI transcription (optional, for --subs whisper)
 ConsoleImage.Mcp               # MCP server for AI assistants (21 tools)
 ConsoleImage.Player            # Standalone document playback (NuGet)
 ConsoleImage.Spectre           # Spectre.Console integration
+ConsoleImage.Benchmarks        # BenchmarkDotNet performance suite
 ```
 
 ## Building from Source
@@ -342,6 +405,53 @@ dotnet publish ConsoleImage/ConsoleImage.csproj \
   --self-contained true \
   -p:PublishAot=true
 ```
+
+## Braille Shape Vector Matching (v4.5)
+
+The v4.5 braille renderer replaces simple brightness thresholding with **SIMD-accelerated shape vector matching** across all 256 Unicode braille patterns. This produces dramatically cleaner edges, better detail preservation, and more accurate representation of the source image.
+
+### How It Works
+
+Each Unicode braille character encodes 8 dots in a 2x4 grid. The renderer treats each character as an **8-dimensional vector** where each component represents dot on/off state:
+
+```
+Braille dot layout:        Vector mapping:
+  ● ○     dot1 dot4        [1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0]
+  ● ●     dot2 dot5         ↑              ↑
+  ○ ○     dot3 dot6         dot1=ON        dot4=OFF
+  ● ○     dot7 dot8
+  = U+28D5 (⣕)
+```
+
+**Sampling**: For each character cell, the renderer samples 8 dot positions using concentric ring sampling (center + 4 inner + 8 outer = 13 samples per dot, 104 total per cell). This captures smooth gradients more accurately than single-point sampling.
+
+**Matching**: The 8-float coverage vector is matched against all 256 pre-computed braille vectors using `Vector256<float>` SIMD instructions. With only 256 candidates, brute force with hardware acceleration outperforms any tree or graph-based search.
+
+**Caching**: A quantized cache maps each input to a 32-bit key (8 components x 4 bits), preventing redundant distance calculations for similar inputs. This also provides natural temporal stability for animations.
+
+### Performance
+
+Benchmarked on AMD Ryzen 9 9950X (.NET 10.0, AVX-512):
+
+| Operation | Time (per 1000 lookups) | Allocations |
+|-----------|------------------------|-------------|
+| Cached random vectors | 6.3 us | 0 B |
+| Brute force (no cache) | 6.2 us | 0 B |
+| Sparse vectors (edges) | 6.2 us | 0 B |
+
+The cache and brute force paths are essentially identical at 256 vectors -- SIMD is so fast that dictionary overhead cancels any caching benefit. Both paths are allocation-free.
+
+### ASCII Character Set Expansion
+
+The ASCII renderer also benefits from expanded shape matching. v4.5 uses all 95 printable ASCII characters by default, up from the original 70-character curated set. Shape vectors are cached to disk to avoid re-rendering fonts on startup.
+
+| Character Set | Chars | Cached Lookup (per 1000) | Brute Force (per 1000) |
+|---------------|-------|--------------------------|------------------------|
+| Classic (v4.1) | 70 | 6.1 us | 94.1 us |
+| Full (v4.5 default) | 95 | 6.0 us | 133.5 us |
+| Extended | 93 | 6.0 us | N/A |
+
+Cached lookups are character-count-independent (quantized cache hit). Brute force scales linearly but is only used on cache miss.
 
 ## Credits
 

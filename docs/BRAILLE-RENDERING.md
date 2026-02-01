@@ -79,14 +79,17 @@ flowchart LR
     B --> C[Convert to Grayscale]
     C --> D[Otsu Threshold]
     D --> E[Atkinson Dither]
-    E --> F[Build Braille Codes]
-    F --> G[Apply Colors]
-    G --> H[Terminal Output]
+    E --> F[Ring Sampling<br/>8D Vectors]
+    F --> G[SIMD Shape<br/>Matching]
+    G --> H[Apply Colors]
+    H --> I[Terminal Output]
 
     style A stroke:#4a9eff
     style D stroke:#ff6600
     style E stroke:#ff6600
-    style G stroke:#00aa00
+    style F stroke:#9933ff
+    style G stroke:#9933ff
+    style H stroke:#00aa00
 ```
 
 ### Step 1: Intelligent Resizing
@@ -263,6 +266,163 @@ private static void ApplyAtkinsonDithering(Span<short> buffer, int width, int he
     }
 }
 ```
+
+## Vector Glyph Shape Matching
+
+After dithering produces a brightness field, we don't simply threshold each dot independently. Instead, we use **8-dimensional shape vector matching** to find the braille character whose dot pattern best represents each 2×4 pixel region. This is the same core idea behind the ASCII renderer's 6D shape matching (from Alex Harri's algorithm), adapted for braille's 8-dot grid.
+
+### Why Not Just Threshold Each Dot?
+
+A naive approach checks each of the 8 pixel positions against a threshold and builds the braille code bit by bit. This works, but it's sensitive to noise at dot boundaries—a single pixel hovering near the threshold can flicker on and off between frames, and spatial aliasing produces jagged edges.
+
+Shape vector matching treats the entire 2×4 cell as a unit, finding the braille pattern whose overall shape is the closest geometric match. This produces smoother, more stable output because the decision considers all 8 positions together rather than independently.
+
+### Concentric Ring Sampling
+
+Each dot position is sampled using **concentric rings** rather than a single pixel lookup. This averages brightness over a small circular area around each dot center, making the result robust to sub-pixel positioning:
+
+```
+           ┌─ Outer ring (8 points, radius r)
+           │   ┌─ Inner ring (4 points, radius r/2)
+           │   │   ┌─ Center point
+           │   │   │
+           ·   ·   ●   ·   ·
+         ·       ·   ·       ·
+        ·    ·   ●   ·    ·
+         ·       ·   ·       ·
+           ·   ·   ●   ·   ·
+
+  Total: 1 center + 4 inner + 8 outer = 13 samples per dot
+```
+
+For each of the 8 dot positions in the 2×4 cell:
+
+1. **Center point**: Direct pixel lookup at dot center
+2. **Inner ring**: 4 points at radius × 0.5, evenly spaced
+3. **Outer ring**: 8 points at full radius, offset by π/8 from inner ring
+
+The average of all samples gives a **coverage value** between 0.0 (white/empty) and 1.0 (black/filled)—a continuous value rather than a binary on/off.
+
+```csharp
+// Dot center positions within a 2×4 pixel cell:
+//   Col 0: x = px + 0.5    Col 1: x = px + 1.5
+//   Row 0: y = py + 0.5    Row 1: y = py + 1.5
+//   Row 2: y = py + 2.5    Row 3: y = py + 3.5
+//
+// Sampling radius: 0.35 pixels (relative to half-pixel spacing)
+```
+
+### 8D Shape Vectors
+
+Each braille pattern (0x00–0xFF) is represented as an **8-dimensional vector** where each component corresponds to one dot position:
+
+```
+Pattern ⣿ (0xFF, all dots ON):  [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+Pattern ⠀ (0x00, all dots OFF): [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Pattern ⡇ (0x47, left column):  [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]
+Pattern ⣤ (0xE4, bottom half):  [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+Pattern ⠛ (0x1B, top half):     [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0]
+```
+
+The vector index maps to the 2×4 grid in row-major order:
+
+```
+Index:  [0] [1]     Braille:  1  4
+        [2] [3]               2  5
+        [4] [5]               3  6
+        [6] [7]               7  8
+```
+
+These 256 vectors are generated **mathematically** from the Unicode braille standard—no font rendering is needed (unlike ASCII mode, which must render each glyph to measure its shape). Each component is simply 1.0 if the corresponding bit is set in the braille code, 0.0 otherwise:
+
+```csharp
+// Dot bit positions: index → Unicode braille bit
+private static readonly int[] DotBits = [0x01, 0x08, 0x02, 0x10, 0x04, 0x20, 0x40, 0x80];
+
+// Generate all 256 pattern vectors
+for (int code = 0; code < 256; code++)
+    for (int dot = 0; dot < 8; dot++)
+        vectorData[code * 8 + dot] = (code & DotBits[dot]) != 0 ? 1.0f : 0.0f;
+```
+
+### SIMD Brute-Force Matching
+
+To find the best braille character for a sampled cell, we compute the **squared Euclidean distance** between the 8D sample vector and all 256 pattern vectors, selecting the minimum. With only 256 candidates × 8 dimensions, brute force is faster than any tree structure—and it vectorizes perfectly.
+
+On CPUs with AVX support, all 8 floats fit in a single `Vector256<float>`, making the inner loop a single SIMD subtraction, multiplication, and horizontal sum:
+
+```csharp
+// Load 8-float sample vector once
+var targetVec = Vector256.Create(
+    target[0], target[1], target[2], target[3],
+    target[4], target[5], target[6], target[7]);
+
+// Compare against all 256 braille patterns
+for (int i = 0; i < 256; i++)
+{
+    var charVec = Vector256.Create(/* 8 floats for pattern i */);
+    var diff = targetVec - charVec;
+    var squared = diff * diff;
+    var dist = Vector256.Sum(squared);  // Single instruction on AVX
+
+    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+}
+```
+
+### Quantized Caching
+
+Many cells produce similar coverage vectors (e.g., solid regions of an image). To avoid redundant matching, vectors are **quantized to 4 bits per component** and used as cache keys:
+
+```
+8 components × 4 bits = 32 bits → fits in a single int
+```
+
+Each component value (0.0–1.0) maps to one of 16 levels (0–15). This gives a maximum of 2³² ≈ 4 billion possible keys, but in practice images produce far fewer unique patterns. The cache uses a `ConcurrentDictionary<int, char>` for thread-safe access during parallel rendering.
+
+### Worked Example
+
+Consider a cell from a diagonal edge where the top-left is dark and bottom-right is bright:
+
+```
+Pixel brightness:        Sampled coverage (13-point rings):
+┌──────┬──────┐          ┌──────┬──────┐
+│ 0.05 │ 0.25 │          │ 0.92 │ 0.71 │
+├──────┼──────┤          ├──────┼──────┤
+│ 0.10 │ 0.45 │   →      │ 0.88 │ 0.52 │
+├──────┼──────┤          ├──────┼──────┤
+│ 0.40 │ 0.80 │          │ 0.57 │ 0.18 │
+├──────┼──────┤          ├──────┼──────┤
+│ 0.75 │ 0.95 │          │ 0.23 │ 0.04 │
+└──────┴──────┘          └──────┴──────┘
+
+Sample vector: [0.92, 0.71, 0.88, 0.52, 0.57, 0.18, 0.23, 0.04]
+
+Closest patterns (by squared distance):
+  ⠛ (0x1B) = [1,1,1,1,0,0,0,0]  dist = 0.41   ← top half
+  ⡇ (0x47) = [1,0,1,0,1,0,1,0]  dist = 0.93
+  ⠫ (0x2B) = [1,1,0,1,1,0,0,0]  dist = 0.72
+  ⠻ (0x3B) = [1,1,0,1,1,1,0,0]  dist = 0.36   ← best match ✓
+
+Result: ⠻ (top-left 5 dots lit, bottom-right 3 dots off)
+```
+
+The shape matcher picks `⠻` because its dot pattern best approximates the continuous coverage gradient—better than simple thresholding which might produce `⠛` (hard top/bottom split) or `⣿`/`⠀` (all-or-nothing).
+
+### Comparison: ASCII 6D vs Braille 8D
+
+| Aspect | ASCII (`CharacterMap`) | Braille (`BrailleCharacterMap`) |
+|--------|----------------------|-------------------------------|
+| **Vector dimensions** | 6D (3×2 staggered grid) | 8D (2×4 dot grid) |
+| **Character count** | 95 (printable ASCII) | 256 (all braille patterns) |
+| **Vector generation** | Font rendering (needs `.ttf`) | Mathematical (Unicode-defined) |
+| **Sampling method** | 37 points per circle, 6 circles | 13 points per dot, 8 dots |
+| **Matching strategy** | KD-tree + SIMD brute force | SIMD brute force (256 is small) |
+| **Cache key** | 5 bits × 6 = 30 bits | 4 bits × 8 = 32 bits |
+| **Resolution** | 1 pixel per cell | 8 pixels per cell |
+
+The ASCII renderer uses a **KD-tree** for fast lookup among 95 characters in 6D space. The braille renderer skips the tree entirely—with only 256 patterns and AVX processing all 8 dimensions in one instruction, linear scan is faster than tree traversal overhead.
+
+Both approaches share the same insight from Alex Harri's algorithm: represent visual patterns as vectors in a metric space, then find the nearest neighbor. The difference is that ASCII must render each font glyph to discover its shape, while braille patterns are defined by the Unicode standard and can be generated purely from the bit encoding.
 
 ## Color Handling: The Hybrid Approach
 
@@ -517,11 +677,14 @@ The braille rendering technique combines several clever algorithms:
 1. **Unicode braille encoding** packs 8 dots into each character
 2. **Otsu's method** automatically finds the optimal threshold
 3. **Atkinson dithering** creates smooth gradients with sharp edges
-4. **Hybrid color sampling** matches displayed colors to lit dots
-5. **Color boosting** compensates for sparse dot patterns
-6. **Delta rendering** optimizes video/animation playback
+4. **Concentric ring sampling** converts pixel regions to continuous 8D coverage vectors
+5. **SIMD shape vector matching** finds the closest braille pattern across all 256 candidates
+6. **Quantized caching** avoids redundant matching for similar pixel regions
+7. **Hybrid color sampling** matches displayed colors to lit dots
+8. **Color boosting** compensates for sparse dot patterns
+9. **Delta rendering** optimizes video/animation playback
 
-Together, these techniques produce terminal graphics that rival dedicated image viewers—all using nothing but text characters.
+The vector matching step (4–6) is what elevates braille output beyond simple thresholding. By treating each cell as an 8-dimensional shape problem, the renderer makes holistic decisions about dot patterns rather than independent per-pixel binary choices. This produces smoother edges, better detail preservation, and more temporally stable output for video.
 
 ## References
 

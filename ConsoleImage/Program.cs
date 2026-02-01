@@ -154,11 +154,34 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
     }
 
+    // --no-color without --monochrome means greyscale ANSI output (grey ramp 232-255)
+    // --monochrome means pure B&W (no ANSI color codes at all)
+    var isMonochromeMode = useMonochromeOpt ||
+                           (!string.IsNullOrEmpty(modeOpt) &&
+                            (modeOpt.Equals("mono", StringComparison.OrdinalIgnoreCase) ||
+                             modeOpt.Equals("monochrome", StringComparison.OrdinalIgnoreCase)));
+    var useGreyscaleAnsi = noColor && !isMonochromeMode;
+
     var matrixColor = parseResult.GetValue(cliOptions.MatrixColor) ?? template?.MatrixColor;
     var matrixFullColor = parseResult.GetValue(cliOptions.MatrixFullColor) || (template?.MatrixFullColor ?? false);
     var matrixDensity = parseResult.GetValue(cliOptions.MatrixDensity) ?? template?.MatrixDensity;
     var matrixSpeed = parseResult.GetValue(cliOptions.MatrixSpeed) ?? template?.MatrixSpeed;
     var matrixAlphabet = parseResult.GetValue(cliOptions.MatrixAlphabet) ?? template?.MatrixAlphabet;
+    // Color depth for terminal output
+    var colorDepthStr = parseResult.GetValue(cliOptions.ColorDepthOpt);
+    var colorDepth = colorDepthStr?.ToLowerInvariant() switch
+    {
+        "16" => ConsoleImage.Core.ColorDepth.Palette16,
+        "256" => ConsoleImage.Core.ColorDepth.Palette256,
+        _ => ConsoleImage.Core.ColorDepth.TrueColor
+    };
+
+    // Interlace (temporal super-resolution for braille)
+    var interlace = parseResult.GetValue(cliOptions.Interlace);
+    var interlaceFrames = parseResult.GetValue(cliOptions.InterlaceFrames);
+    var interlaceSpread = parseResult.GetValue(cliOptions.InterlaceSpread);
+    var interlaceFps = parseResult.GetValue(cliOptions.InterlaceFps);
+
     var colorCount = parseResult.GetValue(cliOptions.Colors) ?? template?.Colors;
     var contrast = template?.Contrast ?? parseResult.GetValue(cliOptions.Contrast);
     var gamma = parseResult.GetValue(cliOptions.Gamma) ?? template?.Gamma;
@@ -384,7 +407,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 MaxWidth = maxWidth,
                 MaxHeight = maxHeight,
                 CharacterAspectRatio = charAspect ?? 0.5f,
-                UseColor = !noColor
+                UseColor = !noColor,
+                UseGreyscaleAnsi = useGreyscaleAnsi
             };
 
             // Pure Matrix with GIF output
@@ -433,6 +457,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             UseBraille = useBraille,
             UseMatrix = useMatrix,
             UseColor = !noColor,
+            UseGreyscaleAnsi = useGreyscaleAnsi,
             Contrast = contrast,
             Gamma = effectiveGamma,
             CharAspect = charAspect,
@@ -804,6 +829,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             outputAsJson, jsonOutputPath,
             showStatus,
             markdownPath, markdownFormat,
+            interlace, interlaceFrames, interlaceSpread, interlaceFps,
+            colorDepth,
+            useGreyscaleAnsi,
             cancellationToken);
     }
 
@@ -1021,6 +1049,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
         // Color/rendering
         NoColor = noColor,
+        UseGreyscaleAnsi = useGreyscaleAnsi,
         ColorCount = colorCount,
         Contrast = contrast,
         Gamma = effectiveGamma,

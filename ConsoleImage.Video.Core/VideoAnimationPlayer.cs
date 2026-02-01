@@ -135,8 +135,17 @@ public class VideoAnimationPlayer : IDisposable
         Console.Write("\x1b[0m"); // Reset all attributes first
         if (_options.UseAltScreen) Console.Write("\x1b[?1049h"); // Enter alt screen
         Console.Write("\x1b[?25l"); // Hide cursor
-        Console.Write("\x1b[2J"); // Clear screen (ED2 - entire screen)
-        Console.Write("\x1b[H"); // Home cursor
+        if (_options.ContentStartRow <= 1)
+        {
+            Console.Write("\x1b[2J"); // Clear entire screen
+            Console.Write("\x1b[H"); // Home cursor
+        }
+        else
+        {
+            // Clear from content start row down (preserve header rows above)
+            Console.Write($"\x1b[{_options.ContentStartRow};1H"); // Move to content start
+            Console.Write("\x1b[J"); // Clear from cursor to end of screen
+        }
         Console.Out.Flush();
 
         // Initialize subtitle renderer if subtitles are available
@@ -169,14 +178,14 @@ public class VideoAnimationPlayer : IDisposable
                     _lastSubtitleContent = null; // Clear cached subtitle to force redraw
                     _options.Subtitles?.ResetCache(); // Reset subtitle lookup cache for new position
                     _options.LiveSubtitleProvider?.Track.ResetCache(); // Reset live subtitle cache too
-                    Console.Write("\x1b[2J\x1b[H"); // Clear screen for new position
+                    ClearContentArea(); // Clear screen for new position
                     Console.Out.Flush();
                 }
 
                 // Check for resize
                 if (CheckForResize())
                 {
-                    Console.Write("\x1b[2J\x1b[H");
+                    ClearContentArea();
                     Console.Out.Flush();
                     _previousBrailleCells = null; // Reset delta state for new dimensions
                     // Re-create subtitle renderer with new dimensions
@@ -379,7 +388,7 @@ public class VideoAnimationPlayer : IDisposable
                         // Show "Transcribing..." indicator while waiting
                         subtitleContent = _subtitleRenderer.RenderText("\u23F3 Transcribing...");
                         var waitingBuffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1,
-                            statusContent, subtitleContent, _lastSubtitleContent);
+                            statusContent, subtitleContent, _lastSubtitleContent, _options.ContentStartRow);
                         Console.Write(waitingBuffer);
                         Console.Out.Flush();
 
@@ -409,7 +418,7 @@ public class VideoAnimationPlayer : IDisposable
 
                 // Build optimized frame buffer with status line and subtitles included
                 var buffer = BuildFrameBuffer(frameContent, previousFrame, frameIndex == 1, statusContent,
-                    subtitleContent, _lastSubtitleContent);
+                    subtitleContent, _lastSubtitleContent, _options.ContentStartRow);
                 previousFrame = frameContent;
                 _lastSubtitleContent = subtitleContent;
 
@@ -597,18 +606,23 @@ public class VideoAnimationPlayer : IDisposable
         bool isFirstFrame,
         string? statusLine = null,
         string? subtitleContent = null,
-        string? previousSubtitle = null)
+        string? previousSubtitle = null,
+        int contentStartRow = 1)
     {
         var sb = new StringBuilder();
         sb.Append("\x1b[?2026h"); // Begin synchronized output
+
+        // Row offset: contentStartRow is 1-based terminal row where content begins
+        // GetCursorMove expects 0-based line index → 1-based row, so offset by (contentStartRow - 1)
+        var rowOffset = contentStartRow - 1;
 
         // Count frame lines for status/subtitle positioning (without allocating)
         var frameLines = CountLines(content);
 
         if (isFirstFrame || previousContent == null)
         {
-            // Full redraw for first frame
-            sb.Append("\x1b[H"); // Home cursor
+            // Full redraw for first frame - position at content start row
+            sb.Append(GetCursorMove(rowOffset)); // Move to content start row
             sb.Append(content);
         }
         else
@@ -630,7 +644,7 @@ public class VideoAnimationPlayer : IDisposable
             // If more than 60% changed, do full redraw
             if (changedLines > maxLines * 0.6)
             {
-                sb.Append("\x1b[H");
+                sb.Append(GetCursorMove(rowOffset)); // Move to content start row
                 sb.Append(content);
             }
             else
@@ -643,7 +657,7 @@ public class VideoAnimationPlayer : IDisposable
 
                     if (!currLine.SequenceEqual(prevLine))
                     {
-                        sb.Append(GetCursorMove(i)); // Move to line (cached)
+                        sb.Append(GetCursorMove(rowOffset + i)); // Move to line with offset
                         sb.Append(currLine);
 
                         // Pad to clear previous content
@@ -672,7 +686,7 @@ public class VideoAnimationPlayer : IDisposable
             var subtitleLineCount = CountLines(subtitleContent);
             for (var i = 0; i < maxSubtitleLines; i++)
             {
-                sb.Append(GetCursorMove(frameLines + i)); // Move to subtitle row (cached)
+                sb.Append(GetCursorMove(rowOffset + frameLines + i)); // Move to subtitle row with offset
                 if (i < subtitleLineCount)
                     // Write subtitle line (already padded to width by SubtitleRenderer)
                     sb.Append(GetLineSpan(subtitleContent, i));
@@ -689,7 +703,7 @@ public class VideoAnimationPlayer : IDisposable
             // Clear previous subtitle lines by overwriting with cached blank line
             for (var i = 0; i < maxSubtitleLines; i++)
             {
-                sb.Append(GetCursorMove(frameLines + i)); // Cached
+                sb.Append(GetCursorMove(rowOffset + frameLines + i)); // With offset
                 sb.Append(BlankLine120);
             }
         }
@@ -697,8 +711,8 @@ public class VideoAnimationPlayer : IDisposable
         // Render status line at fixed position below subtitles (overwrite, don't clear)
         if (!string.IsNullOrEmpty(statusLine))
         {
-            var statusRow = frameLines + maxSubtitleLines;
-            sb.Append(GetCursorMove(statusRow)); // Move to status line row (cached)
+            var statusRow = rowOffset + frameLines + maxSubtitleLines;
+            sb.Append(GetCursorMove(statusRow)); // Move to status line row with offset
             sb.Append(statusLine);
             sb.Append("\x1b[0m"); // Reset colors
         }
@@ -859,6 +873,22 @@ public class VideoAnimationPlayer : IDisposable
     }
 
     /// <summary>
+    ///     Clear the content area, preserving any header rows above ContentStartRow.
+    /// </summary>
+    private void ClearContentArea()
+    {
+        if (_options.ContentStartRow <= 1)
+        {
+            Console.Write("\x1b[2J\x1b[H"); // Clear entire screen + home
+        }
+        else
+        {
+            Console.Write($"\x1b[{_options.ContentStartRow};1H"); // Move to content start
+            Console.Write("\x1b[J"); // Clear from cursor to end of screen
+        }
+    }
+
+    /// <summary>
     ///     Check for console resize.
     /// </summary>
     private bool CheckForResize()
@@ -952,18 +982,19 @@ public class VideoAnimationPlayer : IDisposable
             case ConsoleKey.Spacebar:
                 _isPaused = !_isPaused;
                 OnPausedChanged?.Invoke(_isPaused);
-                // Show pause indicator
+                // Show pause indicator at content start row
+                var indicatorRow = _options.ContentStartRow;
                 if (_isPaused)
                 {
                     Console.Write("\x1b[s"); // Save cursor
-                    Console.Write("\x1b[1;1H"); // Move to top-left
+                    Console.Write($"\x1b[{indicatorRow};1H"); // Move to content top-left
                     Console.Write("\x1b[43;30m PAUSED \x1b[0m"); // Yellow background
                     Console.Write("\x1b[u"); // Restore cursor
                 }
                 else
                 {
                     Console.Write("\x1b[s"); // Save cursor
-                    Console.Write("\x1b[1;1H"); // Move to top-left
+                    Console.Write($"\x1b[{indicatorRow};1H"); // Move to content top-left
                     Console.Write("        "); // Clear pause indicator
                     Console.Write("\x1b[u"); // Restore cursor
                 }
@@ -1040,7 +1071,7 @@ public class VideoAnimationPlayer : IDisposable
     private void ShowIndicator(string text)
     {
         Console.Write("\x1b[s"); // Save cursor
-        Console.Write("\x1b[1;1H"); // Move to top-left
+        Console.Write($"\x1b[{_options.ContentStartRow};1H"); // Move to content top-left
         Console.Write($"\x1b[46;30m {text} \x1b[0m"); // Cyan background
         Console.Write("\x1b[u"); // Restore cursor
         Console.Out.Flush();

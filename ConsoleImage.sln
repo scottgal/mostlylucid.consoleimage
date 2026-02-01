@@ -10,6 +10,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "solution", "solution", "{94
 		.gitignore = .gitignore
 		.github\workflows\publish-nuget.yml = .github\workflows\publish-nuget.yml
 		docs\JSON-FORMAT.md = docs\JSON-FORMAT.md
+		.github\workflows\publish-all-nuget.yml = .github\workflows\publish-all-nuget.yml
+		.github\workflows\publish-nuget-spectre.yml = .github\workflows\publish-nuget-spectre.yml
+		.github\workflows\publish-nuget-transcription.yml = .github\workflows\publish-nuget-transcription.yml
+		.github\workflows\publish-nuget-video.yml = .github\workflows\publish-nuget-video.yml
+		.github\workflows\release-spectre-demo.yml = .github\workflows\release-spectre-demo.yml
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleImage.Spectre", "ConsoleImage.Spectre\ConsoleImage.Spectre.csproj", "{5A378B4D-0809-4F5B-B0C5-D6EE4D1310A7}"

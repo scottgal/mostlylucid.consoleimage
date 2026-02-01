@@ -6,6 +6,21 @@ using System.Text.Json.Serialization;
 namespace ConsoleImage.Core;
 
 /// <summary>
+///     Terminal color depth for ANSI output.
+/// </summary>
+public enum ColorDepth
+{
+    /// <summary>24-bit true color (default). Requires modern terminal.</summary>
+    TrueColor,
+
+    /// <summary>256-color xterm palette (6x6x6 cube + 24 grey levels).</summary>
+    Palette256,
+
+    /// <summary>Standard 16-color ANSI (most compatible).</summary>
+    Palette16
+}
+
+/// <summary>
 ///     Configuration options for ASCII rendering.
 ///     Can be bound from appsettings.json via IConfiguration.
 /// </summary>
@@ -84,6 +99,20 @@ public class RenderOptions
     ///     Default is TRUE for modern terminals.
     /// </summary>
     public bool UseColor { get; set; } = true;
+
+    /// <summary>
+    ///     When UseColor is false, output greyscale ANSI codes (256-color grey ramp 232-255)
+    ///     instead of stripping all color. This preserves brightness information as grey shading.
+    ///     When false with UseColor=false, output is pure monochrome (no ANSI color codes at all).
+    ///     Default: false (for backward compatibility; --no-color enables this).
+    /// </summary>
+    public bool UseGreyscaleAnsi { get; set; }
+
+    /// <summary>
+    ///     Terminal color depth for ANSI output.
+    ///     TrueColor (24-bit, default), Palette256 (xterm-256), or Palette16 (standard ANSI).
+    /// </summary>
+    public ColorDepth ColorDepth { get; set; } = ColorDepth.TrueColor;
 
     /// <summary>
     ///     For animated GIFs: frame delay multiplier (1.0 = original speed)
@@ -213,6 +242,41 @@ public class RenderOptions
     public int? ColorCount { get; set; }
 
     /// <summary>
+    ///     EXPERIMENTAL: Enable perceptual braille interlacing (temporal super-resolution).
+    ///     Generates multiple braille frames with slightly different brightness thresholds
+    ///     and plays them rapidly. The human visual system integrates the frames,
+    ///     perceiving more detail than any single frame can show.
+    ///     Known issues: black horizontal bars appear between frames due to a screen
+    ///     clearing/positioning bug in BrailleInterlacePlayer.
+    ///     Default: false
+    /// </summary>
+    public bool InterlaceEnabled { get; set; }
+
+    /// <summary>
+    ///     EXPERIMENTAL: Number of interlace subframes per visible frame (2-8).
+    ///     More frames = more perceived brightness levels (N frames → N+1 levels per dot).
+    ///     4 is the industry standard for LCD FRC (Frame Rate Control).
+    ///     Default: 4
+    /// </summary>
+    public int InterlaceFrameCount { get; set; } = 4;
+
+    /// <summary>
+    ///     EXPERIMENTAL: Threshold spread range for interlace frames (0.01-0.2).
+    ///     Controls how much the brightness threshold varies between subframes.
+    ///     Higher values show more tonal range but may cause visible flicker.
+    ///     Default: 0.06 (6% of brightness range)
+    /// </summary>
+    public float InterlaceSpread { get; set; } = 0.06f;
+
+    /// <summary>
+    ///     EXPERIMENTAL: Target visible FPS for interlace playback.
+    ///     Actual subframe rate = InterlaceFps * InterlaceFrameCount.
+    ///     Minimum 60 Hz subframe rate recommended for flicker-free display.
+    ///     Default: 20 fps (80 Hz subframes with 4 frames)
+    /// </summary>
+    public float InterlaceFps { get; set; } = 20f;
+
+    /// <summary>
     ///     Gets the effective character set, considering presets
     /// </summary>
     [JsonIgnore]
@@ -282,6 +346,7 @@ public class RenderOptions
             "simple" => CharacterMap.SimpleCharacterSet,
             "block" => CharacterMap.BlockCharacterSet,
             "extended" => CharacterMap.ExtendedCharacterSet,
+            "classic" => CharacterMap.ClassicCharacterSet,
             _ => CharacterMap.DefaultCharacterSet
         };
     }
@@ -437,6 +502,8 @@ public class RenderOptions
             Gamma = Gamma,
             Invert = Invert,
             UseColor = UseColor,
+            UseGreyscaleAnsi = UseGreyscaleAnsi,
+            ColorDepth = ColorDepth,
             AnimationSpeedMultiplier = AnimationSpeedMultiplier,
             LoopCount = LoopCount,
             EnableEdgeDetection = EnableEdgeDetection,
@@ -455,7 +522,11 @@ public class RenderOptions
             ColorStabilityThreshold = ColorStabilityThreshold,
             CharacterStabilityBias = CharacterStabilityBias,
             BrailleFullBlocks = BrailleFullBlocks,
-            ColorCount = ColorCount
+            ColorCount = ColorCount,
+            InterlaceEnabled = InterlaceEnabled,
+            InterlaceFrameCount = InterlaceFrameCount,
+            InterlaceSpread = InterlaceSpread,
+            InterlaceFps = InterlaceFps
         };
     }
 }

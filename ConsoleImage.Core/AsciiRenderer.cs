@@ -23,12 +23,12 @@ public class AsciiRenderer : IDisposable
     //          [3]  [4]  [5]   <- Bottom row
     private static readonly (float X, float Y)[] InternalSamplingPositions =
     [
-        (0.17f, 0.30f), // Top-left (lowered)
+        (0.17f, 0.25f), // Top-left
         (0.50f, 0.25f), // Top-center
-        (0.83f, 0.20f), // Top-right (raised)
-        (0.17f, 0.80f), // Bottom-left (lowered)
+        (0.83f, 0.25f), // Top-right
+        (0.17f, 0.75f), // Bottom-left
         (0.50f, 0.75f), // Bottom-center
-        (0.83f, 0.70f) // Bottom-right (raised)
+        (0.83f, 0.75f)  // Bottom-right
     ];
 
     // Pre-computed sin/cos lookup tables for circle sampling (major performance optimization)
@@ -52,13 +52,13 @@ public class AsciiRenderer : IDisposable
         (0.17f, -0.10f), // Above top-left
         (0.50f, -0.10f), // Above top-center
         (0.83f, -0.10f), // Above top-right
-        (-0.15f, 0.30f), // Left of top-left
-        (1.15f, 0.20f), // Right of top-right
-        (-0.15f, 0.80f), // Left of bottom-left
-        (1.15f, 0.70f), // Right of bottom-right
-        (0.17f, 1.10f), // Below bottom-left
-        (0.50f, 1.10f), // Below bottom-center
-        (0.83f, 1.10f) // Below bottom-right
+        (-0.15f, 0.25f), // Left of top-left
+        (1.15f, 0.25f),  // Right of top-right
+        (-0.15f, 0.75f), // Left of bottom-left
+        (1.15f, 0.75f),  // Right of bottom-right
+        (0.17f, 1.10f),  // Below bottom-left
+        (0.50f, 1.10f),  // Below bottom-center
+        (0.83f, 1.10f)   // Below bottom-right
     ];
 
     private readonly CharacterMap _characterMap;
@@ -71,6 +71,7 @@ public class AsciiRenderer : IDisposable
 
     public AsciiRenderer(RenderOptions? options = null)
     {
+        ConsoleHelper.EnableAnsiSupport();
         _options = options ?? RenderOptions.Default;
         _characterMap = new CharacterMap(
             _options.CharacterSet,

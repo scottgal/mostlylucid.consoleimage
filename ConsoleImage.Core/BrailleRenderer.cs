@@ -101,6 +101,11 @@ public class BrailleRenderer : IDisposable
         0xFF // 8 dots: ⣿ (full block)
     };
 
+    // Pre-computed sin/cos for concentric ring sampling around braille dot centers
+    private static readonly (float Cos, float Sin)[] InnerRingAngles = PrecomputeAngles(4, 0);
+    private static readonly (float Cos, float Sin)[] OuterRingAngles = PrecomputeAngles(8, MathF.PI / 8);
+
+    private readonly BrailleCharacterMap _brailleMap = new();
     private readonly RenderOptions _options;
 
     // Reusable buffers to reduce GC pressure during video playback
@@ -112,7 +117,89 @@ public class BrailleRenderer : IDisposable
 
     public BrailleRenderer(RenderOptions? options = null)
     {
+        ConsoleHelper.EnableAnsiSupport();
         _options = options ?? new RenderOptions();
+    }
+
+    private static (float Cos, float Sin)[] PrecomputeAngles(int count, float offset)
+    {
+        var angles = new (float Cos, float Sin)[count];
+        for (var i = 0; i < count; i++)
+        {
+            var angle = i * MathF.PI * 2 / count + offset;
+            angles[i] = (MathF.Cos(angle), MathF.Sin(angle));
+        }
+        return angles;
+    }
+
+    /// <summary>
+    ///     Sample 8 braille dot positions from brightness data using concentric ring sampling.
+    ///     Each dot center is sampled with rings for accuracy, converting brightness to coverage.
+    ///     Dot centers in normalized cell coords: col 0 at x=0.25, col 1 at x=0.75
+    ///     Rows at y = 0.125, 0.375, 0.625, 0.875 (evenly spaced in 4 rows).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SampleBrailleCell(float[] brightness, int pixelWidth, int pixelHeight,
+        int px, int py, Span<float> target8)
+    {
+        // Dot center positions in pixel coordinates within the 2x4 cell
+        // Row 0: y = py + 0.5, Row 1: y = py + 1.5, Row 2: y = py + 2.5, Row 3: y = py + 3.5
+        // Col 0: x = px + 0.5, Col 1: x = px + 1.5
+        // Sampling radius relative to half-pixel spacing
+        const float radius = 0.35f;
+
+        for (var row = 0; row < 4; row++)
+        {
+            var centerY = py + row + 0.5f;
+            for (var col = 0; col < 2; col++)
+            {
+                var centerX = px + col + 0.5f;
+                var dotIdx = row * 2 + col;
+
+                // Sample with concentric rings for accuracy
+                float total = 0;
+                var count = 0;
+
+                // Center point
+                var ix = (int)centerX;
+                var iy = (int)centerY;
+                if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
+                {
+                    total += 1f - brightness[iy * pixelWidth + ix];
+                    count++;
+                }
+
+                // Inner ring (4 points at 0.5 * radius)
+                var innerR = radius * 0.5f;
+                for (var i = 0; i < 4; i++)
+                {
+                    var (cos, sin) = InnerRingAngles[i];
+                    ix = (int)(centerX + cos * innerR);
+                    iy = (int)(centerY + sin * innerR);
+                    if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
+                    {
+                        total += 1f - brightness[iy * pixelWidth + ix];
+                        count++;
+                    }
+                }
+
+                // Outer ring (8 points at radius)
+                for (var i = 0; i < 8; i++)
+                {
+                    var (cos, sin) = OuterRingAngles[i];
+                    ix = (int)(centerX + cos * radius);
+                    iy = (int)(centerY + sin * radius);
+                    if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
+                    {
+                        total += 1f - brightness[iy * pixelWidth + ix];
+                        count++;
+                    }
+                }
+
+                // Coverage: 0 = white/empty, 1 = black/filled
+                target8[dotIdx] = count > 0 ? total / count : 0f;
+            }
+        }
     }
 
     public void Dispose()
@@ -172,21 +259,30 @@ public class BrailleRenderer : IDisposable
 
         using var resized = image.Clone(ctx => ctx.Resize(pixelWidth, pixelHeight));
         var (brightness, colors) = PrecomputePixelData(resized);
-        var (minBrightness, maxBrightness) = GetBrightnessRangeFromBuffer(brightness);
 
         var cells = new CellData[charHeight, charWidth];
+        var invertMode = _options.Invert;
 
         // Parallel render to cell array
         Parallel.For(0, charHeight, cy =>
         {
-            Span<float> cellBrightness = stackalloc float[8];
-            Span<int> cellIndices = stackalloc int[8];
+            Span<float> target8 = stackalloc float[8];
 
             for (var cx = 0; cx < charWidth; cx++)
             {
                 var px = cx * 2;
                 var py = cy * 4;
 
+                // Shape vector matching for braille character selection
+                SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
+
+                if (invertMode)
+                    for (var i = 0; i < 8; i++)
+                        target8[i] = 1f - target8[i];
+
+                var brailleChar = _brailleMap.FindBestMatch(target8);
+
+                // Collect average color from all pixels in cell
                 int totalR = 0, totalG = 0, totalB = 0;
                 var colorCount = 0;
 
@@ -201,24 +297,13 @@ public class BrailleRenderer : IDisposable
                         var imgX = px + dx;
                         if (imgX >= pixelWidth) continue;
 
-                        var idx = rowOffset + imgX;
-                        var c = colors[idx];
+                        var c = colors[rowOffset + imgX];
                         totalR += c.R;
                         totalG += c.G;
                         totalB += c.B;
-
-                        cellBrightness[colorCount] = brightness[idx];
-                        cellIndices[colorCount] = dy * 2 + dx;
                         colorCount++;
                     }
                 }
-
-                // Get braille character (always full block in color mode)
-                var brailleCode = _options.UseColor
-                    ? CalculateHybridBrailleCode(cellBrightness, cellIndices, colorCount,
-                        minBrightness, maxBrightness, _options.Invert)
-                    : 0xFF;
-                var brailleChar = (char)(BrailleBase + brailleCode);
 
                 // Calculate average color
                 byte r = 0, g = 0, b = 0;
@@ -228,10 +313,8 @@ public class BrailleRenderer : IDisposable
                     g = (byte)(totalG / colorCount);
                     b = (byte)(totalB / colorCount);
 
-                    // Apply gamma correction and boost saturation/brightness for braille
                     (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
 
-                    // Apply color quantization for reduced palette / temporal stability
                     var paletteSize = _options.ColorCount;
                     if (paletteSize.HasValue && paletteSize.Value > 0)
                     {
@@ -312,11 +395,11 @@ public class BrailleRenderer : IDisposable
                 sb.Append('H');
 
                 // Output color if needed
-                if (_options.UseColor)
+                if (_options.UseColor || _options.UseGreyscaleAnsi)
                 {
                     if (!hasColor || current.R != lastR || current.G != lastG || current.B != lastB)
                     {
-                        AppendColorCode(sb, current.R, current.G, current.B);
+                        AppendColorCode(sb, current.R, current.G, current.B, _options.ColorDepth, _options.UseGreyscaleAnsi);
                         lastR = current.R;
                         lastG = current.G;
                         lastB = current.B;
@@ -376,10 +459,10 @@ public class BrailleRenderer : IDisposable
             {
                 var cell = cells[y, x];
 
-                if (_options.UseColor)
+                if (_options.UseColor || _options.UseGreyscaleAnsi)
                 {
                     // Append color code
-                    AppendColorCode(sb, cell.R, cell.G, cell.B);
+                    AppendColorCode(sb, cell.R, cell.G, cell.B, _options.ColorDepth, _options.UseGreyscaleAnsi);
 
                     // Run-length encode: collect consecutive cells with same color
                     var runStart = x;
@@ -410,8 +493,23 @@ public class BrailleRenderer : IDisposable
     ///     Append ANSI color code efficiently, using pre-computed greyscale when possible.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void AppendColorCode(StringBuilder sb, byte r, byte g, byte b)
+    private static void AppendColorCode(StringBuilder sb, byte r, byte g, byte b,
+        ColorDepth depth = ColorDepth.TrueColor, bool greyscale = false)
     {
+        // Greyscale ANSI: convert to brightness and use 256-color grey ramp
+        if (greyscale)
+        {
+            var brightness = (byte)(0.299f * r + 0.587f * g + 0.114f * b);
+            AnsiCodes.AppendForegroundGrey256(sb, brightness);
+            return;
+        }
+
+        if (depth != ColorDepth.TrueColor)
+        {
+            AnsiCodes.AppendForegroundAdaptive(sb, r, g, b, depth);
+            return;
+        }
+
         // Use pre-computed escape for greyscale colors
         if (r == g && g == b)
         {
@@ -437,8 +535,6 @@ public class BrailleRenderer : IDisposable
     {
         // Calculate output dimensions (each char = 2x4 braille dots)
         var (pixelWidth, pixelHeight) = CalculateBrailleDimensions(image.Width, image.Height);
-        var charWidth = pixelWidth / 2;
-        var charHeight = pixelHeight / 4;
 
         // Resize image
         var resized = image.Clone(ctx => ctx.Resize(pixelWidth, pixelHeight));
@@ -447,37 +543,96 @@ public class BrailleRenderer : IDisposable
         var (brightness, colors) = PrecomputePixelData(resized);
 
         // Calculate threshold using autocontrast
-        var (minBrightness, maxBrightness) = GetBrightnessRangeFromBuffer(brightness);
         var invertMode = _options.Invert;
 
-        // For COLOR mode: show most dots, only hide truly dark pixels
-        // The color carries the detail, so we want dense output
+        // For COLOR/GREYSCALE mode: show most dots, only hide truly dark pixels
         // For MONOCHROME mode: use Otsu's method for optimal separation
         float threshold;
-        if (_options.UseColor)
-            // Color mode: use generous threshold to show most content
-            // In invert mode (dark terminal): only hide very dark pixels (< 15%)
-            // In normal mode (light terminal): only hide very bright pixels (> 85%)
+        if (_options.UseColor || _options.UseGreyscaleAnsi)
             threshold = invertMode ? 0.15f : 0.85f;
         else
-            // Monochrome: use Otsu's method for best separation
             threshold = CalculateOtsuThreshold(brightness);
 
         // Apply Atkinson dithering for smooth gradients
         brightness = ApplyAtkinsonDithering(brightness, pixelWidth, pixelHeight, threshold);
         // After dithering, values are 0 or 1, so use 0.5 threshold
-        threshold = 0.5f;
+        var result = RenderBrailleContent(brightness, colors, pixelWidth, pixelHeight, 0.5f);
+
+        resized.Dispose();
+        return result;
+    }
+
+    /// <summary>
+    ///     EXPERIMENTAL: Generate multiple braille frames with different brightness thresholds
+    ///     for temporal super-resolution (perceptual interlacing).
+    ///     Each frame uses a slightly different dithering threshold; when played
+    ///     rapidly, the human visual system integrates the frames and perceives
+    ///     more tonal detail than any single frame can display.
+    ///     Known issues: playback produces black bars due to clearing bugs in BrailleInterlacePlayer.
+    /// </summary>
+    public List<BrailleFrame> RenderInterlaceFrames(Image<Rgba32> image)
+    {
+        var frameCount = Math.Clamp(_options.InterlaceFrameCount, 2, 8);
+        var spread = Math.Clamp(_options.InterlaceSpread, 0.01f, 0.2f);
+        // Delay per subframe: distribute one visible frame period across N subframes
+        var delayMs = Math.Max(1, (int)(1000f / (_options.InterlaceFps * frameCount)));
+
+        // Shared computation: resize and pixel data (expensive, done once)
+        var (pixelWidth, pixelHeight) = CalculateBrailleDimensions(image.Width, image.Height);
+        using var resized = image.Clone(ctx => ctx.Resize(pixelWidth, pixelHeight));
+        var (baseBrightness, colors) = PrecomputePixelData(resized);
+
+        // Calculate base threshold
+        var invertMode = _options.Invert;
+        float baseThreshold;
+        if (_options.UseColor || _options.UseGreyscaleAnsi)
+            baseThreshold = invertMode ? 0.15f : 0.85f;
+        else
+            baseThreshold = CalculateOtsuThreshold(baseBrightness);
+
+        var frames = new List<BrailleFrame>(frameCount);
+
+        for (var f = 0; f < frameCount; f++)
+        {
+            // Spread thresholds evenly around the base.
+            // For 4 frames: biases are [-0.5, -0.167, +0.167, +0.5] * spread
+            var bias = spread * ((float)f / Math.Max(1, frameCount - 1) - 0.5f);
+            var threshold = Math.Clamp(baseThreshold + bias, 0.01f, 0.99f);
+
+            // Apply Atkinson dithering with biased threshold (creates a new array)
+            var dithered = ApplyAtkinsonDithering(baseBrightness, pixelWidth, pixelHeight, threshold);
+
+            // Render to braille string using post-dithering threshold of 0.5
+            var content = RenderBrailleContent(dithered, colors, pixelWidth, pixelHeight, 0.5f);
+            frames.Add(new BrailleFrame(content, delayMs));
+        }
+
+        return frames;
+    }
+
+    /// <summary>
+    ///     Render pre-computed brightness and color data to a braille ANSI string.
+    ///     Uses shape vector matching against all 256 braille patterns for optimal character selection.
+    ///     This is the core rendering step shared by RenderImage and RenderInterlaceFrames.
+    /// </summary>
+    private string RenderBrailleContent(float[] brightness, Rgba32[] colors,
+        int pixelWidth, int pixelHeight, float threshold)
+    {
+        var charWidth = pixelWidth / 2;
+        var charHeight = pixelHeight / 4;
+        var invertMode = _options.Invert;
+
+        // useAnsiOutput covers both full-color and greyscale ANSI modes
+        var useAnsiOutput = _options.UseColor || _options.UseGreyscaleAnsi;
 
         // Pre-size StringBuilder: each char cell needs ~20 bytes for ANSI codes + 1 char
-        // Plus newlines and resets
-        var estimatedSize = charWidth * charHeight * (_options.UseColor ? 25 : 1) + charHeight * 10;
+        var estimatedSize = charWidth * charHeight * (useAnsiOutput ? 25 : 1) + charHeight * 10;
         var sb = new StringBuilder(estimatedSize);
 
-        // Key insight: separate color and brightness concerns
-        // - COLOR: average ALL 8 pixels in cell (prevents solarization)
-        // - DOTS: show brightness detail via threshold
+        var colorDepth = _options.ColorDepth;
+        var greyscaleAnsi = _options.UseGreyscaleAnsi;
 
-        if (_options.UseColor && _options.UseParallelProcessing && charHeight > 4)
+        if (useAnsiOutput && _options.UseParallelProcessing && charHeight > 4)
         {
             // Parallel processing: compute each row independently, then combine
             var rowStrings = new string[charHeight];
@@ -486,21 +641,27 @@ public class BrailleRenderer : IDisposable
             {
                 var rowSb = new StringBuilder(charWidth * 25);
                 Rgba32? lastColor = null;
-
-                // Pre-allocate cell buffers outside inner loop to avoid stack overflow
-                Span<float> cellBrightness = stackalloc float[8];
-                Span<int> cellIndices = stackalloc int[8];
+                Span<float> target8 = stackalloc float[8];
 
                 for (var cx = 0; cx < charWidth; cx++)
                 {
                     var px = cx * 2;
                     var py = cy * 4;
 
-                    // Collect colors and brightness for the cell
+                    // Sample 8 braille dot positions using concentric rings
+                    SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
+
+                    // Invert coverage if needed (swap dot on/off semantics)
+                    if (invertMode)
+                        for (var i = 0; i < 8; i++)
+                            target8[i] = 1f - target8[i];
+
+                    // Find best matching braille character via shape vector matching
+                    var brailleChar = _brailleMap.FindBestMatch(target8);
+
+                    // Collect average color from all pixels in cell
                     int totalR = 0, totalG = 0, totalB = 0;
                     var colorCount = 0;
-                    var cellMinBright = 1f;
-                    var cellMaxBright = 0f;
 
                     for (var dy = 0; dy < 4; dy++)
                     {
@@ -513,34 +674,13 @@ public class BrailleRenderer : IDisposable
                             var imgX = px + dx;
                             if (imgX >= pixelWidth) continue;
 
-                            var idx = rowOffset + imgX;
-                            var c = colors[idx];
+                            var c = colors[rowOffset + imgX];
                             totalR += c.R;
                             totalG += c.G;
                             totalB += c.B;
-
-                            var b = brightness[idx];
-                            cellBrightness[colorCount] = b;
-                            cellIndices[colorCount] = dy * 2 + dx;
-                            if (b < cellMinBright) cellMinBright = b;
-                            if (b > cellMaxBright) cellMaxBright = b;
                             colorCount++;
                         }
                     }
-
-                    // Determine braille pattern using dithered threshold
-                    var brailleCode = 0;
-                    for (var i = 0; i < colorCount; i++)
-                    {
-                        var isDot = invertMode
-                            ? cellBrightness[i] > threshold
-                            : cellBrightness[i] < threshold;
-
-                        if (isDot)
-                            brailleCode |= DotBits[cellIndices[i]];
-                    }
-
-                    var brailleChar = (char)(BrailleBase + brailleCode);
 
                     if (colorCount > 0)
                     {
@@ -548,13 +688,10 @@ public class BrailleRenderer : IDisposable
                         var g = (byte)(totalG / colorCount);
                         var b = (byte)(totalB / colorCount);
 
-                        // Apply gamma correction and boost saturation/brightness for braille
-                        // Braille dots are sparse, so colors appear less vibrant
                         (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
 
                         // Skip absolute black characters (invisible on dark terminal)
-                        // This reduces file size and improves rendering
-                        if (r <= 2 && g <= 2 && b <= 2 && brailleCode == 0)
+                        if (r <= 2 && g <= 2 && b <= 2 && brailleChar == BrailleBase)
                         {
                             rowSb.Append(' ');
                             continue;
@@ -564,13 +701,12 @@ public class BrailleRenderer : IDisposable
 
                         if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
                         {
-                            rowSb.Append("\x1b[38;2;");
-                            rowSb.Append(avgColor.R);
-                            rowSb.Append(';');
-                            rowSb.Append(avgColor.G);
-                            rowSb.Append(';');
-                            rowSb.Append(avgColor.B);
-                            rowSb.Append('m');
+                            if (greyscaleAnsi)
+                                AnsiCodes.AppendForegroundGrey256(rowSb,
+                                    BrightnessHelper.ToGrayscale(avgColor));
+                            else
+                                AnsiCodes.AppendForegroundAdaptive(rowSb, avgColor.R, avgColor.G, avgColor.B,
+                                    colorDepth);
                             lastColor = avgColor;
                         }
                     }
@@ -598,10 +734,7 @@ public class BrailleRenderer : IDisposable
         {
             // Sequential processing (non-color or small images)
             Rgba32? lastColor = null;
-
-            // Pre-allocate cell buffers outside loops to avoid stack overflow
-            Span<float> cellBrightness = stackalloc float[8];
-            Span<int> cellIndices = stackalloc int[8];
+            Span<float> target8 = stackalloc float[8];
 
             for (var cy = 0; cy < charHeight; cy++)
             {
@@ -610,82 +743,68 @@ public class BrailleRenderer : IDisposable
                     var px = cx * 2;
                     var py = cy * 4;
 
-                    // Collect colors and brightness for the cell
-                    int totalR = 0, totalG = 0, totalB = 0;
-                    var colorCount = 0;
-                    var cellMinBright = 1f;
-                    var cellMaxBright = 0f;
+                    // Sample 8 braille dot positions using concentric rings
+                    SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
 
-                    for (var dy = 0; dy < 4; dy++)
+                    // Invert coverage if needed
+                    if (invertMode)
+                        for (var i = 0; i < 8; i++)
+                            target8[i] = 1f - target8[i];
+
+                    // Find best matching braille character via shape vector matching
+                    var brailleChar = _brailleMap.FindBestMatch(target8);
+
+                    if (useAnsiOutput)
                     {
-                        var imgY = py + dy;
-                        if (imgY >= pixelHeight) continue;
-                        var rowOffset = imgY * pixelWidth;
+                        // Collect average color from all pixels in cell
+                        int totalR = 0, totalG = 0, totalB = 0;
+                        var colorCount = 0;
 
-                        for (var dx = 0; dx < 2; dx++)
+                        for (var dy = 0; dy < 4; dy++)
                         {
-                            var imgX = px + dx;
-                            if (imgX >= pixelWidth) continue;
+                            var imgY = py + dy;
+                            if (imgY >= pixelHeight) continue;
+                            var rowOffset = imgY * pixelWidth;
 
-                            var idx = rowOffset + imgX;
-                            var c = colors[idx];
-                            totalR += c.R;
-                            totalG += c.G;
-                            totalB += c.B;
+                            for (var dx = 0; dx < 2; dx++)
+                            {
+                                var imgX = px + dx;
+                                if (imgX >= pixelWidth) continue;
 
-                            var b = brightness[idx];
-                            cellBrightness[colorCount] = b;
-                            cellIndices[colorCount] = dy * 2 + dx;
-                            if (b < cellMinBright) cellMinBright = b;
-                            if (b > cellMaxBright) cellMaxBright = b;
-                            colorCount++;
-                        }
-                    }
-
-                    // Determine braille pattern using dithered threshold
-                    var brailleCode = 0;
-                    for (var i = 0; i < colorCount; i++)
-                    {
-                        var isDot = invertMode
-                            ? cellBrightness[i] > threshold
-                            : cellBrightness[i] < threshold;
-
-                        if (isDot)
-                            brailleCode |= DotBits[cellIndices[i]];
-                    }
-
-                    var brailleChar = (char)(BrailleBase + brailleCode);
-
-                    if (_options.UseColor && colorCount > 0)
-                    {
-                        var r = (byte)(totalR / colorCount);
-                        var g = (byte)(totalG / colorCount);
-                        var b = (byte)(totalB / colorCount);
-
-                        // Apply gamma correction and boost saturation/brightness for braille
-                        // Braille dots are sparse, so colors appear less vibrant
-                        (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
-
-                        // Skip absolute black characters (invisible on dark terminal)
-                        // This reduces file size and improves rendering
-                        if (r <= 2 && g <= 2 && b <= 2 && brailleCode == 0)
-                        {
-                            sb.Append(' ');
-                            continue;
+                                var c = colors[rowOffset + imgX];
+                                totalR += c.R;
+                                totalG += c.G;
+                                totalB += c.B;
+                                colorCount++;
+                            }
                         }
 
-                        var avgColor = new Rgba32(r, g, b, 255);
-
-                        if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
+                        if (colorCount > 0)
                         {
-                            sb.Append("\x1b[38;2;");
-                            sb.Append(avgColor.R);
-                            sb.Append(';');
-                            sb.Append(avgColor.G);
-                            sb.Append(';');
-                            sb.Append(avgColor.B);
-                            sb.Append('m');
-                            lastColor = avgColor;
+                            var r = (byte)(totalR / colorCount);
+                            var g = (byte)(totalG / colorCount);
+                            var b = (byte)(totalB / colorCount);
+
+                            (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
+
+                            if (r <= 2 && g <= 2 && b <= 2 && brailleChar == BrailleBase)
+                            {
+                                sb.Append(' ');
+                                continue;
+                            }
+
+                            var avgColor = new Rgba32(r, g, b, 255);
+
+                            if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
+                            {
+                                if (greyscaleAnsi)
+                                    AnsiCodes.AppendForegroundGrey256(sb,
+                                        BrightnessHelper.ToGrayscale(avgColor));
+                                else
+                                    AnsiCodes.AppendForegroundAdaptive(sb, avgColor.R, avgColor.G, avgColor.B,
+                                        colorDepth);
+                                lastColor = avgColor;
+                            }
                         }
 
                         sb.Append(brailleChar);
@@ -698,18 +817,17 @@ public class BrailleRenderer : IDisposable
 
                 if (cy < charHeight - 1)
                 {
-                    if (_options.UseColor)
+                    if (useAnsiOutput)
                         sb.Append("\x1b[0m");
                     sb.AppendLine();
                     lastColor = null;
                 }
             }
 
-            if (_options.UseColor)
+            if (useAnsiOutput)
                 sb.Append("\x1b[0m");
         }
 
-        resized.Dispose();
         return sb.ToString();
     }
 
@@ -1251,90 +1369,6 @@ public class BrailleRenderer : IDisposable
         return (Math.Max(2, width), Math.Max(4, height));
     }
 
-    /// <summary>
-    ///     Calculate braille code for colored output.
-    ///     Strategy: Keep 6-7 dots always (minimal black), but WHICH dots are removed
-    ///     indicates edge direction. This gives detail without holes.
-    /// </summary>
-    private static int CalculateHybridBrailleCode(
-        ReadOnlySpan<float> cellBrightness,
-        ReadOnlySpan<int> cellIndices,
-        int colorCount,
-        float minBrightness,
-        float maxBrightness,
-        bool invertMode)
-    {
-        if (colorCount == 0) return 0xFF;
-
-        // Calculate cell statistics
-        var minCell = 1f;
-        var maxCell = 0f;
-        var totalBright = 0f;
-        for (var i = 0; i < colorCount; i++)
-        {
-            var b = cellBrightness[i];
-            totalBright += b;
-            if (b < minCell) minCell = b;
-            if (b > maxCell) maxCell = b;
-        }
-
-        var cellRange = maxCell - minCell;
-
-        // Very uniform - full block
-        if (cellRange < 0.15f) return 0xFF;
-
-        // Find the 1-2 darkest pixels (in invert mode) or brightest (normal mode)
-        // These become the "missing" dots, showing edge detail
-
-        // Find indices sorted by brightness
-        Span<(float bright, int idx)> pixels = stackalloc (float, int)[colorCount];
-        for (var i = 0; i < colorCount; i++) pixels[i] = (cellBrightness[i], cellIndices[i]);
-
-        // Sort by brightness (ascending)
-        for (var i = 0; i < colorCount - 1; i++)
-        for (var j = i + 1; j < colorCount; j++)
-            if (pixels[j].bright < pixels[i].bright)
-            {
-                var tmp = pixels[i];
-                pixels[i] = pixels[j];
-                pixels[j] = tmp;
-            }
-
-        // Start with full block
-        var brailleCode = 0xFF;
-
-        // In invert mode (dark terminal): remove darkest 1-2 dots (they'd be invisible anyway)
-        // In normal mode: remove brightest 1-2 dots
-        // This shows edge detail while keeping most dots visible
-
-        var dotsToRemove = cellRange > 0.3f ? 2 : 1;
-
-        if (invertMode)
-            // Remove darkest pixels (they blend with terminal)
-            for (var i = 0; i < dotsToRemove && i < colorCount; i++)
-                brailleCode &= ~DotBits[pixels[i].idx];
-        else
-            // Remove brightest pixels (they blend with terminal)
-            for (var i = 0; i < dotsToRemove && i < colorCount; i++)
-                brailleCode &= ~DotBits[pixels[colorCount - 1 - i].idx];
-
-        return brailleCode;
-    }
-
-    /// <summary>
-    ///     Count the number of set bits in an integer.
-    /// </summary>
-    private static int BitCount(int n)
-    {
-        var count = 0;
-        while (n != 0)
-        {
-            count += n & 1;
-            n >>= 1;
-        }
-
-        return count;
-    }
 }
 
 /// <summary>

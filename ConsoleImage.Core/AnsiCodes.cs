@@ -151,6 +151,176 @@ public static class AnsiCodes
         sb.Append('m');
     }
 
+    // ── 256-color and 16-color support ──
+
+    // Standard 16-color ANSI palette (approximate RGB values)
+    private static readonly (byte R, byte G, byte B)[] Ansi16Colors =
+    {
+        (0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0),
+        (0, 0, 128), (128, 0, 128), (0, 128, 128), (192, 192, 192),
+        (128, 128, 128), (255, 0, 0), (0, 255, 0), (255, 255, 0),
+        (0, 0, 255), (255, 0, 255), (0, 255, 255), (255, 255, 255)
+    };
+
+    /// <summary>
+    ///     Convert RGB to nearest 256-color palette index.
+    ///     Uses 6x6x6 color cube (indices 16-231) or grey ramp (232-255).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int RgbTo256(byte r, byte g, byte b)
+    {
+        // Check if greyscale (use grey ramp for better precision)
+        if (r == g && g == b)
+        {
+            if (r < 8) return 16; // black
+            if (r > 248) return 231; // white
+            return 232 + (int)Math.Round((r - 8) / 247.0 * 23);
+        }
+
+        // Map to 6x6x6 color cube
+        var ri = (int)Math.Round(r / 255.0 * 5);
+        var gi = (int)Math.Round(g / 255.0 * 5);
+        var bi = (int)Math.Round(b / 255.0 * 5);
+        return 16 + 36 * ri + 6 * gi + bi;
+    }
+
+    /// <summary>
+    ///     Convert RGB to nearest 16-color ANSI index.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int RgbTo16(byte r, byte g, byte b)
+    {
+        var bestIdx = 0;
+        var bestDist = int.MaxValue;
+        for (var i = 0; i < 16; i++)
+        {
+            var dr = r - Ansi16Colors[i].R;
+            var dg = g - Ansi16Colors[i].G;
+            var db = b - Ansi16Colors[i].B;
+            var dist = dr * dr + dg * dg + db * db;
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                bestIdx = i;
+            }
+        }
+
+        return bestIdx;
+    }
+
+    /// <summary>
+    ///     Convert a brightness value (0-255) to a 256-color grey ramp index (232-255).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int BrightnessToGrey256(byte brightness)
+    {
+        if (brightness < 8) return 232;
+        if (brightness > 248) return 255;
+        return 232 + (int)Math.Round((brightness - 8) / 247.0 * 23);
+    }
+
+    /// <summary>
+    ///     Append foreground color using 256-color palette.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AppendForeground256(StringBuilder sb, byte r, byte g, byte b)
+    {
+        sb.Append("\x1b[38;5;");
+        sb.Append(RgbTo256(r, g, b));
+        sb.Append('m');
+    }
+
+    /// <summary>
+    ///     Append foreground color using 16-color ANSI codes.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AppendForeground16(StringBuilder sb, byte r, byte g, byte b)
+    {
+        var idx = RgbTo16(r, g, b);
+        sb.Append("\x1b[");
+        sb.Append(idx < 8 ? 30 + idx : 82 + idx); // 30-37 or 90-97
+        sb.Append('m');
+    }
+
+    /// <summary>
+    ///     Append foreground color using the specified color depth.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AppendForegroundAdaptive(StringBuilder sb, byte r, byte g, byte b, ColorDepth depth)
+    {
+        switch (depth)
+        {
+            case ColorDepth.Palette256:
+                AppendForeground256(sb, r, g, b);
+                break;
+            case ColorDepth.Palette16:
+                AppendForeground16(sb, r, g, b);
+                break;
+            default:
+                sb.Append("\x1b[38;2;");
+                sb.Append(r);
+                sb.Append(';');
+                sb.Append(g);
+                sb.Append(';');
+                sb.Append(b);
+                sb.Append('m');
+                break;
+        }
+    }
+
+    /// <summary>
+    ///     Append foreground and background colors using the specified color depth.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AppendForegroundAndBackgroundAdaptive(
+        StringBuilder sb, Rgba32 foreground, Rgba32 background, ColorDepth depth)
+    {
+        switch (depth)
+        {
+            case ColorDepth.Palette256:
+                sb.Append("\x1b[38;5;");
+                sb.Append(RgbTo256(foreground.R, foreground.G, foreground.B));
+                sb.Append(";48;5;");
+                sb.Append(RgbTo256(background.R, background.G, background.B));
+                sb.Append('m');
+                break;
+            case ColorDepth.Palette16:
+                var fgIdx = RgbTo16(foreground.R, foreground.G, foreground.B);
+                var bgIdx = RgbTo16(background.R, background.G, background.B);
+                sb.Append("\x1b[");
+                sb.Append(fgIdx < 8 ? 30 + fgIdx : 82 + fgIdx);
+                sb.Append(';');
+                sb.Append(bgIdx < 8 ? 40 + bgIdx : 92 + bgIdx);
+                sb.Append('m');
+                break;
+            default:
+                AppendForegroundAndBackground(sb, foreground, background);
+                break;
+        }
+    }
+
+    /// <summary>
+    ///     Append reset and foreground color using the specified color depth.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AppendResetAndForegroundAdaptive(
+        StringBuilder sb, Rgba32 color, ColorDepth depth)
+    {
+        sb.Append(Reset);
+        AppendForegroundAdaptive(sb, color.R, color.G, color.B, depth);
+    }
+
+    /// <summary>
+    ///     Append foreground greyscale using 256-color grey ramp (232-255).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AppendForegroundGrey256(StringBuilder sb, byte brightness)
+    {
+        sb.Append("\x1b[38;5;");
+        sb.Append(BrightnessToGrey256(brightness));
+        sb.Append('m');
+    }
+
     /// <summary>
     ///     Check if two Rgba32 colors are equal (for color change detection).
     /// </summary>

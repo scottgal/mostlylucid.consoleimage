@@ -12,7 +12,7 @@ namespace ConsoleImage.Benchmarks;
 ///     Run with: dotnet run -c Release -- --filter *Braille*
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob]
 public class BrailleRendererBenchmarks
 {
     private Image<Rgba32> _largeImage = null!;
@@ -130,7 +130,7 @@ public class BrailleRendererBenchmarks
 ///     Benchmarks for brightness calculation optimizations.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob]
 public class BrightnessCalculationBenchmarks
 {
     private float[] _largeBuffer = null!;
@@ -226,7 +226,7 @@ public class BrightnessCalculationBenchmarks
 ///     Benchmarks for ANSI escape sequence generation.
 /// </summary>
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob]
 public class AnsiEscapeBenchmarks
 {
     private static readonly string[] GreyscaleEscapes = InitGreyscale();
