@@ -23,6 +23,8 @@ public static class ConsoleHelper
 
     private static bool _initialized;
     private static bool _ansiEnabled;
+    private static bool _cellAspectDetected;
+    private static float? _detectedCellAspect;
 
     /// <summary>
     ///     Check if ANSI escape sequences are supported
@@ -47,6 +49,32 @@ public static class ConsoleHelper
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetConsoleOutputCP(uint wCodePageID);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool GetCurrentConsoleFontEx(
+        IntPtr hConsoleOutput,
+        bool bMaximumWindow,
+        ref CONSOLE_FONT_INFOEX lpConsoleCurrentFontEx);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct COORD
+    {
+        public short X;
+        public short Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct CONSOLE_FONT_INFOEX
+    {
+        public uint cbSize;
+        public uint nFont;
+        public COORD dwFontSize;
+        public int FontFamily;
+        public int FontWeight;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string FaceName;
+    }
 
     /// <summary>
     ///     Enable ANSI escape sequence processing and UTF-8 encoding on the console.
@@ -112,6 +140,172 @@ public static class ConsoleHelper
             // P/Invoke might fail in restricted environments
             _ansiEnabled = false;
             return false;
+        }
+    }
+
+    /// <summary>
+    ///     Detect the terminal's character cell aspect ratio (width/height).
+    ///     On Windows, queries the console font metrics via GetCurrentConsoleFontEx.
+    ///     Falls back to ANSI CSI 16 t query for terminals that support it.
+    ///     Returns null if detection fails (caller should use 0.5 default).
+    ///     Result is cached for the session.
+    /// </summary>
+    public static float? DetectCellAspectRatio()
+    {
+        if (_cellAspectDetected)
+            return _detectedCellAspect;
+
+        _cellAspectDetected = true;
+
+        // Skip detection in non-interactive mode
+        try
+        {
+            if (Console.IsInputRedirected || Console.IsOutputRedirected)
+                return null;
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            _detectedCellAspect = TryDetectCellAspectWindows();
+
+        _detectedCellAspect ??= TryDetectCellAspectAnsi();
+
+        return _detectedCellAspect;
+    }
+
+    /// <summary>
+    ///     Try to detect cell aspect ratio using Windows GetCurrentConsoleFontEx API.
+    /// </summary>
+    private static float? TryDetectCellAspectWindows()
+    {
+        try
+        {
+            var handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            if (handle == IntPtr.Zero || handle == new IntPtr(-1))
+                return null;
+
+            var fontInfo = new CONSOLE_FONT_INFOEX();
+            fontInfo.cbSize = (uint)Marshal.SizeOf<CONSOLE_FONT_INFOEX>();
+
+            if (!GetCurrentConsoleFontEx(handle, false, ref fontInfo))
+                return null;
+
+            var w = fontInfo.dwFontSize.X;
+            var h = fontInfo.dwFontSize.Y;
+
+            // Both must be positive
+            if (w <= 0 || h <= 0)
+                return null;
+
+            // Some terminals return suspicious values (e.g. 8x8 raster font placeholder)
+            if (w == h && w <= 8)
+                return null;
+
+            var ratio = (float)w / h;
+
+            // Sanity check: ratio should be between 0.2 and 1.0 for any reasonable font
+            if (ratio < 0.2f || ratio > 1.0f)
+                return null;
+
+            return ratio;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///     Try to detect cell aspect ratio using ANSI CSI 16 t query.
+    ///     Many modern terminals (Windows Terminal, iTerm2, kitty, xterm, foot) support this.
+    ///     Response format: ESC [ 6 ; cellHeight ; cellWidth t
+    /// </summary>
+    private static float? TryDetectCellAspectAnsi()
+    {
+        try
+        {
+            if (Console.IsInputRedirected || Console.IsOutputRedirected)
+                return null;
+
+            // Drain any pending input
+            while (Console.KeyAvailable)
+                Console.ReadKey(true);
+
+            // Send CSI 16 t (report cell size in pixels)
+            Console.Write("\x1b[16t");
+            Console.Out.Flush();
+
+            // Read response with 200ms timeout
+            var sb = new StringBuilder();
+            var deadline = Environment.TickCount64 + 200;
+            var gotEsc = false;
+            var complete = false;
+
+            while (Environment.TickCount64 < deadline)
+            {
+                if (!Console.KeyAvailable)
+                {
+                    Thread.Sleep(5);
+                    continue;
+                }
+
+                var key = Console.ReadKey(true);
+
+                if (key.KeyChar == '\x1b')
+                {
+                    gotEsc = true;
+                    sb.Clear();
+                    continue;
+                }
+
+                if (gotEsc)
+                {
+                    sb.Append(key.KeyChar);
+                    if (key.KeyChar == 't')
+                    {
+                        complete = true;
+                        break;
+                    }
+                }
+            }
+
+            // Drain any remaining response characters
+            Thread.Sleep(10);
+            while (Console.KeyAvailable)
+                Console.ReadKey(true);
+
+            if (!complete)
+                return null;
+
+            // Parse: [6;height;widtht
+            var text = sb.ToString();
+            if (text.Length < 5 || text[0] != '[' || !text.EndsWith("t"))
+                return null;
+
+            var inner = text.Substring(1, text.Length - 2);
+            var parts = inner.Split(';');
+            if (parts.Length != 3 || parts[0] != "6")
+                return null;
+
+            if (!int.TryParse(parts[1], out var cellHeight) ||
+                !int.TryParse(parts[2], out var cellWidth))
+                return null;
+
+            if (cellWidth <= 0 || cellHeight <= 0)
+                return null;
+
+            var ratio = (float)cellWidth / cellHeight;
+            if (ratio < 0.2f || ratio > 1.0f)
+                return null;
+
+            return ratio;
+        }
+        catch
+        {
+            return null;
         }
     }
 }

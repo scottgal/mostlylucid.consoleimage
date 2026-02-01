@@ -98,25 +98,25 @@ public static class RenderHelpers
                     // Move to top-left
                     Console.Write("\x1b[H");
 
-                    // Write frame content with line clears to prevent artifacts
-                    var lines = frame.Content.Split('\n');
-                    for (var i = 0; i < lines.Length; i++)
-                    {
-                        Console.Write("\x1b[2K"); // Clear entire line
-                        Console.Write(lines[i]);
-                        Console.Write("\x1b[0m"); // Reset colors at end of line
-                        if (i < lines.Length - 1)
-                            Console.Write('\n');
-                    }
+                    // Write entire frame at once — no per-line clearing needed.
+                    // Each cell has its own ANSI color codes, so content fully
+                    // overwrites the previous frame. Matches slideshow approach.
+                    Console.Write(frame.Content);
+                    Console.Write("\x1b[0m"); // Reset colors after frame
+
+                    // Count lines for trailing cleanup
+                    var lineCount = 1;
+                    foreach (var c in frame.Content)
+                        if (c == '\n') lineCount++;
 
                     // Clear any remaining lines from a previous taller frame
-                    for (var i = lines.Length; i < prevLineCount; i++)
+                    for (var i = lineCount; i < prevLineCount; i++)
                     {
                         Console.Write('\n');
                         Console.Write("\x1b[2K");
                     }
 
-                    prevLineCount = lines.Length;
+                    prevLineCount = lineCount;
 
                     // End synchronized output (render atomically)
                     Console.Write("\x1b[?2026l");
@@ -150,6 +150,7 @@ public static class RenderHelpers
     {
         return explicitAspect
                ?? savedCalibration?.GetAspectRatio(mode)
+               ?? ConsoleHelper.DetectCellAspectRatio()
                ?? 0.5f;
     }
 

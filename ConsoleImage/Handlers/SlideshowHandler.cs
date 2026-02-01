@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using System.Text;
+using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Video.Core;
@@ -376,7 +377,7 @@ public static class SlideshowHandler
             while (!quit && !ct.IsCancellationRequested)
             {
                 var file = files[currentIndex];
-                var fileName = Path.GetFileName(file);
+                var fileName = file; // Show full path (truncated by FormatFilenameHeader if needed)
                 var ext = Path.GetExtension(file);
 
                 // Clear screen for new slide
@@ -1041,6 +1042,11 @@ public static class SlideshowHandler
 
     private static RenderOptions CreateRenderOptions(SlideshowOptions options)
     {
+        var renderMode = RenderHelpers.GetRenderMode(
+            options.UseBraille, options.UseBlocks, options.UseMatrix);
+        var effectiveAspect = RenderHelpers.GetEffectiveAspectRatio(
+            options.CharAspect, options.SavedCalibration, renderMode);
+
         return new RenderOptions
         {
             Width = options.Width,
@@ -1049,7 +1055,7 @@ public static class SlideshowHandler
             MaxHeight = options.MaxHeight,
             UseColor = options.UseColor,
             UseGreyscaleAnsi = options.UseGreyscaleAnsi,
-            CharacterAspectRatio = options.CharAspect ?? 0.5f,
+            CharacterAspectRatio = effectiveAspect,
             ContrastPower = options.Contrast,
             Gamma = options.Gamma,
             LoopCount = 1

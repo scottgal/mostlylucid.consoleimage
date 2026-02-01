@@ -12,53 +12,98 @@ ConsoleImage/
 │   ├── ColorBlockRenderer.cs    # Unicode block-based rendering (2x resolution)
 │   ├── BrailleRenderer.cs       # Braille character rendering (2x4 dots per cell)
 │   ├── MatrixRenderer.cs        # Matrix digital rain effect rendering
+│   ├── UnifiedRenderer.cs       # Unified entry point for all render modes
+│   ├── UnifiedPlayer.cs         # Unified animation player for all formats
 │   ├── AsciiAnimationPlayer.cs  # GIF playback with DECSET 2026
+│   ├── BrailleInterlacePlayer.cs # Temporal interlace player (experimental)
 │   ├── ResizableAnimationPlayer.cs # Dynamic console resize support
 │   ├── ConsoleImageDocument.cs  # JSON document format for saving/loading
+│   ├── CompressedDocument.cs    # Compressed .cidz format with delta encoding
 │   ├── StreamingDocumentWriter.cs # NDJSON streaming writer for long videos
 │   ├── DocumentPlayer.cs        # Playback of saved JSON documents
+│   ├── GifWriter.cs             # GIF output writer (text-to-image rendering)
+│   ├── StreamingGifWriter.cs    # Streaming GIF writer for large animations
 │   ├── AsciiFrame.cs            # Single frame data structure
+│   ├── CellData.cs              # Cell data for temporal stability tracking
 │   ├── CharacterMap.cs          # Character shape analysis and matching
+│   ├── BrailleCharacterMap.cs   # Braille-specific character mapping
 │   ├── RenderOptions.cs         # All configuration options
+│   ├── TemplateSettings.cs      # JSON template for saving/loading render options
 │   ├── ShapeVector.cs           # 6-element vector for shape matching
+│   ├── RendererBuffers.cs       # Shared buffer management for renderers
 │   ├── Dithering.cs             # Floyd-Steinberg dithering
 │   ├── EdgeDirection.cs         # Edge detection and directional chars
+│   ├── BrightnessHelper.cs     # Brightness calculation utilities
+│   ├── KdTree.cs                # K-D tree for efficient color matching
+│   ├── AnsiCodes.cs             # ANSI escape code constants and utilities
+│   ├── LineUtils.cs             # Line manipulation and measurement utilities
+│   ├── FrameTiming.cs           # Frame timing and delay calculations
 │   ├── CalibrationHelper.cs     # Aspect ratio calibration with circle test pattern
-│   ├── ConsoleHelper.cs         # Windows ANSI support enabler
+│   ├── ConsoleHelper.cs         # ANSI support + cell aspect ratio auto-detection
+│   ├── TerminalCapabilities.cs  # Terminal feature detection (color, Unicode, Sixel, etc.)
+│   ├── TerminalProtocol.cs      # Terminal protocol enum (ANSI, Sixel, iTerm2, Kitty)
 │   ├── StatusLine.cs            # Status display below rendered output
+│   ├── SecurityHelper.cs        # Input validation (paths, URLs, browser names)
 │   ├── UrlHelper.cs             # URL detection and download helpers
 │   ├── YtdlpProvider.cs         # YouTube support via yt-dlp (auto-download)
+│   ├── AsciiArt.cs              # Simple static API for one-call rendering
 │   ├── FrameHasher.cs           # Perceptual hashing for frame deduplication
 │   ├── SmartFrameSampler.cs     # Intelligent frame skipping using perceptual hashing
 │   ├── MarkdownRenderer.cs      # Markdown/SVG/HTML export for ASCII art
 │   └── Subtitles/
 │       ├── SubtitleEntry.cs     # Single subtitle entry with timing
 │       ├── SubtitleTrack.cs     # Collection of subtitle entries
+│       ├── SubtitleTrackData.cs # Track data container with metadata
 │       ├── SubtitleParser.cs    # SRT/VTT file parser
 │       ├── SubtitleRenderer.cs  # Console subtitle display with speaker colors
+│       ├── SubtitleResolver.cs  # Automatic subtitle source resolution
+│       ├── SubtitleSplitter.cs  # Subtitle splitting and synchronization
 │       └── ILiveSubtitleProvider.cs  # Interface for streaming transcription
 ├── ConsoleImage/                # CLI tool for images/GIFs
-│   ├── Program.cs               # Command-line interface
+│   ├── Program.cs               # Command-line interface + subcommands
 │   ├── CliOptions.cs            # CLI option definitions
 │   ├── Handlers/
 │   │   ├── SlideshowHandler.cs  # Directory/glob slideshow with keyboard control
 │   │   ├── ImageHandler.cs      # Single image/GIF rendering
-│   │   └── VideoHandler.cs      # Video playback via FFmpeg
+│   │   ├── VideoHandler.cs      # Video playback via FFmpeg
+│   │   ├── DocumentHandler.cs   # Playback of saved JSON/cidz documents
+│   │   ├── CalibrationHandler.cs # Aspect ratio calibration UI
+│   │   └── TranscriptionHandler.cs # Transcript-only mode
+│   ├── Utilities/
+│   │   ├── RenderHelpers.cs     # Render mode resolution, aspect ratio chain, frame playback
+│   │   └── TimeParser.cs        # Flexible time parsing (seconds, mm:ss, hh:mm:ss, decimal minutes)
 │   └── calibration.json         # Saved aspect ratio calibration
 ├── ConsoleImage.Transcription/  # Whisper AI transcription library (v4.0)
 │   ├── WhisperTranscriptionService.cs # Whisper.NET wrapper
 │   ├── WhisperModelDownloader.cs # Model download with progress
+│   ├── WhisperRuntimeDownloader.cs # Native runtime download
 │   ├── ChunkedTranscriber.cs    # Streaming transcription with buffering
 │   ├── TranscriptSegment.cs     # Transcription result segment
 │   ├── SrtFormatter.cs          # SRT output formatter
 │   └── VttFormatter.cs          # VTT output formatter
 ├── ConsoleImage.Video.Core/     # Video playback library (FFmpeg-based)
 │   ├── FFmpegService.cs         # FFmpeg process management
+│   ├── FFmpegProvider.cs        # FFmpeg binary discovery and download
+│   ├── FFmpegGifWriter.cs       # FFmpeg-based GIF/video output
 │   ├── VideoAnimationPlayer.cs  # Video streaming player with live subtitles
-│   └── VideoRenderOptions.cs    # Video-specific options (incl. LiveSubtitleProvider)
+│   ├── VideoPlayer.cs           # Core video playback implementation
+│   ├── VideoFrameSampler.cs     # Intelligent video frame sampling
+│   ├── VideoRenderOptions.cs    # Video-specific options (incl. LiveSubtitleProvider)
+│   ├── SmartKeyframeExtractor.cs # Scene detection for keyframe extraction
+│   └── KeyframeDeduplicationService.cs # Duplicate keyframe detection
+├── ConsoleImage.Mcp/            # MCP (Model Context Protocol) server
+│   └── Program.cs               # MCP tool server for LLM integration
+├── ConsoleImage.Player/         # Standalone document player library
+│   ├── ConsolePlayer.cs         # Player implementation
+│   └── PlayerDocument.cs        # Player document model
 ├── ConsoleImage.Video/          # CLI tool for video files
 │   ├── Program.cs               # Video CLI
 │   └── calibration.json         # Saved aspect ratio calibration
+├── ConsoleImage.Core.Tests/     # Unit tests for core library
+├── ConsoleImage.Video.Core.Tests/ # Unit tests for video library
+├── ConsoleImage.Player.Tests/   # Unit tests for player library
+├── ConsoleImage.DocTests/       # Documentation tests
+├── ConsoleImage.Benchmarks/     # Performance benchmarks
 └── docs/
     └── JSON-FORMAT.md           # JSON document format specification
 ```
@@ -189,6 +234,51 @@ maps pixels to characters differently and may need separate calibration.
   "BrailleCharacterAspectRatio": 0.5
 }
 ```
+
+### UnifiedRenderer
+Single entry point for all render modes. Selects the appropriate renderer (ASCII, Braille,
+Blocks, Matrix) based on `RenderMode` and delegates rendering. Simplifies code that needs
+to support all modes without switching logic.
+
+### UnifiedPlayer
+Unified animation player that handles all frame types (ASCII, Braille, Blocks, Matrix).
+Wraps format-specific players with a common interface for playback.
+
+### TerminalCapabilities
+Detects terminal features at runtime:
+- **Color support** - True color (24-bit), 256 color, or 16 color
+- **Unicode support** - Braille characters, block elements
+- **Image protocols** - Sixel, iTerm2 inline images, Kitty graphics
+- Used by `TerminalProtocol` enum to select optimal output method
+
+### ConsoleHelper
+Enables ANSI escape sequences on Windows and provides cell aspect ratio auto-detection:
+- `EnableAnsiSupport()` - Enable VT processing + UTF-8 on Windows consoles
+- `DetectCellAspectRatio()` - Auto-detect character cell width/height ratio
+  - Windows: `GetCurrentConsoleFontEx` P/Invoke for actual font metrics
+  - Fallback: ANSI `CSI 16 t` query (Windows Terminal, iTerm2, kitty, xterm)
+  - Returns `null` if detection fails; cached per session
+  - Skipped when stdin/stdout redirected (piped/CI)
+
+### GifWriter
+Renders ANSI text frames to GIF images using ImageSharp.
+- Text-to-image rendering with configurable font size and scale
+- Palette quantization (4-256 colors)
+- Supports ASCII text frames, Braille pixel frames, and ColorBlock pixel frames
+- `AddImageFrameWithOverlays()` - Compose frame with subtitle and status overlays
+
+### TemplateSettings
+JSON template system for saving and loading render option presets.
+- Save current CLI options to a `.json` template file
+- Load template to restore all options at once
+- Useful for consistent rendering across sessions
+
+### TimeParser (CLI Utility)
+Flexible time string parser supporting multiple formats:
+- Seconds: `4.7`, `120`
+- MM:SS: `6:47`
+- HH:MM:SS: `1:30:00`
+- Decimal minutes: `6.47` (via `--start-minutes`)
 
 ## Common Issues
 
@@ -490,32 +580,117 @@ consoleimage --calibrate --braille --aspect-ratio 0.52 --save
 Values may vary by font. Run `--calibrate` to find your ideal value.
 
 ### Key CLI Options
+
+**Dimensions & Display:**
 - `-w, --width` - Output width in characters
 - `-h, --height` - Output height in characters
-- `--char-aspect` - Character aspect ratio (width/height)
-- `-s, --speed` - Animation speed multiplier
+- `--max-width` - Maximum output width (default: terminal width - 1)
+- `--max-height` - Maximum output height (default: terminal height - 2)
+- `--char-aspect` - Character aspect ratio (width/height, auto-detected if not set)
 - `-S, --status` - Show status line below output (progress, timing, file info)
-- `-l, --loop` - Loop count (0 = infinite)
-- `-f, --frame-step` - Frame step: 1 (every frame), 2 (every 2nd), s/smart (perceptual hash skip)
+- `--color-depth, --depth` - Terminal color depth: `true` (24-bit, default), `256`, `16`
+- `--no-color` - Disable color output (greyscale for blocks/braille)
+
+**Render Modes:**
 - `-a, --ascii` - Use classic ASCII characters (v2.x default)
 - `-b, --blocks` - Use colored Unicode blocks
 - `-B, --braille` - Use braille characters (DEFAULT - 2x4 dots per cell)
 - `-M, --matrix` - Use Matrix digital rain effect
 - `--monochrome, --mono` - Braille mode without color (compact, high-detail greyscale)
+- `-m, --mode` - Render mode by name: ascii, blocks, braille, mono, matrix
+- `-p, --preset` - Character preset: extended, simple, block, classic
+- `--charset` - Custom character set (light to dark)
+
+**Matrix Mode:**
 - `--matrix-color` - Matrix color: green, red, blue, amber, cyan, purple, or hex (#RRGGBB)
 - `--matrix-fullcolor` - Use source image colors with Matrix lighting
 - `--matrix-density` - Rain density (0.1-2.0, default 0.5)
 - `--matrix-speed` - Rain speed multiplier (0.5-3.0, default 1.0)
-- `-o, --output` - Output file (.gif, .json→.cidz, .cidz, raw:path.json)
+- `--matrix-alphabet` - Custom character set for rain
+
+**Playback:**
+- `-s, --speed` - Animation speed multiplier
+- `-l, --loop` - Loop count (0 = infinite)
+- `-f, --frame-step` - Frame step: 1 (every frame), 2 (every 2nd), s/smart (perceptual hash skip)
+- `-r, --fps` - Target framerate
+- `--no-animate` - Show first frame only
+- `--buffer` - Frames to buffer ahead (2-10, default: 3)
+
+**Time Range (Video Seeking):**
+- `-ss, --start` - Start time: seconds (4.7), mm:ss (6:47), or hh:mm:ss
+- `-to, --end` - End time (same formats)
+- `-t, --duration` - Duration (same formats)
+- `-sm, --start-minutes` - Start in decimal minutes (6.47 = 6m 28.2s)
+- `-em, --end-minutes` - End in decimal minutes
+- `-dm, --duration-minutes` - Duration in decimal minutes
+- `-sf, --start-frame` - Start at frame number
+- `-ef, --end-frame` - End at frame number
+- `-df, --duration-frames` - Number of frames to play
+
+**Frame Sampling:**
+- `--sampling` - Sampling strategy: uniform, keyframe, scene, adaptive
+- `--scene-threshold` - Scene detection threshold (0.0-1.0, default: 0.4)
+
+**Rendering Adjustments:**
+- `--contrast` - Contrast enhancement (1.0 = none, default: 2.5)
+- `-g, --gamma` - Gamma correction (< 1.0 = brighter; default: 0.5 braille, 0.65 others)
+- `-c, --colors` - Max colors in palette (4, 16, 256)
+- `--no-invert` - Don't invert brightness (for light terminal backgrounds)
+- `-e, --edge` - Enable edge detection
+- `--dark-cutoff` - Skip colors below this brightness
+- `--light-cutoff` - Skip colors above this brightness
+- `--auto-bg` - Auto-detect and suppress uniform background
+- `--bg-threshold` - Light background suppression threshold
+- `--dark-bg-threshold` - Dark background suppression threshold
+
+**Temporal Stability:**
 - `--dejitter, --stabilize` - Enable temporal stability to reduce color flickering
 - `--color-threshold` - Color stability threshold for de-jitter (0-255, default: 15)
-- `--calibrate` - Show aspect ratio calibration pattern
-- `--save` - Save calibration to calibration.json
-- `--no-color` - Disable color output (greyscale for blocks/braille)
-- `--no-animate` - Show first frame only
+
+**Output:**
+- `-o, --output` - Output file (.gif, .json→.cidz, .cidz, raw:path.json)
 - `--md, --markdown` - Export to markdown/SVG (auto-names from input, or specify path)
 - `--md-format` - Export format: svg (default), plain, html, ansi
+- `-j, --json` - Output as JSON document
+- `-i, --info` - Show file info and exit
+- `--hash` - Output perceptual hash (for comparing visual fidelity)
+
+**GIF Output:**
+- `--gif-font-size` - Font size for GIF text rendering (default: 10)
+- `--gif-scale` - Scale factor for GIF output (default: 1.0)
+- `--gif-fps` - Target FPS for GIF (default: 15)
+- `--gif-length` - Max GIF length in seconds
+- `--gif-frames` - Max frames for GIF
+- `--gif-width` / `--gif-height` - GIF output dimensions in characters
+
+**Raw/Extract Mode:**
+- `--raw, --extract` - Extract raw video frames as GIF (no ASCII rendering)
+- `--raw-width` / `--raw-height` - Dimensions for raw output in pixels
+- `--smart-keyframes, --smart` - Use smart scene detection for keyframes
+- `-q, --quality` - Output quality 1-100 (for JPEG, WebP; default: 85)
+
+**Calibration:**
+- `--calibrate` - Show aspect ratio calibration pattern (Tab to switch aspect/gamma)
+- `--save` - Save calibration to calibration.json
+
+**Aspect Ratio Resolution Chain:**
+CLI `--char-aspect` → saved calibration per mode → auto-detected from terminal font → 0.5 default
+
+**Performance:**
+- `--no-hwaccel` - Disable hardware acceleration
+- `--no-alt-screen` - Disable alternate screen buffer
+- `--no-parallel` - Disable parallel processing
+
+**Template Support:**
+- `--template <file>` - Load render options from a JSON template
+- `--save-template <file>` - Save current options to a JSON template
+
+**Miscellaneous:**
+- `--no-write, --readonly` - Disable all caching and downloading (CI/CD mode)
+- `--no-ffmpeg-download` - Don't auto-download FFmpeg
 - `--no-enhance` - Disable FFmpeg audio preprocessing for Whisper transcription
+- `--ee` - Easter egg animation demo
+- `--debug` - Debug output for smart frame sampling
 
 ### Subtitle Options (Unified)
 
@@ -538,6 +713,8 @@ Additional options:
 - `--whisper-model <size>` - Model: tiny, base (default), small, medium, large
 - `--whisper-threads <n>` - CPU threads for transcription
 - `--force-subs` - Force re-transcription even if cached subtitles exist
+- `--save-subs <path>` - Save generated subtitles to specified path (VTT format)
+- `--no-sub-cache` - Don't cache subtitles (always re-transcribe)
 
 ### Transcript-Only Mode (v4.0)
 
@@ -619,6 +796,39 @@ consoleimage "https://youtu.be/VIDEO_ID" --subs off
 - Whisper models auto-download on first use (75MB - 3GB)
 - HTML tags in subtitles are automatically stripped
 - SRT files typically match video name: `movie.mkv` → `movie.srt`
+
+### Subcommands
+
+#### `transcribe` - Generate subtitles
+
+```bash
+consoleimage transcribe <input> [options]
+```
+
+Generates subtitles from video/audio using Whisper AI.
+
+**Options:**
+- `-o, --output` - Output file (default: input.vtt)
+- `-m, --model` - Whisper model: tiny, base (default), small, medium, large
+- `-l, --lang` - Language code: en, es, ja, etc. or 'auto' (default: "en")
+- `-d, --diarize` - Enable speaker diarization
+- `-t, --threads` - CPU threads (default: half available)
+- `-s, --stream` - Stream transcript text to stdout as generated
+- `-q, --quiet` - Suppress progress messages (only transcribed text)
+- `--no-enhance` - Disable FFmpeg audio preprocessing filters
+
+#### `tools` - Manage external tools
+
+```bash
+consoleimage tools [options]
+```
+
+Check status and manage required tools (FFmpeg, yt-dlp, Whisper runtime).
+
+**Options:**
+- `--verify` - Test download URLs are reachable
+- `--clear-cache` - Clear all downloaded tool caches
+- `--redownload` - Clear caches and re-download everything
 
 ### Slideshow Mode
 
@@ -865,6 +1075,32 @@ ConsoleImage ASCII art can be rendered in a browser via Playwright for visual re
 # Concept: Render to HTML, screenshot with Playwright
 consoleimage video.mp4 -w 80 --ascii -o preview.html
 npx playwright screenshot preview.html screenshot.png
+```
+
+### Experimental Features
+
+#### Temporal Interlacing (Braille)
+Rapidly cycles between different brightness thresholds to reveal more detail
+than a single threshold allows. Known issues with black bars and clearing artifacts.
+
+```bash
+consoleimage image.png --interlace
+consoleimage image.png --interlace --interlace-frames 4 --interlace-spread 0.06 --interlace-fps 20
+```
+
+- `--interlace` - Enable temporal interlacing
+- `--interlace-frames` - Number of subframes per cycle (2-8, default: 4)
+- `--interlace-spread` - Threshold spread (0.01-0.2, default: 0.06)
+- `--interlace-fps` - Visible frame rate (default: 20)
+
+### MCP Server (ConsoleImage.Mcp)
+
+ConsoleImage includes an MCP (Model Context Protocol) server for LLM integration.
+This allows AI assistants to render images and videos through tool calls.
+
+```bash
+# Run the MCP server
+dotnet run --project ConsoleImage.Mcp
 ```
 
 ## Build
