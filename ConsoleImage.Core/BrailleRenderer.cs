@@ -547,11 +547,9 @@ public class BrailleRenderer : IDisposable
 
         // For COLOR/GREYSCALE mode: show most dots, only hide truly dark pixels
         // For MONOCHROME mode: use Otsu's method for optimal separation
-        float threshold;
-        if (_options.UseColor || _options.UseGreyscaleAnsi)
-            threshold = invertMode ? 0.15f : 0.85f;
-        else
-            threshold = CalculateOtsuThreshold(brightness);
+        var threshold = (_options.UseColor || _options.UseGreyscaleAnsi)
+            ? (invertMode ? 0.15f : 0.85f)
+            : CalculateOtsuThreshold(brightness);
 
         // Apply Atkinson dithering for smooth gradients
         brightness = ApplyAtkinsonDithering(brightness, pixelWidth, pixelHeight, threshold);
@@ -584,11 +582,9 @@ public class BrailleRenderer : IDisposable
 
         // Calculate base threshold
         var invertMode = _options.Invert;
-        float baseThreshold;
-        if (_options.UseColor || _options.UseGreyscaleAnsi)
-            baseThreshold = invertMode ? 0.15f : 0.85f;
-        else
-            baseThreshold = CalculateOtsuThreshold(baseBrightness);
+        var baseThreshold = (_options.UseColor || _options.UseGreyscaleAnsi)
+            ? (invertMode ? 0.15f : 0.85f)
+            : CalculateOtsuThreshold(baseBrightness);
 
         var frames = new List<BrailleFrame>(frameCount);
 

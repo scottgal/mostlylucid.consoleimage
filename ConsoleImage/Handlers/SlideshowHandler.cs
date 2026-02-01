@@ -384,14 +384,24 @@ public static class SlideshowHandler
                 Console.Write("\x1b[H"); // Home position
                 Console.Write("\x1b[2J"); // Clear screen
 
-                // Content starts at line 2 (line 1 reserved for filename header)
-                var contentStartLine = 2;
+                int contentStartLine;
 
-                // Render filename header at row 1
-                var headerWidth = Math.Max(renderOptions.MaxWidth, 30);
-                var headerText = FormatFilenameHeader(fileName, currentIndex + 1, fileCount, headerWidth);
-                Console.Write("\x1b[1;1H"); // Position at row 1
-                Console.Write(headerText);
+                if (!options.HideStatus)
+                {
+                    // Content starts at line 2 (line 1 reserved for filename header)
+                    contentStartLine = 2;
+
+                    // Render filename header at row 1
+                    var headerWidth = Math.Max(renderOptions.MaxWidth, 30);
+                    var headerText = FormatFilenameHeader(fileName, currentIndex + 1, fileCount, headerWidth);
+                    Console.Write("\x1b[1;1H"); // Position at row 1
+                    Console.Write(headerText);
+                }
+                else
+                {
+                    // No header; start content at the first line
+                    contentStartLine = 1;
+                }
                 Console.Write("\x1b[?2026l"); // End sync
 
                 // Check cache first for instant display
@@ -1079,10 +1089,9 @@ public static class SlideshowHandler
             var ext = Path.GetExtension(fileName);
             var nameOnly = Path.GetFileNameWithoutExtension(fileName);
             var maxNameLen = availableForName - ext.Length - 1; // 1 for "…"
-            if (maxNameLen > 3)
-                namePart = string.Concat(nameOnly.AsSpan(0, maxNameLen), "\u2026", ext);
-            else
-                namePart = string.Concat(fileName.AsSpan(0, Math.Max(1, availableForName - 1)), "\u2026");
+            namePart = maxNameLen > 3
+                ? string.Concat(nameOnly.AsSpan(0, maxNameLen), "\u2026", ext)
+                : string.Concat(fileName.AsSpan(0, Math.Max(1, availableForName - 1)), "\u2026");
         }
 
         var sb = new StringBuilder(maxWidth + 16);
