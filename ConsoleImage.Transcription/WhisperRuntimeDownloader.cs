@@ -309,9 +309,17 @@ public static class WhisperRuntimeDownloader
 
         // Whisper.net.Runtime contains CPU binaries for all platforms
         // This is the standard package that works on Windows, Linux, and macOS
+        // Requires AVX instruction set support
         sources.Add((
             "NuGet (Whisper.net.Runtime)",
             $"https://api.nuget.org/v3-flatcontainer/whisper.net.runtime/{version}/whisper.net.runtime.{version}.nupkg"
+        ));
+
+        // Whisper.net.Runtime.NoAvx - fallback for CPUs without AVX support
+        // Same native library, compiled without AVX instructions
+        sources.Add((
+            "NuGet (Whisper.net.Runtime.NoAvx)",
+            $"https://api.nuget.org/v3-flatcontainer/whisper.net.runtime.noavx/{version}/whisper.net.runtime.noavx.{version}.nupkg"
         ));
 
         return sources;
@@ -473,13 +481,14 @@ public static class WhisperRuntimeDownloader
         var appDir = AppContext.BaseDirectory;
 
         // Copy all native libs to app directory root (best for AOT/single-file)
+        // Overwrite existing files: a previous runtime variant (e.g. AVX) may have failed
+        // to load, and we need the new variant (e.g. NoAvx) to replace it.
         foreach (var sourceFile in nativeFiles)
         {
             try
             {
                 var destPath = Path.Combine(appDir, Path.GetFileName(sourceFile));
-                if (!File.Exists(destPath))
-                    File.Copy(sourceFile, destPath);
+                File.Copy(sourceFile, destPath, overwrite: true);
             }
             catch
             {
@@ -500,8 +509,7 @@ public static class WhisperRuntimeDownloader
                 try
                 {
                     var destPath = Path.Combine(runtimeDir, Path.GetFileName(sourceFile));
-                    if (!File.Exists(destPath))
-                        File.Copy(sourceFile, destPath);
+                    File.Copy(sourceFile, destPath, overwrite: true);
                 }
                 catch
                 {
