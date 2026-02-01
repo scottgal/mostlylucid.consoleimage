@@ -3,6 +3,7 @@
 // If this compiles, the documentation is accurate
 
 using ConsoleImage.Core;
+using ConsoleImage.Player;
 using ConsoleImage.Spectre;
 using ConsoleImage.Video.Core;
 using SixLabors.ImageSharp.PixelFormats;

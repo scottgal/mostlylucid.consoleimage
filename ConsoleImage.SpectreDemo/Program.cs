@@ -2,6 +2,7 @@
 // Shows how to use ConsoleImage.Spectre renderables in Spectre layouts
 
 using ConsoleImage.Core;
+using ConsoleImage.Player;
 using ConsoleImage.Spectre;
 using Spectre.Console;
 using Spectre.Console.Rendering;

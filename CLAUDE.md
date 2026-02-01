@@ -108,6 +108,37 @@ ConsoleImage/
     └── JSON-FORMAT.md           # JSON document format specification
 ```
 
+## NuGet Library Usage
+
+When using `ConsoleImage.Core` or `ConsoleImage.Player` as NuGet packages, ANSI escape
+sequence processing and UTF-8 encoding are required for output to display correctly.
+
+**All renderers in Core auto-call `EnableAnsiSupport()` in their constructors** — you do NOT
+need to call it manually when using `AsciiRenderer`, `BrailleRenderer`, `ColorBlockRenderer`,
+`MatrixRenderer`, `UnifiedRenderer`, or any of the animation players. The call is idempotent
+and cached, so multiple renderers won't re-initialize.
+
+**When writing ANSI content directly** (e.g. replaying saved document strings, writing raw
+escape codes), call it once at startup:
+
+```csharp
+using ConsoleImage.Core;
+
+// Call once at program start if writing ANSI output directly
+ConsoleHelper.EnableAnsiSupport();
+
+// Then write ANSI content
+Console.Write(savedAnsiFrame);
+```
+
+**ConsoleImage.Player** (zero-dependency package) has its own inline ANSI enabler that
+activates automatically when you create a `ConsolePlayer` instance.
+
+**What it does:**
+- Windows: Enables VT processing via `SetConsoleMode`, sets UTF-8 output code page
+- macOS/Linux: Sets `Console.OutputEncoding` to UTF-8 (ANSI is natively supported)
+- Safe to call multiple times, safe in non-interactive/redirected environments
+
 ## Key Classes
 
 ### AsciiRenderer
@@ -1175,6 +1206,27 @@ Manually install tools:
 - **FFmpeg**: `winget install FFmpeg` (Windows), `apt install ffmpeg` (Linux), `brew install ffmpeg` (macOS)
 - **yt-dlp**: `pip install yt-dlp` or download from https://github.com/yt-dlp/yt-dlp
 - **Whisper**: Models download automatically; runtime requires `dotnet add package Whisper.net.Runtime`
+
+## Known Code Duplication
+
+The following patterns are duplicated across handlers and should be consolidated:
+
+1. **Render mode selection** (`if useMatrix / elif useBraille / elif useBlocks / else`) —
+   repeated 10+ times across `ImageHandler`, `VideoHandler`, `SlideshowHandler`.
+   `UnifiedRenderer` exists but isn't used by CLI handlers yet. Consolidate via a
+   renderer factory that maps `RenderMode` → renderer instance + frame list.
+
+2. **Frame playback** — `RenderHelpers.PlayFramesAsync()` (alt screen, line clearing) and
+   `SlideshowHandler.PlayFramesInPlaceAsync()` (in-place) share core loop/timing logic.
+   Extract a shared `FramePlaybackEngine` with alt-screen and in-place modes.
+
+3. **Subtitle loading** — `SlideshowHandler` and `VideoHandler` both have similar
+   subtitle discovery logic. `SubtitleResolver` in Core should be the single source.
+
+4. **ConsoleImage.Player subtitle parsing** — `ConsolePlayer` has inline SRT/VTT parsing
+   (~90 lines) that duplicates `SubtitleParser` in Core. Player is zero-dependency by
+   design, so this is intentional, but the inline version lacks speaker detection and
+   robust HTML handling.
 
 ## Dependencies
 

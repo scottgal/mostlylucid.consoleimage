@@ -1,6 +1,7 @@
 // Render helper utilities for the CLI
 
 using ConsoleImage.Core;
+using ConsoleImage.Player;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace ConsoleImage.Cli.Utilities;

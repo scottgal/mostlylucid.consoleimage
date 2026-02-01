@@ -22,10 +22,8 @@ High-quality ASCII art renderer for .NET 10 using shape-matching algorithm.
 ```csharp
 using ConsoleImage.Core;
 
-// Enable Windows ANSI support (call once at startup)
-ConsoleHelper.EnableAnsiSupport();
-
 // One line - just works!
+// All renderers auto-enable ANSI support on Windows.
 Console.WriteLine(AsciiArt.Render("photo.jpg"));
 
 // Colored output
@@ -34,6 +32,11 @@ Console.WriteLine(AsciiArt.RenderColored("photo.jpg"));
 // Play animated GIF
 await AsciiArt.PlayGif("animation.gif");
 ```
+
+> **Note:** All renderers (`AsciiRenderer`, `BrailleRenderer`, `ColorBlockRenderer`,
+> `MatrixRenderer`, `UnifiedRenderer`) automatically call `ConsoleHelper.EnableAnsiSupport()`
+> in their constructors. You only need to call it manually if you're writing raw ANSI
+> escape codes to the console without using a renderer.
 
 ## Render Modes
 

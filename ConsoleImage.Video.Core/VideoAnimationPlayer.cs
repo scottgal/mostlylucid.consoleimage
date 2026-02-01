@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
+using ConsoleImage.Player;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 

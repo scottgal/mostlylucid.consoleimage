@@ -10,6 +10,7 @@ using ConsoleImage.Cli.Handlers;
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
+using ConsoleImage.Player;
 using ConsoleImage.Transcription;
 
 // Enable ANSI escape sequence processing on Windows

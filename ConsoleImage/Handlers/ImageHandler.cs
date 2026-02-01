@@ -2,6 +2,7 @@
 
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
+using ConsoleImage.Player;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using static ConsoleImage.Core.MarkdownRenderer;

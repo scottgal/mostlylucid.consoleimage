@@ -1,11 +1,10 @@
-// ASCII Art Renderer - C# implementation based on Alex Harri's approach
-// Original article: https://alexharri.com/blog/ascii-rendering
 // Console helper for enabling ANSI escape sequences on Windows
+// Lives in Player project as the base layer for all console output.
 
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ConsoleImage.Core;
+namespace ConsoleImage.Player;
 
 /// <summary>
 ///     Helper class to enable ANSI escape sequence processing on Windows consoles.

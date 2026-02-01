@@ -2,6 +2,7 @@
 
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
+using ConsoleImage.Player;
 
 namespace ConsoleImage.Cli.Handlers;
 

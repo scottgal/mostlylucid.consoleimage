@@ -26,6 +26,21 @@
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     </PropertyGroup>
 
+    <!-- Local development: use ProjectReference to Player -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' != 'true'">
+        <ProjectReference Include="..\ConsoleImage.Player\ConsoleImage.Player.csproj"/>
+    </ItemGroup>
+
+    <!-- NuGet packaging: use PackageReference to the published Player package -->
+    <ItemGroup Condition="'$(UseNuGetDependency)' == 'true'">
+        <PackageReference Include="mostlylucid.consoleimage.player" Version="$(PlayerPackageVersion)"/>
+    </ItemGroup>
+
+    <!-- Global using so all Core files can access ConsoleHelper without individual using statements -->
+    <ItemGroup>
+        <Using Include="ConsoleImage.Player"/>
+    </ItemGroup>
+
     <ItemGroup>
         <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12"/>
         <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7"/>

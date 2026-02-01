@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using ConsoleImage.Player;
 
 namespace ConsoleImage.Core.Tests;
 
