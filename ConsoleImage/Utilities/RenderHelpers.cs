@@ -146,7 +146,7 @@ public static class RenderHelpers
 
                     var renderStart = Stopwatch.GetTimestamp();
 
-                    // Write entire frame atomically — single Console.Write eliminates cursor flashing
+                    // Write entire frame atomically  -  single Console.Write eliminates cursor flashing
                     Console.Write(frameBuffers[fi]);
                     Console.Out.Flush();
 

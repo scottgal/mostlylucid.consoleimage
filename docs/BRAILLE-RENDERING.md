@@ -69,7 +69,7 @@ graph TD
 
 ### Why This Encoding?
 
-The braille encoding follows the historical Braille system, where dots 1-6 form the original 6-dot Braille (used for letters), and dots 7-8 were added later for computer Braille. This explains the seemingly odd bit ordering—it preserves compatibility with traditional Braille text.
+The braille encoding follows the historical Braille system, where dots 1-6 form the original 6-dot Braille (used for letters), and dots 7-8 were added later for computer Braille. This explains the seemingly odd bit ordering - it preserves compatibility with traditional Braille text.
 
 ## The Rendering Pipeline
 
@@ -133,7 +133,7 @@ The algorithm:
    - Compute the between-class variance
 3. **Select the threshold** that maximizes between-class variance
 
-This automatically adapts to any image—dark images get low thresholds, bright images get high thresholds, and high-contrast images get thresholds right in the middle.
+This automatically adapts to any image - dark images get low thresholds, bright images get high thresholds, and high-contrast images get thresholds right in the middle.
 
 ```csharp
 private static byte ComputeOtsuThreshold(ReadOnlySpan<byte> grayPixels)
@@ -273,7 +273,7 @@ After dithering produces a brightness field, we don't simply threshold each dot 
 
 ### Why Not Just Threshold Each Dot?
 
-A naive approach checks each of the 8 pixel positions against a threshold and builds the braille code bit by bit. This works, but it's sensitive to noise at dot boundaries—a single pixel hovering near the threshold can flicker on and off between frames, and spatial aliasing produces jagged edges.
+A naive approach checks each of the 8 pixel positions against a threshold and builds the braille code bit by bit. This works, but it's sensitive to noise at dot boundaries - a single pixel hovering near the threshold can flicker on and off between frames, and spatial aliasing produces jagged edges.
 
 Shape vector matching treats the entire 2×4 cell as a unit, finding the braille pattern whose overall shape is the closest geometric match. This produces smoother, more stable output because the decision considers all 8 positions together rather than independently.
 
@@ -301,7 +301,7 @@ For each of the 8 dot positions in the 2×4 cell:
 2. **Inner ring**: 4 points at radius × 0.5, evenly spaced
 3. **Outer ring**: 8 points at full radius, offset by π/8 from inner ring
 
-The average of all samples gives a **coverage value** between 0.0 (white/empty) and 1.0 (black/filled)—a continuous value rather than a binary on/off.
+The average of all samples gives a **coverage value** between 0.0 (white/empty) and 1.0 (black/filled) - a continuous value rather than a binary on/off.
 
 ```csharp
 // Dot center positions within a 2×4 pixel cell:
@@ -333,7 +333,7 @@ Index:  [0] [1]     Braille:  1  4
         [6] [7]               7  8
 ```
 
-These 256 vectors are generated **mathematically** from the Unicode braille standard—no font rendering is needed (unlike ASCII mode, which must render each glyph to measure its shape). Each component is simply 1.0 if the corresponding bit is set in the braille code, 0.0 otherwise:
+These 256 vectors are generated **mathematically** from the Unicode braille standard - no font rendering is needed (unlike ASCII mode, which must render each glyph to measure its shape). Each component is simply 1.0 if the corresponding bit is set in the braille code, 0.0 otherwise:
 
 ```csharp
 // Dot bit positions: index → Unicode braille bit
@@ -347,7 +347,7 @@ for (int code = 0; code < 256; code++)
 
 ### SIMD Brute-Force Matching
 
-To find the best braille character for a sampled cell, we compute the **squared Euclidean distance** between the 8D sample vector and all 256 pattern vectors, selecting the minimum. With only 256 candidates × 8 dimensions, brute force is faster than any tree structure—and it vectorizes perfectly.
+To find the best braille character for a sampled cell, we compute the **squared Euclidean distance** between the 8D sample vector and all 256 pattern vectors, selecting the minimum. With only 256 candidates × 8 dimensions, brute force is faster than any tree structure - and it vectorizes perfectly.
 
 On CPUs with AVX support, all 8 floats fit in a single `Vector256<float>`, making the inner loop a single SIMD subtraction, multiplication, and horizontal sum:
 
@@ -406,7 +406,7 @@ Closest patterns (by squared distance):
 Result: ⠻ (top-left 5 dots lit, bottom-right 3 dots off)
 ```
 
-The shape matcher picks `⠻` because its dot pattern best approximates the continuous coverage gradient—better than simple thresholding which might produce `⠛` (hard top/bottom split) or `⣿`/`⠀` (all-or-nothing).
+The shape matcher picks `⠻` because its dot pattern best approximates the continuous coverage gradient - better than simple thresholding which might produce `⠛` (hard top/bottom split) or `⣿`/`⠀` (all-or-nothing).
 
 ### Comparison: ASCII 6D vs Braille 8D
 
@@ -420,7 +420,7 @@ The shape matcher picks `⠻` because its dot pattern best approximates the cont
 | **Cache key** | 5 bits × 6 = 30 bits | 4 bits × 8 = 32 bits |
 | **Resolution** | 1 pixel per cell | 8 pixels per cell |
 
-The ASCII renderer uses a **KD-tree** for fast lookup among 95 characters in 6D space. The braille renderer skips the tree entirely—with only 256 patterns and AVX processing all 8 dimensions in one instruction, linear scan is faster than tree traversal overhead.
+The ASCII renderer uses a **KD-tree** for fast lookup among 95 characters in 6D space. The braille renderer skips the tree entirely - with only 256 patterns and AVX processing all 8 dimensions in one instruction, linear scan is faster than tree traversal overhead.
 
 Both approaches share the same insight from Alex Harri's algorithm: represent visual patterns as vectors in a metric space, then find the nearest neighbor. The difference is that ASCII must render each font glyph to discover its shape, while braille patterns are defined by the Unicode standard and can be generated purely from the bit encoding.
 
@@ -430,7 +430,7 @@ Plain braille (white dots on black) works, but color adds tremendous visual impa
 
 ### The Naive Approach (and why it fails)
 
-Averaging all 8 pixel colors produces a "solarized" look—colors mix into muddy browns and grays that don't match the source image.
+Averaging all 8 pixel colors produces a "solarized" look - colors mix into muddy browns and grays that don't match the source image.
 
 ### The Hybrid Solution
 
@@ -452,7 +452,7 @@ flowchart TD
     style F stroke:#00aa00
 ```
 
-This ensures the displayed color matches what the user actually sees—the lit dots.
+This ensures the displayed color matches what the user actually sees - the lit dots.
 
 ```csharp
 private static Rgba32 ComputeHybridColor(
@@ -489,7 +489,7 @@ private static Rgba32 ComputeHybridColor(
 
 ### Color Boosting
 
-Braille characters are inherently sparse—a character with only 2-3 dots lit appears dimmer than a solid block. To compensate, we apply **color boosting**:
+Braille characters are inherently sparse - a character with only 2-3 dots lit appears dimmer than a solid block. To compensate, we apply **color boosting**:
 
 - **Saturation boost**: +25% (makes colors more vivid)
 - **Brightness boost**: +15% (compensates for sparse dots)

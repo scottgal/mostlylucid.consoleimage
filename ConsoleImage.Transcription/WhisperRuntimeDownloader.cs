@@ -63,7 +63,7 @@ public static class WhisperRuntimeDownloader
     {
         try
         {
-            // AVX is an x86/x64 feature — ARM uses NEON instead, no AVX concern
+            // AVX is an x86/x64 feature  -  ARM uses NEON instead, no AVX concern
             if (RuntimeInformation.ProcessArchitecture != Architecture.X64
                 && RuntimeInformation.ProcessArchitecture != Architecture.X86)
                 return false;

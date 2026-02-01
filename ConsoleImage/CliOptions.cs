@@ -335,7 +335,7 @@ public class CliOptions
             { Description = "Terminal color depth: true (24-bit, default), 256 (xterm-256), 16 (standard ANSI)" };
         ColorDepthOpt.Aliases.Add("--depth");
 
-        // Interlace (temporal super-resolution for braille) — EXPERIMENTAL
+        // Interlace (temporal super-resolution for braille)  -  EXPERIMENTAL
         Interlace = new Option<bool>("--interlace")
             { Description = "[EXPERIMENTAL] Enable temporal interlacing for braille (known issues: black bars, clearing artifacts)" };
         Interlace.Aliases.Add("--interleave");
@@ -363,7 +363,7 @@ public class CliOptions
 
         // Template support
         Template = new Option<string?>("--template") { Description = "Load options from a JSON template file" };
-        // No short alias — -T is Transcript, -t is Duration
+        // No short alias  -  -T is Transcript, -t is Duration
 
         SaveTemplate = new Option<string?>("--save-template")
             { Description = "Save current options to a JSON template file" };

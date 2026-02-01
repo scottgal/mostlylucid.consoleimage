@@ -24,7 +24,7 @@ env:
 
 jobs:
   # ============================================
-  # STEP 0: Publish Player package (zero deps, must go first — Core depends on it)
+  # STEP 0: Publish Player package (zero deps, must go first  -  Core depends on it)
   # ============================================
   publish-player:
     runs-on: ubuntu-latest
@@ -591,8 +591,8 @@ jobs:
             ### CLI Downloads
 
             Two variants available:
-            - **consoleimage** — Core CLI for images, GIFs, videos, documents (smaller download)
-            - **consoleimage + whisper** — Same binary + Whisper native libraries for AI-powered transcription
+            - **consoleimage**  -  Core CLI for images, GIFs, videos, documents (smaller download)
+            - **consoleimage + whisper**  -  Same binary + Whisper native libraries for AI-powered transcription
 
             | Platform | consoleimage | + whisper | consoleimage-mcp |
             |----------|--------------|----------|------------------|

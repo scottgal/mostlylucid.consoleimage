@@ -1,12 +1,12 @@
 # ConsoleImage.Player
 
-A minimal, **zero-dependency** player for ConsoleImage documents. Play pre-rendered ASCII art and animations in any .NET terminal app — no ImageSharp, no FFmpeg, no external packages.
+A minimal, **zero-dependency** player for ConsoleImage documents. Play pre-rendered ASCII art and animations in any .NET terminal app  -  no ImageSharp, no FFmpeg, no external packages.
 
 | Feature | Details |
 |---|---|
 | Dependencies | **None** (only built-in System.Text.Json) |
 | Package size | ~50 KB |
-| AOT compatible | Yes — source-generated JSON, no reflection |
+| AOT compatible | Yes  -  source-generated JSON, no reflection |
 | Formats | `.cidz` (compressed), `.json`, `.ndjson` (streaming) |
 | Frame parse time | ~100–300 µs per frame |
 
@@ -248,15 +248,15 @@ var doc = PlayerDocument.FromCompressedBytes(byteArray);
 var doc = await PlayerDocument.FromCompressedStreamAsync(stream, cancellationToken);
 
 // Properties
-doc.FrameCount       // int — number of frames
-doc.IsAnimated       // bool — true if more than 1 frame
-doc.TotalDurationMs  // int — sum of all frame delays
-doc.RenderMode       // string — "ASCII", "ColorBlocks", "Braille", "Matrix"
-doc.Version          // string — format version
-doc.Created          // DateTime — when the document was created
-doc.SourceFile       // string? — original source file name
-doc.Settings         // PlayerSettings — render settings
-doc.Frames           // List<PlayerFrame> — all frames
+doc.FrameCount       // int  -  number of frames
+doc.IsAnimated       // bool  -  true if more than 1 frame
+doc.TotalDurationMs  // int  -  sum of all frame delays
+doc.RenderMode       // string  -  "ASCII", "ColorBlocks", "Braille", "Matrix"
+doc.Version          // string  -  format version
+doc.Created          // DateTime  -  when the document was created
+doc.SourceFile       // string?  -  original source file name
+doc.Settings         // PlayerSettings  -  render settings
+doc.Frames           // List<PlayerFrame>  -  all frames
 ```
 
 ### PlayerFrame
@@ -264,10 +264,10 @@ doc.Frames           // List<PlayerFrame> — all frames
 A single frame of content:
 
 ```csharp
-frame.Content   // string — ANSI-escaped terminal content
-frame.DelayMs   // int — milliseconds before next frame
-frame.Width     // int — width in characters
-frame.Height    // int — height in lines
+frame.Content   // string  -  ANSI-escaped terminal content
+frame.DelayMs   // int  -  milliseconds before next frame
+frame.Width     // int  -  width in characters
+frame.Height    // int  -  height in lines
 ```
 
 ### PlayerSettings
@@ -308,13 +308,13 @@ The Player reads three formats. All are created by the `consoleimage` CLI or the
 ### Creating documents from the CLI
 
 ```bash
-# Compressed (recommended) — auto-selected for .cidz extension
+# Compressed (recommended)  -  auto-selected for .cidz extension
 consoleimage input.gif -w 80 -o output.cidz
 
-# Uncompressed JSON — use raw: prefix to force uncompressed
+# Uncompressed JSON  -  use raw: prefix to force uncompressed
 consoleimage input.gif -w 80 -o raw:output.json
 
-# Streaming NDJSON — for very long videos, auto-finalizes on Ctrl+C
+# Streaming NDJSON  -  for very long videos, auto-finalizes on Ctrl+C
 consoleimage input.mp4 -w 80 -o output.ndjson
 
 # With de-jitter (reduces color flickering in animations)
@@ -329,7 +329,7 @@ consoleimage input.gif -w 80 -o output.cidz --dejitter
 2. Checks first line for NDJSON header → streams line by line
 3. Falls back to standard JSON
 
-You never need to specify the format — just pass the file path.
+You never need to specify the format  -  just pass the file path.
 
 ---
 
@@ -457,7 +457,7 @@ catch (InvalidOperationException ex)
 | 2 MB | 59 | 9.1 ms | ~155 µs |
 
 - First parse may be slower due to JIT (sub-millisecond after warmup)
-- Frames stored as strings — no intermediate objects, minimal GC pressure
+- Frames stored as strings  -  no intermediate objects, minimal GC pressure
 - GZip decompression adds ~5–10% overhead
 
 ---
@@ -465,8 +465,8 @@ catch (InvalidOperationException ex)
 ## Threading Notes
 
 - `LoadAsync` and `PlayAsync` are fully async with `CancellationToken` support
-- `FromJson` is synchronous — use for small documents or when you already have the string
-- The player writes directly to `Console.Write` — do not write to the console from another thread during `PlayAsync`
+- `FromJson` is synchronous  -  use for small documents or when you already have the string
+- The player writes directly to `Console.Write`  -  do not write to the console from another thread during `PlayAsync`
 
 ---
 
@@ -489,7 +489,7 @@ foreach (var name in Assembly.GetExecutingAssembly().GetManifestResourceNames())
 The document may have been rendered for a light terminal while you're on a dark one (or vice versa). Re-export with appropriate settings. Most documents use `Invert = true` (dark terminal default).
 
 **`.json` file is huge**
-Use `.cidz` instead — it's the same content with ~7:1 compression via delta encoding and GZip. The CLI defaults to `.cidz` when you specify a `.json` extension; use `raw:output.json` to force uncompressed.
+Use `.cidz` instead  -  it's the same content with ~7:1 compression via delta encoding and GZip. The CLI defaults to `.cidz` when you specify a `.json` extension; use `raw:output.json` to force uncompressed.
 
 ---
 
@@ -534,7 +534,7 @@ static async Task PlaySplashAsync(CancellationToken ct)
     {
         var asm = Assembly.GetExecutingAssembly();
         await using var stream = asm.GetManifestResourceStream("MyApp.splash.cidz");
-        if (stream is null) return; // No splash — silently continue
+        if (stream is null) return; // No splash  -  silently continue
 
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms, ct);
@@ -545,11 +545,11 @@ static async Task PlaySplashAsync(CancellationToken ct)
     }
     catch (OperationCanceledException)
     {
-        // User pressed Ctrl+C during splash — continue to app
+        // User pressed Ctrl+C during splash  -  continue to app
     }
     catch (Exception ex)
     {
-        // Splash failed — log and continue (never crash on splash)
+        // Splash failed  -  log and continue (never crash on splash)
         Console.Error.WriteLine($"Splash error: {ex.Message}");
     }
 }
@@ -559,4 +559,4 @@ static async Task PlaySplashAsync(CancellationToken ct)
 
 ## License
 
-Unlicense — Public Domain
+Unlicense  -  Public Domain

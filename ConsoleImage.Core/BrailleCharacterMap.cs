@@ -101,7 +101,7 @@ public class BrailleCharacterMap
                 target8[0], target8[1], target8[2], target8[3],
                 target8[4], target8[5], target8[6], target8[7]);
 
-            // Use pre-computed Vector256 array — no per-iteration Vector256.Create
+            // Use pre-computed Vector256 array  -  no per-iteration Vector256.Create
             for (var i = 0; i < BrailleCount; i++)
             {
                 var diff = targetVec - _precomputedVectors[i];

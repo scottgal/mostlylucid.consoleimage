@@ -181,7 +181,7 @@ public class RenderOptions
     /// <summary>
     ///     Disable Atkinson dithering in braille mode.
     ///     When true, braille characters are selected by thresholding continuous brightness
-    ///     directly — sharper edges but gradients may band.
+    ///     directly  -  sharper edges but gradients may band.
     ///     When false (default), Atkinson error-diffusion dithering is applied first
     ///     for smoother tonal transitions.
     ///     Use --no-dither to enable.

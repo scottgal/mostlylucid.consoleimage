@@ -222,8 +222,8 @@ jobs:
             ### CLI Downloads
 
             Two variants available:
-            - **consoleimage** — Core CLI for images, GIFs, videos, documents (smaller download)
-            - **consoleimage + whisper** — Same binary + Whisper native libraries for AI-powered transcription
+            - **consoleimage**  -  Core CLI for images, GIFs, videos, documents (smaller download)
+            - **consoleimage + whisper**  -  Same binary + Whisper native libraries for AI-powered transcription
 
             | Platform | consoleimage | + whisper | consoleimage-mcp |
             |----------|--------------|----------|------------------|

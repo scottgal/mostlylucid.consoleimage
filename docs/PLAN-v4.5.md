@@ -1,8 +1,8 @@
-# v4.5 Release Plan — Perceptual Enhancement & Quality
+# v4.5 Release Plan  -  Perceptual Enhancement & Quality
 
 ## Vision
 
-v4.5 introduces **perceptual braille interlacing** — a technique that plays multiple slightly different braille frames rapidly to create the illusion of enhanced detail beyond what a single frame can show. This is temporal dithering applied to terminal art.
+v4.5 introduces **perceptual braille interlacing**  -  a technique that plays multiple slightly different braille frames rapidly to create the illusion of enhanced detail beyond what a single frame can show. This is temporal dithering applied to terminal art.
 
 Also includes color system improvements, Whisper transcription tuning, and a final quality pass.
 
@@ -10,7 +10,7 @@ Also includes color system improvements, Whisper transcription tuning, and a fin
 
 ## Part 1: Perceptual Braille Interlacing (Still Images)
 
-**Concept:** A single braille character is a 2x4 grid of dots. Each dot is either on or off, determined by a brightness threshold. By varying the threshold across multiple rapid frames, we create temporal dithering — the viewer perceives more detail than any single frame contains.
+**Concept:** A single braille character is a 2x4 grid of dots. Each dot is either on or off, determined by a brightness threshold. By varying the threshold across multiple rapid frames, we create temporal dithering  -  the viewer perceives more detail than any single frame contains.
 
 **How it works:**
 1. Render the source image N times with slightly different brightness thresholds
@@ -21,10 +21,10 @@ Also includes color system improvements, Whisper transcription tuning, and a fin
 6. The eye integrates the rapidly alternating dot patterns into perceived higher resolution
 
 **Parameters:**
-- `--interlace` or `--enhance` — Enable perceptual interlacing
-- `--interlace-frames N` — Number of threshold-variant frames (default: 3)
-- `--interlace-spread F` — Threshold variation range (default: 0.1)
-- `--interlace-fps N` — Playback speed for interlaced frames (default: 20)
+- `--interlace` or `--enhance`  -  Enable perceptual interlacing
+- `--interlace-frames N`  -  Number of threshold-variant frames (default: 3)
+- `--interlace-spread F`  -  Threshold variation range (default: 0.1)
+- `--interlace-fps N`  -  Playback speed for interlaced frames (default: 20)
 
 **Files to modify:**
 | File | Changes |
@@ -44,7 +44,7 @@ Also includes color system improvements, Whisper transcription tuning, and a fin
 
 ## Part 2: Inter-Frame Video Enhancement
 
-**Concept:** Extend interlacing to video — for each source video frame, generate 2-3 braille variants and interleave them. This multiplies the effective refresh rate and perceived detail.
+**Concept:** Extend interlacing to video  -  for each source video frame, generate 2-3 braille variants and interleave them. This multiplies the effective refresh rate and perceived detail.
 
 **How it works:**
 1. For each video frame at time T:
@@ -52,7 +52,7 @@ Also includes color system improvements, Whisper transcription tuning, and a fin
    - Play all variants before advancing to the next source frame
 2. Source at 10fps with 3 interlace frames = 30fps output
 
-**Constraint:** Must not increase CPU load proportionally — use cached threshold maps and incremental updates.
+**Constraint:** Must not increase CPU load proportionally  -  use cached threshold maps and incremental updates.
 
 **Files to modify:**
 | File | Changes |
@@ -133,7 +133,7 @@ private static bool HasSpeechEnergy(string wavPath, float rmsThreshold = 0.01f)
 
 - **Memory efficiency:** Ensure all Image<Rgba32> objects are properly disposed, ArrayPool buffers returned
 - **CPU efficiency:** Profile hot paths, verify parallel rendering works correctly
-- **Error handling:** No unhandled exceptions from user input — all errors produce helpful messages
+- **Error handling:** No unhandled exceptions from user input  -  all errors produce helpful messages
 - **Cleanup:** Remove dead code, unused variables, commented-out sections
 - **GIF quality:** Verify 256-color output looks correct across all modes
 - **Hash verification:** Use `--hash` to verify color changes produce expected visual differences
@@ -159,12 +159,12 @@ private static bool HasSpeechEnergy(string wavPath, float rmsThreshold = 0.01f)
 
 ## Verification
 
-1. `dotnet build` — Zero errors, zero new warnings
-2. `consoleimage photo.jpg --interlace` — Verify visual enhancement on still
-3. `consoleimage photo.jpg --hash` vs `--interlace --hash` — Compare hashes
-4. `consoleimage video.mp4 --interlace` — Verify video interlacing works
-5. `consoleimage photo.jpg --colors 16` — Verify 16-color ANSI output
-6. `consoleimage photo.jpg --no-color` — Verify greyscale output
-7. `consoleimage video.mp4 --subs whisper` — Verify improved transcription
+1. `dotnet build`  -  Zero errors, zero new warnings
+2. `consoleimage photo.jpg --interlace`  -  Verify visual enhancement on still
+3. `consoleimage photo.jpg --hash` vs `--interlace --hash`  -  Compare hashes
+4. `consoleimage video.mp4 --interlace`  -  Verify video interlacing works
+5. `consoleimage photo.jpg --colors 16`  -  Verify 16-color ANSI output
+6. `consoleimage photo.jpg --no-color`  -  Verify greyscale output
+7. `consoleimage video.mp4 --subs whisper`  -  Verify improved transcription
 8. Regenerate all samples with new features
 9. Memory profiling pass with `dotnet-counters`

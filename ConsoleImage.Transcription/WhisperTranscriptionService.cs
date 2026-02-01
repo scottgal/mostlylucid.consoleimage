@@ -228,7 +228,7 @@ public sealed class WhisperTranscriptionService : IDisposable
         // This reduces cold-start hallucinations and improves word accuracy at boundaries.
         if (!string.IsNullOrWhiteSpace(prompt)) builder.WithPrompt(prompt);
 
-        // Use greedy sampling (default) — beam search is 2-5x slower and
+        // Use greedy sampling (default)  -  beam search is 2-5x slower and
         // produces single long segments per chunk, destroying subtitle timing
         builder.WithGreedySamplingStrategy();
 

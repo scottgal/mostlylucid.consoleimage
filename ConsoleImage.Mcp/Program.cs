@@ -1616,7 +1616,7 @@ public sealed class ConsoleImageTools
     /// </summary>
     [McpServerTool(Name = "compute_hash")]
     [Description(
-        "Compute a perceptual hash (aHash) of an image file. Returns a 64-bit hash and average brightness. Compare hashes to detect visually similar images — useful for verifying color tuning, checking render fidelity, or detecting duplicate frames. Optionally compare against a second image.")]
+        "Compute a perceptual hash (aHash) of an image file. Returns a 64-bit hash and average brightness. Compare hashes to detect visually similar images  -  useful for verifying color tuning, checking render fidelity, or detecting duplicate frames. Optionally compare against a second image.")]
     public static string ComputeHash(
         [Description("Path to the image file (JPG, PNG, GIF, WebP, BMP)")]
         string path,

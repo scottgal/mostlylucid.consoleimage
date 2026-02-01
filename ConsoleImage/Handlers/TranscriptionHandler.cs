@@ -207,7 +207,7 @@ public static class TranscriptionHandler
         // Speech-optimized audio filters for better Whisper recognition:
         // highpass=f=200    - Remove low-freq rumble/hum below 200Hz
         // lowpass=f=3000    - Remove high-freq noise above 3kHz (speech is 300-3000Hz)
-        // NOTE: loudnorm and afftdn removed — loudnorm requires two-pass (slow),
+        // NOTE: loudnorm and afftdn removed  -  loudnorm requires two-pass (slow),
         // afftdn distorts clean audio. These simple filters are fast and safe.
         var audioFilter = enhanceAudio
             ? "-af \"highpass=f=200,lowpass=f=3000\" "

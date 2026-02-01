@@ -56,7 +56,7 @@ ConsoleImage requires **zero manual setup** for common tasks. Dependencies are d
 
 ### Whisper Transcription (`--subs whisper`)
 
-Whisper AI transcription requires native libraries that are **only included in the `consoleimage-whisper` variant**. The default `consoleimage` download handles images, GIFs, videos, embedded subtitles, and YouTube subtitles — but does not include Whisper.
+Whisper AI transcription requires native libraries that are **only included in the `consoleimage-whisper` variant**. The default `consoleimage` download handles images, GIFs, videos, embedded subtitles, and YouTube subtitles  -  but does not include Whisper.
 
 To use `--subs whisper`:
 1. Download the **`consoleimage-*-whisper`** archive from [Releases](https://github.com/scottgal/mostlylucid.consoleimage/releases)
@@ -70,7 +70,7 @@ consoleimage movie.mp4 --subs whisper -wm small     # Use small model (~466MB)
 consoleimage movie.mp4 --subs whisper -wm tiny      # Fastest, smallest (~75MB)
 ```
 
-> **Don't need Whisper?** Most subtitle workflows don't require it. Use `--subs auto` to automatically find embedded subtitles, external .srt/.vtt files, or YouTube captions — no Whisper needed.
+> **Don't need Whisper?** Most subtitle workflows don't require it. Use `--subs auto` to automatically find embedded subtitles, external .srt/.vtt files, or YouTube captions  -  no Whisper needed.
 
 ### Manual Installation (If Needed)
 
@@ -86,7 +86,7 @@ apt install ffmpeg                 # Linux
 pip install yt-dlp
 ```
 
-> **Whisper** does not require separate installation — download the `consoleimage-*-whisper` variant which bundles the native libraries. Whisper models auto-download from Hugging Face on first use.
+> **Whisper** does not require separate installation  -  download the `consoleimage-*-whisper` variant which bundles the native libraries. Whisper models auto-download from Hugging Face on first use.
 
 Use `-y` / `--yes` to auto-confirm all downloads without prompts. All downloads are cached in `~/.local/share/consoleimage/` (or `%LOCALAPPDATA%\consoleimage\` on Windows).
 
@@ -162,7 +162,7 @@ With only 256 vectors, SIMD brute force outperforms tree-based search. Benchmark
 
 ### Braille Interlace Mode (Experimental)
 
-> **Status: Experimental** — Known issues: black horizontal bars appear between frames due to a screen clearing/cursor positioning bug. The underlying frame generation works, but the playback player has visual artifacts.
+> **Status: Experimental**  -  Known issues: black horizontal bars appear between frames due to a screen clearing/cursor positioning bug. The underlying frame generation works, but the playback player has visual artifacts.
 
 Inspired by LCD FRC (Frame Rate Control) and DLP temporal dithering, interlace mode generates multiple braille subframes with slightly different dithering thresholds. When cycled rapidly, the human visual system integrates the frames, perceiving more tonal detail than any single braille frame can display.
 
@@ -233,9 +233,9 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
 | macOS ARM64   | `consoleimage-osx-arm64.tar.gz`     | `consoleimage-osx-arm64-whisper.tar.gz`     | `consoleimage-osx-arm64-mcp.tar.gz`   |
 
 > **Which download do I need?**
-> - **consoleimage** — Core CLI for images, GIFs, videos, subtitles from files/embedded/YouTube, and document playback.
-> - **consoleimage + whisper** — Same binary + Whisper native libraries for local AI transcription (`--subs whisper`).
-> - **consoleimage-mcp** — MCP server for AI assistants (Claude Desktop, Claude Code). See [MCP Server](#mcp-server).
+> - **consoleimage**  -  Core CLI for images, GIFs, videos, subtitles from files/embedded/YouTube, and document playback.
+> - **consoleimage + whisper**  -  Same binary + Whisper native libraries for local AI transcription (`--subs whisper`).
+> - **consoleimage-mcp**  -  MCP server for AI assistants (Claude Desktop, Claude Code). See [MCP Server](#mcp-server).
 
 ### Quick Install (Command Line)
 

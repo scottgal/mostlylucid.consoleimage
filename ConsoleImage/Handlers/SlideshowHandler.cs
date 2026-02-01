@@ -444,7 +444,7 @@ public static class SlideshowHandler
                         displayCts.Token);
                 }
 
-                // Calculate status line position — constrain width to content width
+                // Calculate status line position  -  constrain width to content width
                 var statusLineRow = contentStartLine + contentLines;
                 var statusWidth = Math.Max(contentWidth, 30);
 

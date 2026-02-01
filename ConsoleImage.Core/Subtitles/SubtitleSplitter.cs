@@ -125,7 +125,7 @@ public static class SubtitleSplitter
             if (ch != '.' && ch != '!' && ch != '?')
                 continue;
 
-            // Check for ellipsis (...) — treat as single punctuation
+            // Check for ellipsis (...)  -  treat as single punctuation
             if (ch == '.' && i + 2 < text.Length && text[i + 1] == '.' && text[i + 2] == '.') i += 2; // Skip past ...
 
             // Sentence end: punctuation followed by space or end of text

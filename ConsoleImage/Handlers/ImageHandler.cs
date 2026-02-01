@@ -397,7 +397,7 @@ public static class ImageHandler
         }
         else
         {
-            // ASCII mode — use AsciiAnimationPlayer which has proper synchronized output,
+            // ASCII mode  -  use AsciiAnimationPlayer which has proper synchronized output,
             // diff rendering, and line clearing for flicker-free animation.
             // Frame delays already include speed multiplier from RenderOptions.AnimationSpeedMultiplier.
             using var renderer = new AsciiRenderer(options);
