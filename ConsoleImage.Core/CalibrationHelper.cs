@@ -34,8 +34,8 @@ public record CalibrationSettings
     /// <summary>Gamma correction for ColorBlocks mode</summary>
     public float BlocksGamma { get; init; } = 0.65f;
 
-    /// <summary>Gamma correction for Braille mode</summary>
-    public float BrailleGamma { get; init; } = 0.65f;
+    /// <summary>Gamma correction for Braille mode (brighter default to compensate for dot density)</summary>
+    public float BrailleGamma { get; init; } = 0.5f;
 
     /// <summary>Get the character aspect ratio for a specific render mode</summary>
     public float GetAspectRatio(RenderMode mode)
@@ -61,9 +61,11 @@ public record CalibrationSettings
             _ => AsciiGamma
         };
 
-        // Return default 0.65 if gamma is 0 (unset - old calibration files without gamma)
+        // Return mode-specific default if gamma is 0 (unset - old calibration files without gamma)
         // System.Text.Json deserializes missing float properties as 0, not the init default
-        return gamma <= 0f ? 0.65f : gamma;
+        if (gamma <= 0f)
+            return mode == RenderMode.Braille ? 0.5f : 0.65f;
+        return gamma;
     }
 
     /// <summary>Create a new settings with updated aspect ratio for a specific mode</summary>

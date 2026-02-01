@@ -142,7 +142,7 @@ public class CliOptions
         Contrast.DefaultValueFactory = _ => 2.5f;
 
         Gamma = new Option<float?>("--gamma")
-            { Description = "Gamma correction (< 1.0 brighter, default uses calibration or 0.65)" };
+            { Description = "Gamma correction (< 1.0 brighter, default: 0.5 braille, 0.65 others)" };
         Gamma.Aliases.Add("-g");
 
         CharAspect = new Option<float?>("--char-aspect") { Description = "Character aspect ratio (width/height)" };

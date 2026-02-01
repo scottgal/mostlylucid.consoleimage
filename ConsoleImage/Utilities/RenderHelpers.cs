@@ -181,6 +181,7 @@ public static class RenderHelpers
 
     /// <summary>
     ///     Get effective gamma from explicit value, saved calibration, or default.
+    ///     Braille mode defaults to 0.5 (brighter) to compensate for dot density.
     /// </summary>
     public static float GetEffectiveGamma(
         float? explicitGamma,
@@ -189,6 +190,6 @@ public static class RenderHelpers
     {
         return explicitGamma
                ?? savedCalibration?.GetGamma(mode)
-               ?? 0.65f;
+               ?? (mode == RenderMode.Braille ? 0.5f : 0.65f);
     }
 }

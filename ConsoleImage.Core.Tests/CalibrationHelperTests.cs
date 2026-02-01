@@ -227,19 +227,19 @@ public class CalibrationHelperTests
     // Gamma tests
 
     [Fact]
-    public void CalibrationSettings_DefaultGammaValues_Are065()
+    public void CalibrationSettings_DefaultGammaValues()
     {
         var settings = new CalibrationSettings();
 
         Assert.Equal(0.65f, settings.AsciiGamma);
         Assert.Equal(0.65f, settings.BlocksGamma);
-        Assert.Equal(0.65f, settings.BrailleGamma);
+        Assert.Equal(0.5f, settings.BrailleGamma); // Braille uses brighter default
     }
 
     [Theory]
     [InlineData(RenderMode.Ascii, 0.65f)]
     [InlineData(RenderMode.ColorBlocks, 0.65f)]
-    [InlineData(RenderMode.Braille, 0.65f)]
+    [InlineData(RenderMode.Braille, 0.5f)] // Braille uses brighter default
     [InlineData(RenderMode.Matrix, 0.65f)] // Matrix uses ASCII gamma
     public void CalibrationSettings_GetGamma_ReturnsCorrectDefault(RenderMode mode, float expected)
     {
@@ -275,10 +275,10 @@ public class CalibrationHelperTests
             BrailleGamma = 0f
         };
 
-        // GetGamma should return 0.65 (default) when stored value is 0
+        // GetGamma should return mode-specific default when stored value is 0
         Assert.Equal(0.65f, settings.GetGamma(RenderMode.Ascii));
         Assert.Equal(0.65f, settings.GetGamma(RenderMode.ColorBlocks));
-        Assert.Equal(0.65f, settings.GetGamma(RenderMode.Braille));
+        Assert.Equal(0.5f, settings.GetGamma(RenderMode.Braille)); // Braille uses brighter default
     }
 
     [Fact]
@@ -292,10 +292,10 @@ public class CalibrationHelperTests
             BrailleGamma = -0.1f
         };
 
-        // GetGamma should return 0.65 (default) for negative values
+        // GetGamma should return mode-specific default for negative values
         Assert.Equal(0.65f, settings.GetGamma(RenderMode.Ascii));
         Assert.Equal(0.65f, settings.GetGamma(RenderMode.ColorBlocks));
-        Assert.Equal(0.65f, settings.GetGamma(RenderMode.Braille));
+        Assert.Equal(0.5f, settings.GetGamma(RenderMode.Braille)); // Braille uses brighter default
     }
 
     [Theory]
@@ -312,7 +312,8 @@ public class CalibrationHelperTests
         Assert.Equal(newValue, updated.GetGamma(mode));
 
         // Verify original is unchanged (immutability)
-        Assert.Equal(0.65f, original.GetGamma(mode));
+        var expectedOriginal = mode == RenderMode.Braille ? 0.5f : 0.65f;
+        Assert.Equal(expectedOriginal, original.GetGamma(mode));
     }
 
     [Fact]
@@ -385,10 +386,10 @@ public class CalibrationHelperTests
             var loaded = CalibrationHelper.Load(tempPath);
 
             Assert.NotNull(loaded);
-            // Gamma should return default 0.65 (not 0, which would break rendering)
+            // Gamma should return mode-specific defaults (not 0, which would break rendering)
             Assert.Equal(0.65f, loaded.GetGamma(RenderMode.Ascii));
             Assert.Equal(0.65f, loaded.GetGamma(RenderMode.ColorBlocks));
-            Assert.Equal(0.65f, loaded.GetGamma(RenderMode.Braille));
+            Assert.Equal(0.5f, loaded.GetGamma(RenderMode.Braille)); // Braille uses brighter default
         }
         finally
         {
