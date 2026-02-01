@@ -199,10 +199,10 @@ public class RenderOptions
     ///     Brightness threshold for dark terminal optimization (0.0-1.0).
     ///     Pixels with brightness below this threshold will be rendered as plain spaces
     ///     without color codes, blending with the dark terminal background.
-    ///     Null = disabled (output all colors). Default: null (disabled)
-    ///     Use --dark-cutoff 0.1 to enable if needed for specific content.
+    ///     Default: 0.05 (suppresses near-black pixels that would be invisible on dark terminals).
+    ///     Set to null to disable, or increase (e.g. 0.1) for more aggressive suppression.
     /// </summary>
-    public float? DarkTerminalBrightnessThreshold { get; set; }
+    public float? DarkTerminalBrightnessThreshold { get; set; } = 0.05f;
 
     /// <summary>
     ///     Brightness threshold for light terminal optimization (0.0-1.0).

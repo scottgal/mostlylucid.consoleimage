@@ -305,6 +305,7 @@ public class CliOptions
         SlideDelay.Aliases.Add("-d");
 
         Shuffle = new Option<bool>("--shuffle") { Description = "Randomize image order (slideshow mode)" };
+        Shuffle.Aliases.Add("--random");
 
         Recursive = new Option<bool>("--recursive") { Description = "Include subdirectories (slideshow mode)" };
         Recursive.Aliases.Add("-R");

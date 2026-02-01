@@ -175,7 +175,7 @@ public class AsciiRenderer : IDisposable
 
     private AsciiFrame RenderFromImage(Image<Rgba32> image, int width, int height,
         int cellWidth, int cellHeight, int delayMs,
-        bool shouldInvert = false)
+        bool shouldInvert = false, Rgba32[]? localPixelBuffer = null)
     {
         var characters = new char[height, width];
         var colors = _options.UseColor ? new Rgb24[height, width] : null;
@@ -185,15 +185,27 @@ public class AsciiRenderer : IDisposable
         var imgHeight = image.Height;
         var totalPixels = imgWidth * imgHeight;
 
-        if (_pixelBuffer == null || _lastBufferSize < totalPixels)
+        Rgba32[] pixelData;
+
+        if (localPixelBuffer != null)
         {
-            if (_pixelBuffer != null)
-                ArrayPool<Rgba32>.Shared.Return(_pixelBuffer);
-            _pixelBuffer = ArrayPool<Rgba32>.Shared.Rent(totalPixels);
-            _lastBufferSize = totalPixels;
+            // Caller-provided buffer (thread-safe for parallel GIF rendering)
+            pixelData = localPixelBuffer;
+        }
+        else
+        {
+            // Use shared instance buffer (single-threaded path)
+            if (_pixelBuffer == null || _lastBufferSize < totalPixels)
+            {
+                if (_pixelBuffer != null)
+                    ArrayPool<Rgba32>.Shared.Return(_pixelBuffer);
+                _pixelBuffer = ArrayPool<Rgba32>.Shared.Rent(totalPixels);
+                _lastBufferSize = totalPixels;
+            }
+            pixelData = _pixelBuffer;
         }
 
-        image.CopyPixelDataTo(_pixelBuffer.AsSpan(0, totalPixels));
+        image.CopyPixelDataTo(pixelData.AsSpan(0, totalPixels));
 
         // Pre-compute all internal vectors for directional contrast
         var internalVectors = new ShapeVector[height, width];
@@ -204,9 +216,6 @@ public class AsciiRenderer : IDisposable
         float[,]? edgeAngles = null;
         if (_options.EnableEdgeDirectionChars)
             (edgeMagnitudes, edgeAngles) = EdgeDirection.ComputeEdges(image, width, height);
-
-        // Create local references for lambda capture
-        var pixelData = _pixelBuffer!;
 
         if (_options.UseParallelProcessing && height > 4)
         {
@@ -552,21 +561,31 @@ public class AsciiRenderer : IDisposable
         var frameIndices = new int[frameCount];
         for (var i = 0; i < frameCount; i++) frameIndices[i] = i * frameStep;
 
-        if (_options.UseParallelProcessing && frameCount > 2)
-            Parallel.For(0, frameCount,
-                i =>
-                {
-                    frames[i] = RenderGifFrame(image, frameIndices[i], width, height, cellWidth, cellHeight, frameStep);
-                });
-        else
-            for (var i = 0; i < frameCount; i++)
-                frames[i] = RenderGifFrame(image, frameIndices[i], width, height, cellWidth, cellHeight, frameStep);
+        // Render frames in parallel with per-frame pixel buffers to avoid race conditions.
+        // Each frame gets its own buffer from ArrayPool so RenderFromImage doesn't share state.
+        var targetWidth = width * cellWidth;
+        var targetHeight = height * cellHeight;
+        var bufferSize = targetWidth * targetHeight;
+
+        Parallel.For(0, frameCount, i =>
+        {
+            var localBuffer = ArrayPool<Rgba32>.Shared.Rent(bufferSize);
+            try
+            {
+                frames[i] = RenderGifFrame(image, frameIndices[i], width, height,
+                    cellWidth, cellHeight, frameStep, localBuffer);
+            }
+            finally
+            {
+                ArrayPool<Rgba32>.Shared.Return(localBuffer);
+            }
+        });
 
         return frames.ToList();
     }
 
     private AsciiFrame RenderGifFrame(Image<Rgba32> image, int frameIndex, int width, int height,
-        int cellWidth, int cellHeight, int frameStep = 1)
+        int cellWidth, int cellHeight, int frameStep = 1, Rgba32[]? localPixelBuffer = null)
     {
         // Get frame metadata first
         var metadata = image.Frames[frameIndex].Metadata.GetGifMetadata();
@@ -617,7 +636,7 @@ public class AsciiRenderer : IDisposable
 
         try
         {
-            return RenderFromImage(sourceImage, width, height, cellWidth, cellHeight, delayMs, shouldInvert);
+            return RenderFromImage(sourceImage, width, height, cellWidth, cellHeight, delayMs, shouldInvert, localPixelBuffer);
         }
         finally
         {

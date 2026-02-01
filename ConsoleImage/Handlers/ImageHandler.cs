@@ -62,8 +62,7 @@ public static class ImageHandler
             ColorCount = colorCount,
             ColorDepth = colorDepth,
             UseGreyscaleAnsi = useGreyscaleAnsi,
-            DisableBrailleDithering = noDither,
-            EnableDithering = !noDither
+            DisableBrailleDithering = noDither
         };
 
         // Check if it's an animated GIF

@@ -1062,8 +1062,7 @@ public static class SlideshowHandler
             ContrastPower = options.Contrast,
             Gamma = options.Gamma,
             LoopCount = 1,
-            DisableBrailleDithering = options.NoDither,
-            EnableDithering = !options.NoDither
+            DisableBrailleDithering = options.NoDither
         };
     }
 

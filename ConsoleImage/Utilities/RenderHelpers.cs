@@ -1,5 +1,7 @@
 // Render helper utilities for the CLI
 
+using System.Diagnostics;
+using System.Text;
 using ConsoleImage.Core;
 using ConsoleImage.Player;
 using SixLabors.ImageSharp.PixelFormats;
@@ -77,9 +79,15 @@ public static class RenderHelpers
     {
         if (frames.Count == 0) return;
 
-        // Pre-compute line counts for all frames (avoids iterating large ANSI strings every frame)
-        var lineCounts = new int[frames.Count];
+        // Pre-build atomic frame buffers (single string per frame with sync sequences).
+        // This eliminates cursor flashing caused by multiple Console.Write calls per frame.
+        var frameBuffers = new string[frames.Count];
+        var frameDelays = new double[frames.Count];
+        var sb = new StringBuilder(frames[0].Content.Length + 256);
         var maxLineCount = 0;
+
+        // First pass: count lines per frame to determine max height
+        var lineCounts = new int[frames.Count];
         for (var f = 0; f < frames.Count; f++)
         {
             var count = 1;
@@ -88,17 +96,40 @@ public static class RenderHelpers
                 if (content[i] == '\n') count++;
             lineCounts[f] = count;
             if (count > maxLineCount) maxLineCount = count;
+
+            var baseDelay = frames[f].DelayMs <= 10 ? 100 : frames[f].DelayMs;
+            frameDelays[f] = Math.Max(16, baseDelay / speed);
+        }
+
+        // Second pass: build atomic frame buffers with line clearing up to maxLineCount
+        for (var f = 0; f < frames.Count; f++)
+        {
+            sb.Clear();
+            sb.Append("\x1b[?2026h"); // Sync start
+            sb.Append("\x1b[H"); // Cursor home
+
+            sb.Append(frames[f].Content);
+            sb.Append("\x1b[0m"); // Reset colors
+
+            // Clear lines up to max height (handles loop boundaries and variable-height frames)
+            for (var i = lineCounts[f]; i < maxLineCount; i++)
+            {
+                sb.Append('\n');
+                sb.Append("\x1b[2K");
+            }
+
+            sb.Append("\x1b[?2026l"); // Sync end
+            frameBuffers[f] = sb.ToString();
         }
 
         // Enter alternate screen buffer
-        Console.Write("\x1b[?1049h"); // Enter alt screen
-        Console.Write("\x1b[?25l"); // Hide cursor
-        Console.Write("\x1b[2J"); // Clear screen
+        Console.Write("\x1b[?1049h\x1b[?25l\x1b[2J");
+        Console.Out.Flush();
 
         try
         {
             var loops = 0;
-            var prevLineCount = 0;
+            double timeDebtMs = 0;
 
             while (!ct.IsCancellationRequested && (loopCount == 0 || loops < loopCount))
             {
@@ -106,35 +137,28 @@ public static class RenderHelpers
                 {
                     if (ct.IsCancellationRequested) break;
 
-                    var frame = frames[fi];
+                    var targetDelayMs = frameDelays[fi];
 
-                    // Begin synchronized output (atomic frame render)
-                    Console.Write("\x1b[?2026h");
+                    // Adaptive frame skipping: drop frames when behind schedule
+                    if (fi < frames.Count - 1 &&
+                        FrameTiming.ShouldSkipFrame(targetDelayMs, ref timeDebtMs))
+                        continue;
 
-                    // Move to top-left
-                    Console.Write("\x1b[H");
+                    var renderStart = Stopwatch.GetTimestamp();
 
-                    // Write entire frame at once — no per-line clearing needed.
-                    Console.Write(frame.Content);
-                    Console.Write("\x1b[0m"); // Reset colors after frame
+                    // Write entire frame atomically — single Console.Write eliminates cursor flashing
+                    Console.Write(frameBuffers[fi]);
+                    Console.Out.Flush();
 
-                    // Clear any remaining lines from a previous taller frame
-                    var lineCount = lineCounts[fi];
-                    for (var i = lineCount; i < prevLineCount; i++)
+                    // Adaptive timing: compensate for render time
+                    if (targetDelayMs > 0)
                     {
-                        Console.Write('\n');
-                        Console.Write("\x1b[2K");
+                        var (remainingDelay, newDebt) = FrameTiming.CalculateAdaptiveDelay(
+                            targetDelayMs, renderStart, timeDebtMs);
+                        timeDebtMs = newDebt;
+                        if (remainingDelay > 0)
+                            await FrameTiming.ResponsiveDelayAsync(remainingDelay, ct);
                     }
-
-                    prevLineCount = lineCount;
-
-                    // End synchronized output (render atomically)
-                    Console.Write("\x1b[?2026l");
-
-                    // Wait for frame delay (GIF default is 100ms if 0/10ms specified)
-                    var baseDelay = frame.DelayMs <= 10 ? 100 : frame.DelayMs;
-                    var delayMs = Math.Max(16, (int)(baseDelay / speed));
-                    await Task.Delay(delayMs, ct);
                 }
 
                 loops++;

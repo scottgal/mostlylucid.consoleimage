@@ -32,6 +32,9 @@ public class BrailleRenderer : IDisposable
     // Saves string allocations for repeated colors
     private static readonly string[] GreyscaleEscapes = InitGreyscaleEscapes();
 
+    // Pre-computed sin/cos for concentric ring sampling around braille dot centers
+    private static readonly (float Cos, float Sin)[] InnerRingAngles = PrecomputeAngles(4, 0);
+    private static readonly (float Cos, float Sin)[] OuterRingAngles = PrecomputeAngles(8, MathF.PI / 8);
 
     private readonly BrailleCharacterMap _brailleMap = new();
     private readonly RenderOptions _options;
@@ -47,6 +50,82 @@ public class BrailleRenderer : IDisposable
     {
         ConsoleHelper.EnableAnsiSupport();
         _options = options ?? new RenderOptions();
+    }
+
+    private static (float Cos, float Sin)[] PrecomputeAngles(int count, float offset)
+    {
+        var angles = new (float Cos, float Sin)[count];
+        for (var i = 0; i < count; i++)
+        {
+            var angle = i * MathF.PI * 2 / count + offset;
+            angles[i] = (MathF.Cos(angle), MathF.Sin(angle));
+        }
+        return angles;
+    }
+
+    /// <summary>
+    ///     Sample 8 braille dot positions from brightness data using concentric ring sampling.
+    ///     Each dot center is sampled with rings for accuracy, converting brightness to coverage.
+    ///     Dot centers in normalized cell coords: col 0 at x=0.25, col 1 at x=0.75
+    ///     Rows at y = 0.125, 0.375, 0.625, 0.875 (evenly spaced in 4 rows).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SampleBrailleCell(float[] brightness, int pixelWidth, int pixelHeight,
+        int px, int py, Span<float> target8)
+    {
+        const float radius = 0.35f;
+
+        for (var row = 0; row < 4; row++)
+        {
+            var centerY = py + row + 0.5f;
+            for (var col = 0; col < 2; col++)
+            {
+                var centerX = px + col + 0.5f;
+                var dotIdx = row * 2 + col;
+
+                float total = 0;
+                var count = 0;
+
+                // Center point
+                var ix = (int)centerX;
+                var iy = (int)centerY;
+                if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
+                {
+                    total += 1f - brightness[iy * pixelWidth + ix];
+                    count++;
+                }
+
+                // Inner ring (4 points at 0.5 * radius)
+                var innerR = radius * 0.5f;
+                for (var i = 0; i < 4; i++)
+                {
+                    var (cos, sin) = InnerRingAngles[i];
+                    ix = (int)(centerX + cos * innerR);
+                    iy = (int)(centerY + sin * innerR);
+                    if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
+                    {
+                        total += 1f - brightness[iy * pixelWidth + ix];
+                        count++;
+                    }
+                }
+
+                // Outer ring (8 points at radius)
+                for (var i = 0; i < 8; i++)
+                {
+                    var (cos, sin) = OuterRingAngles[i];
+                    ix = (int)(centerX + cos * radius);
+                    iy = (int)(centerY + sin * radius);
+                    if ((uint)ix < (uint)pixelWidth && (uint)iy < (uint)pixelHeight)
+                    {
+                        total += 1f - brightness[iy * pixelWidth + ix];
+                        count++;
+                    }
+                }
+
+                // Coverage: 0 = white/empty, 1 = black/filled
+                target8[dotIdx] = count > 0 ? total / count : 0f;
+            }
+        }
     }
 
     /// <summary>
@@ -589,17 +668,23 @@ public class BrailleRenderer : IDisposable
             {
                 var rowSb = new StringBuilder(charWidth * 25);
                 Rgba32? lastColor = null;
+                Span<float> target8 = stackalloc float[8];
 
                 for (var cx = 0; cx < charWidth; cx++)
                 {
                     var px = cx * 2;
                     var py = cy * 4;
 
-                    // Direct braille code computation from binary post-dithered data.
-                    // Reads exactly 8 pixels instead of 104 concentric ring samples,
-                    // and computes Unicode code directly instead of 256-way vector search.
-                    var brailleChar = ComputeBrailleCodeDirect(
-                        brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
+                    // Sample 8 braille dot positions using concentric rings
+                    SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
+
+                    // Invert coverage if needed (swap dot on/off semantics)
+                    if (invertMode)
+                        for (var i = 0; i < 8; i++)
+                            target8[i] = 1f - target8[i];
+
+                    // Find best matching braille character via shape vector matching
+                    var brailleChar = _brailleMap.FindBestMatch(target8);
 
                     // Collect average color from all pixels in cell
                     int totalR = 0, totalG = 0, totalB = 0;
@@ -676,6 +761,7 @@ public class BrailleRenderer : IDisposable
         {
             // Sequential processing (non-color or small images)
             Rgba32? lastColor = null;
+            Span<float> target8 = stackalloc float[8];
 
             for (var cy = 0; cy < charHeight; cy++)
             {
@@ -684,9 +770,16 @@ public class BrailleRenderer : IDisposable
                     var px = cx * 2;
                     var py = cy * 4;
 
-                    // Direct braille code computation from binary post-dithered data
-                    var brailleChar = ComputeBrailleCodeDirect(
-                        brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
+                    // Sample 8 braille dot positions using concentric rings
+                    SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
+
+                    // Invert coverage if needed
+                    if (invertMode)
+                        for (var i = 0; i < 8; i++)
+                            target8[i] = 1f - target8[i];
+
+                    // Find best matching braille character via shape vector matching
+                    var brailleChar = _brailleMap.FindBestMatch(target8);
 
                     if (useAnsiOutput)
                     {
