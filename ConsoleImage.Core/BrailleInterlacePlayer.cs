@@ -194,9 +194,8 @@ public class BrailleInterlacePlayer : IDisposable
         for (var i = 0; i < _frames.Count; i++)
         {
             var lineCount = 1;
-            foreach (var c in _frames[i].Content)
-                if (c == '\n')
-                    lineCount++;
+            foreach (var c in _frames[i].Content.Where(ch => ch == '\n'))
+                lineCount++;
             if (lineCount > maxHeight)
                 maxHeight = lineCount;
         }
