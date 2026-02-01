@@ -417,10 +417,8 @@ public static class SlideshowHandler
                     renderedContent = cached.RenderedContent;
                     contentLines = CountLines(renderedContent);
                     contentWidth = GetMaxVisibleWidth(renderedContent);
-                    Console.Write("\x1b[?2026h"); // Begin sync
-                    Console.Write($"\x1b[{contentStartLine};1H");
-                    Console.Write(renderedContent);
-                    Console.Write("\x1b[?2026l"); // End sync
+                    Console.Write($"\x1b[?2026h\x1b[?25l\x1b[{contentStartLine};1H{renderedContent}\x1b[0m\x1b[?2026l");
+                    Console.Out.Flush();
                     displayTask = Task.FromResult(0);
                 }
                 else if (cached?.AnimationFrames != null && cached.IsAnimated)
@@ -812,11 +810,9 @@ public static class SlideshowHandler
         using var image = await Image.LoadAsync<Rgba32>(file, ct);
         var output = RenderImage(image, renderOptions, options);
 
-        // Use synchronized output to prevent flicker
-        Console.Write("\x1b[?2026h"); // Begin sync
-        Console.Write($"\x1b[{contentStartLine};1H"); // Position at content area
-        Console.Write(output);
-        Console.Write("\x1b[?2026l"); // End sync
+        // Atomic write: single Console.Write with sync + cursor hide to prevent any flash
+        Console.Write($"\x1b[?2026h\x1b[?25l\x1b[{contentStartLine};1H{output}\x1b[0m\x1b[?2026l");
+        Console.Out.Flush();
     }
 
     private static string RenderImage(Image<Rgba32> image, RenderOptions renderOptions, SlideshowOptions options)
@@ -848,10 +844,8 @@ public static class SlideshowHandler
         {
             // Static image - render directly from already-loaded image
             var output = RenderImage(image, renderOptions, options);
-            Console.Write("\x1b[?2026h");
-            Console.Write($"\x1b[{contentStartLine};1H"); // Position at content area
-            Console.Write(output);
-            Console.Write("\x1b[?2026l");
+            Console.Write($"\x1b[?2026h\x1b[?25l\x1b[{contentStartLine};1H{output}\x1b[0m\x1b[?2026l");
+            Console.Out.Flush();
             return;
         }
 
@@ -1087,12 +1081,12 @@ public static class SlideshowHandler
         else
         {
             var ext = Path.GetExtension(fileName);
-            var nameOnly = Path.GetFileNameWithoutExtension(fileName);
+            var withoutExt = fileName.AsSpan(0, fileName.Length - ext.Length);
             var maxNameLen = availableForName - ext.Length - 1; // 1 for "…"
-            if (maxNameLen > 3)
-                namePart = string.Concat(nameOnly.AsSpan(0, maxNameLen), "\u2026", ext);
+            if (maxNameLen > 3 && withoutExt.Length > 0)
+                namePart = string.Concat(withoutExt.Slice(0, Math.Min(maxNameLen, withoutExt.Length)), "\u2026", ext);
             else
-                namePart = string.Concat(fileName.AsSpan(0, Math.Max(1, availableForName - 1)), "\u2026");
+                namePart = string.Concat(fileName.AsSpan(0, Math.Max(1, Math.Min(availableForName - 1, fileName.Length))), "\u2026");
         }
 
         var sb = new StringBuilder(maxWidth + 16);
@@ -1156,13 +1150,14 @@ public static class SlideshowHandler
         else
         {
             // Truncate: keep extension visible
+            // Use full path (not just filename) since fileName may include directory
             var ext = Path.GetExtension(fileName);
-            var nameOnly = Path.GetFileNameWithoutExtension(fileName);
+            var withoutExt = fileName.AsSpan(0, fileName.Length - ext.Length);
             var maxNameLen = availableForName - ext.Length - 1; // 1 for "…"
-            if (maxNameLen > 3)
-                namePart = string.Concat(nameOnly.AsSpan(0, maxNameLen), "…", ext);
+            if (maxNameLen > 3 && withoutExt.Length > 0)
+                namePart = string.Concat(withoutExt.Slice(0, Math.Min(maxNameLen, withoutExt.Length)), "…", ext);
             else
-                namePart = string.Concat(fileName.AsSpan(0, Math.Max(1, availableForName - 1)), "…");
+                namePart = string.Concat(fileName.AsSpan(0, Math.Max(1, Math.Min(availableForName - 1, fileName.Length))), "…");
         }
 
         // Compose: "name  [pad]  right" — pad to exact maxWidth
@@ -1258,6 +1253,7 @@ public static class SlideshowHandler
 
     /// <summary>
     ///     Play animation frames without entering/exiting alt screen (we're already in it).
+    ///     Uses pre-built atomic frame buffers for flicker-free, cursor-flash-free rendering.
     /// </summary>
     private static async Task PlayFramesInPlaceAsync(
         List<IAnimationFrame> frames,
@@ -1268,22 +1264,59 @@ public static class SlideshowHandler
     {
         if (frames.Count == 0) return;
 
+        // Pre-build atomic frame buffers — single Console.Write per frame eliminates cursor flash.
+        // Each buffer contains: sync start + cursor hide + position + content + reset + line clearing + sync end
+        var frameBuffers = new string[frames.Count];
+        var sb = new StringBuilder(frames[0].Content.Length + 256);
+
+        // Count lines per frame to determine max height for clearing
+        var maxLineCount = 0;
+        var lineCounts = new int[frames.Count];
+        for (var f = 0; f < frames.Count; f++)
+        {
+            var count = 1;
+            var content = frames[f].Content;
+            for (var i = 0; i < content.Length; i++)
+                if (content[i] == '\n') count++;
+            lineCounts[f] = count;
+            if (count > maxLineCount) maxLineCount = count;
+        }
+
+        var positionEscape = $"\x1b[{contentStartLine};1H";
+        for (var f = 0; f < frames.Count; f++)
+        {
+            sb.Clear();
+            sb.Append("\x1b[?2026h");   // Sync start
+            sb.Append("\x1b[?25l");     // Re-hide cursor (ensures it stays hidden)
+            sb.Append(positionEscape);   // Position at content area
+            sb.Append(frames[f].Content);
+            sb.Append("\x1b[0m");        // Reset colors
+
+            // Clear remaining lines up to max height (handles variable-height frames)
+            for (var i = lineCounts[f]; i < maxLineCount; i++)
+            {
+                sb.Append('\n');
+                sb.Append("\x1b[2K");
+            }
+
+            sb.Append("\x1b[?2026l");   // Sync end
+            frameBuffers[f] = sb.ToString();
+        }
+
         try
         {
             var loops = 0;
             while (!ct.IsCancellationRequested && (loopCount == 0 || loops < loopCount))
             {
-                foreach (var frame in frames)
+                for (var fi = 0; fi < frames.Count; fi++)
                 {
                     if (ct.IsCancellationRequested) break;
 
-                    // Use synchronized output for flicker-free rendering
-                    Console.Write("\x1b[?2026h"); // Begin sync
-                    Console.Write($"\x1b[{contentStartLine};1H"); // Position at content area
-                    Console.Write(frame.Content);
-                    Console.Write("\x1b[?2026l"); // End sync
+                    // Write entire frame atomically — single Console.Write eliminates cursor flash
+                    Console.Write(frameBuffers[fi]);
+                    Console.Out.Flush();
 
-                    var delayMs = Math.Max(1, (int)(frame.DelayMs / speed));
+                    var delayMs = Math.Max(1, (int)(frames[fi].DelayMs / speed));
                     await Task.Delay(delayMs, ct);
                 }
 

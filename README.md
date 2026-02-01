@@ -242,8 +242,8 @@ Download from [GitHub Releases](https://github.com/scottgal/mostlylucid.consolei
 **Windows (PowerShell):**
 
 ```powershell
-$version = "4.0.0"  # Check releases for latest
-Invoke-WebRequest -Uri "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v$version/consoleimage-win-x64.zip" -OutFile "$env:TEMP\consoleimage.zip"
+$version = "4.5.0"  # Check releases for latest
+Invoke-WebRequest -Uri "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/consoleimage-v$version/consoleimage-win-x64-whisper.zip" -OutFile "$env:TEMP\consoleimage.zip"
 Expand-Archive -Path "$env:TEMP\consoleimage.zip" -DestinationPath "$env:LOCALAPPDATA\consoleimage" -Force
 $env:PATH += ";$env:LOCALAPPDATA\consoleimage"
 [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "User")
@@ -252,11 +252,11 @@ $env:PATH += ";$env:LOCALAPPDATA\consoleimage"
 **Linux / macOS:**
 
 ```bash
-VERSION="4.0.0"  # Check releases for latest
+VERSION="4.5.0"  # Check releases for latest
 # Linux x64:
-curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-linux-x64.tar.gz" | sudo tar -xz -C /usr/local/bin
+curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/consoleimage-v${VERSION}/consoleimage-linux-x64-whisper.tar.gz" | sudo tar -xz -C /usr/local/bin
 # macOS ARM64:
-curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/v${VERSION}/consoleimage-osx-arm64.tar.gz" | tar -xz -C /usr/local/bin
+curl -L "https://github.com/scottgal/mostlylucid.consoleimage/releases/download/consoleimage-v${VERSION}/consoleimage-osx-arm64-whisper.tar.gz" | tar -xz -C /usr/local/bin
 ```
 
 Verify: `consoleimage --version`

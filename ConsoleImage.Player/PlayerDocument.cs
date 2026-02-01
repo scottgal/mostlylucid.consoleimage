@@ -1,6 +1,7 @@
 // PlayerDocument - Minimal document model for playing back ConsoleImage JSON
 // Zero dependencies beyond System.Text.Json and System.IO.Compression (built-in)
 
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
@@ -95,7 +96,7 @@ public class PlayerDocument
     public int TotalDurationMs => Frames.Sum(f => f.DelayMs);
 
     /// <summary>
-    ///     Load a document from a file (auto-detects format: .cidz, .json, .ndjson)
+    ///     Load a document from a file (auto-detects format: .cidz v1/v2, .json, .ndjson)
     /// </summary>
     /// <exception cref="FileNotFoundException">File does not exist</exception>
     /// <exception cref="JsonException">Invalid JSON format</exception>
@@ -104,13 +105,20 @@ public class PlayerDocument
         if (!File.Exists(path))
             throw new FileNotFoundException($"Document not found: {path}", path);
 
-        // Check magic bytes for format detection
+        // Read enough bytes for format detection (6 bytes covers CIDZ v2 header)
         await using var checkStream = File.OpenRead(path);
-        var magic = new byte[2];
+        var magic = new byte[6];
         var read = await checkStream.ReadAsync(magic, ct);
         checkStream.Position = 0;
 
-        // GZip magic: 0x1F 0x8B
+        // CIDZ v2: "CIDZ" header (4 bytes) + version (1) + flags (1) + Brotli data
+        if (read >= 6 && magic[0] == 'C' && magic[1] == 'I' && magic[2] == 'D' && magic[3] == 'Z')
+        {
+            checkStream.Position = 6; // Skip header
+            return await LoadBrotliCompressedAsync(checkStream, ct);
+        }
+
+        // GZip magic: 0x1F 0x8B (v1 format)
         if (read >= 2 && magic[0] == 0x1F && magic[1] == 0x8B) return await LoadCompressedAsync(checkStream, ct);
 
         checkStream.Close();
@@ -144,25 +152,41 @@ public class PlayerDocument
     }
 
     /// <summary>
-    ///     Load a document from GZip-compressed bytes (.cidz format)
+    ///     Load a document from compressed bytes (.cidz format).
+    ///     Auto-detects CIDZ v2 (Brotli) and v1 (GZip) formats.
     /// </summary>
     public static PlayerDocument FromCompressedBytes(byte[] data)
     {
-        using var ms = new MemoryStream(data);
-        using var gzip = new GZipStream(ms, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzip, Encoding.UTF8);
-        var json = reader.ReadToEnd();
+        var json = DecompressToJson(data);
         return FromJson(json);
     }
 
     /// <summary>
-    ///     Load a document from a GZip-compressed stream
+    ///     Load a document from a compressed stream.
+    ///     Auto-detects CIDZ v2 (Brotli) and v1 (GZip) formats.
     /// </summary>
     public static async Task<PlayerDocument> FromCompressedStreamAsync(Stream stream, CancellationToken ct = default)
     {
+        // Read magic bytes to detect format
+        var magic = new byte[6];
+        var read = await stream.ReadAsync(magic, ct);
+
+        // CIDZ v2: Brotli (skip 6-byte header, already consumed)
+        if (read >= 6 && magic[0] == 'C' && magic[1] == 'I' && magic[2] == 'D' && magic[3] == 'Z')
+        {
+            await using var brotli = new BrotliStream(stream, CompressionMode.Decompress, true);
+            using var reader = new StreamReader(brotli, Encoding.UTF8);
+            var content = await reader.ReadToEndAsync(ct);
+            var nullIdx = content.IndexOf('\0');
+            return FromJson(nullIdx >= 0 ? content.Substring(0, nullIdx) : content);
+        }
+
+        // GZip (v1): reset stream and decompress
+        if (stream.CanSeek)
+            stream.Position = 0;
         await using var gzip = new GZipStream(stream, CompressionMode.Decompress, true);
-        using var reader = new StreamReader(gzip, Encoding.UTF8);
-        var json = await reader.ReadToEndAsync(ct);
+        using var gzReader = new StreamReader(gzip, Encoding.UTF8);
+        var json = await gzReader.ReadToEndAsync(ct);
         return FromJson(json);
     }
 
@@ -175,12 +199,46 @@ public class PlayerDocument
             yield return frame;
     }
 
+    /// <summary>
+    ///     Decompress byte array to JSON string, auto-detecting CIDZ v2 (Brotli) or v1 (GZip).
+    /// </summary>
+    private static string DecompressToJson(byte[] data)
+    {
+        // CIDZ v2: "CIDZ" header (4 bytes) + version (1) + flags (1) + Brotli data
+        if (data.Length > 6 && data[0] == 'C' && data[1] == 'I' && data[2] == 'D' && data[3] == 'Z')
+        {
+            using var ms = new MemoryStream(data, 6, data.Length - 6);
+            using var brotli = new BrotliStream(ms, CompressionMode.Decompress);
+            using var reader = new StreamReader(brotli, Encoding.UTF8);
+            var content = reader.ReadToEnd();
+            // Strip subtitle data after null separator
+            var nullIdx = content.IndexOf('\0');
+            return nullIdx >= 0 ? content.Substring(0, nullIdx) : content;
+        }
+
+        // GZip (v1 format)
+        using var gzMs = new MemoryStream(data);
+        using var gzip = new GZipStream(gzMs, CompressionMode.Decompress);
+        using var gzReader = new StreamReader(gzip, Encoding.UTF8);
+        return gzReader.ReadToEnd();
+    }
+
     private static async Task<PlayerDocument> LoadCompressedAsync(Stream stream, CancellationToken ct)
     {
         await using var gzip = new GZipStream(stream, CompressionMode.Decompress, true);
         using var reader = new StreamReader(gzip, Encoding.UTF8);
         var json = await reader.ReadToEndAsync(ct);
         return FromJson(json);
+    }
+
+    private static async Task<PlayerDocument> LoadBrotliCompressedAsync(Stream stream, CancellationToken ct)
+    {
+        await using var brotli = new BrotliStream(stream, CompressionMode.Decompress, true);
+        using var reader = new StreamReader(brotli, Encoding.UTF8);
+        var content = await reader.ReadToEndAsync(ct);
+        // Strip subtitle data after null separator
+        var nullIdx = content.IndexOf('\0');
+        return FromJson(nullIdx >= 0 ? content.Substring(0, nullIdx) : content);
     }
 
     private static PlayerDocument LoadOptimizedFromString(string json)
@@ -434,6 +492,9 @@ public class OptimizedDocument
             Settings = Settings
         };
 
+        // Pre-compute ANSI escape strings for each palette entry once
+        var paletteAnsi = PrecomputePaletteAnsi(Palette);
+
         string? prevChars = null;
         List<int>? prevIndices = null;
 
@@ -457,8 +518,8 @@ public class OptimizedDocument
                 (chars, indices) = ApplyDelta(prevChars, prevIndices, frame.Delta ?? "");
             }
 
-            // Rebuild ANSI content from characters and colors
-            var content = RebuildAnsiContent(chars, indices, Palette);
+            // Rebuild ANSI content from characters and pre-computed palette ANSI strings
+            var content = RebuildAnsiContent(chars, indices, paletteAnsi);
 
             doc.Frames.Add(new PlayerFrame
             {
@@ -477,17 +538,37 @@ public class OptimizedDocument
 
     private static List<int> DecompressColorIndices(string? compressed)
     {
-        var result = new List<int>();
-        if (string.IsNullOrEmpty(compressed)) return result;
+        if (string.IsNullOrEmpty(compressed)) return new List<int>();
 
-        foreach (var run in compressed.Split(';'))
+        // Pre-allocate with estimated capacity to reduce resizing
+        var result = new List<int>(compressed.Length / 2);
+        var span = compressed.AsSpan();
+
+        while (span.Length > 0)
         {
-            if (string.IsNullOrEmpty(run)) continue;
-            var parts = run.Split(',');
-            var idx = int.Parse(parts[0]);
-            var count = parts.Length > 1 ? int.Parse(parts[1]) : 1;
-            for (var i = 0; i < count; i++)
-                result.Add(idx);
+            var semicolon = span.IndexOf(';');
+            var run = semicolon >= 0 ? span.Slice(0, semicolon) : span;
+
+            if (run.Length > 0)
+            {
+                var comma = run.IndexOf(',');
+                int idx, count;
+                if (comma >= 0)
+                {
+                    idx = int.Parse(run.Slice(0, comma));
+                    count = int.Parse(run.Slice(comma + 1));
+                }
+                else
+                {
+                    idx = int.Parse(run);
+                    count = 1;
+                }
+
+                for (var i = 0; i < count; i++)
+                    result.Add(idx);
+            }
+
+            span = semicolon >= 0 ? span.Slice(semicolon + 1) : ReadOnlySpan<char>.Empty;
         }
 
         return result;
@@ -501,42 +582,68 @@ public class OptimizedDocument
         if (string.IsNullOrEmpty(delta))
             return (new string(chars), indices);
 
-        foreach (var change in delta.Split(';'))
+        var span = delta.AsSpan();
+        Span<char> unescapeBuffer = stackalloc char[256];
+
+        while (span.Length > 0)
         {
-            if (string.IsNullOrEmpty(change)) continue;
+            var semicolonIdx = span.IndexOf(';');
+            var change = semicolonIdx >= 0 ? span.Slice(0, semicolonIdx) : span;
 
-            var colonIdx = change.IndexOf(':');
-            if (colonIdx < 0) continue;
-
-            var pos = int.Parse(change.Substring(0, colonIdx));
-            var rest = change.Substring(colonIdx + 1);
-            var parts = rest.Split(',');
-
-            if (parts.Length >= 2)
+            if (change.Length > 0)
             {
-                var newChars = UnescapeDeltaChars(parts[0]);
-                var colorIdx = int.Parse(parts[1]);
-                var count = parts.Length > 2 ? int.Parse(parts[2]) : 1;
-
-                for (var i = 0; i < count && pos + i < chars.Length; i++)
+                var colonIdx = change.IndexOf(':');
+                if (colonIdx >= 0)
                 {
-                    chars[pos + i] = i < newChars.Length ? newChars[i] : ' ';
-                    while (indices.Count <= pos + i) indices.Add(0);
-                    indices[pos + i] = colorIdx;
+                    var pos = int.Parse(change.Slice(0, colonIdx));
+                    var rest = change.Slice(colonIdx + 1);
+
+                    // Format: "escapedChars,colorIdx[,count]"
+                    // Commas inside chars are escaped as \m, so IndexOf(',') finds delimiters
+                    var firstComma = rest.IndexOf(',');
+                    if (firstComma >= 0)
+                    {
+                        var escapedChars = rest.Slice(0, firstComma);
+                        var afterChars = rest.Slice(firstComma + 1);
+
+                        var secondComma = afterChars.IndexOf(',');
+                        int colorIdx, count;
+                        if (secondComma >= 0)
+                        {
+                            colorIdx = int.Parse(afterChars.Slice(0, secondComma));
+                            count = int.Parse(afterChars.Slice(secondComma + 1));
+                        }
+                        else
+                        {
+                            colorIdx = int.Parse(afterChars);
+                            count = 1;
+                        }
+
+                        var charCount = UnescapeDeltaChars(escapedChars, unescapeBuffer);
+
+                        for (var i = 0; i < count && pos + i < chars.Length; i++)
+                        {
+                            chars[pos + i] = i < charCount ? unescapeBuffer[i] : ' ';
+                            while (indices.Count <= pos + i) indices.Add(0);
+                            indices[pos + i] = colorIdx;
+                        }
+                    }
                 }
             }
+
+            span = semicolonIdx >= 0 ? span.Slice(semicolonIdx + 1) : ReadOnlySpan<char>.Empty;
         }
 
         return (new string(chars), indices);
     }
 
-    private static string UnescapeDeltaChars(string s)
+    private static int UnescapeDeltaChars(ReadOnlySpan<char> s, Span<char> buffer)
     {
-        var sb = new StringBuilder();
-        for (var i = 0; i < s.Length; i++)
+        var len = 0;
+        for (var i = 0; i < s.Length && len < buffer.Length; i++)
             if (s[i] == '\\' && i + 1 < s.Length)
             {
-                sb.Append(s[i + 1] switch
+                buffer[len++] = s[i + 1] switch
                 {
                     'c' => ':',
                     'm' => ',',
@@ -545,20 +652,47 @@ public class OptimizedDocument
                     'r' => '\r',
                     '\\' => '\\',
                     _ => s[i + 1]
-                });
+                };
                 i++;
             }
             else
             {
-                sb.Append(s[i]);
+                buffer[len++] = s[i];
             }
 
-        return sb.ToString();
+        return len;
     }
 
-    private static string RebuildAnsiContent(string chars, List<int> indices, string[] palette)
+    /// <summary>
+    ///     Pre-compute ANSI escape strings for each palette entry.
+    ///     Called once per document load instead of per-color-change per-frame.
+    /// </summary>
+    private static string[] PrecomputePaletteAnsi(string[] palette)
     {
-        var sb = new StringBuilder();
+        var result = new string[palette.Length];
+        for (var i = 0; i < palette.Length; i++)
+        {
+            if (i == 0 || string.IsNullOrEmpty(palette[i]) || palette[i].Length < 6)
+            {
+                result[i] = "\x1b[0m";
+            }
+            else
+            {
+                var hex = palette[i].AsSpan();
+                var r = int.Parse(hex.Slice(0, 2), NumberStyles.HexNumber);
+                var g = int.Parse(hex.Slice(2, 2), NumberStyles.HexNumber);
+                var b = int.Parse(hex.Slice(4, 2), NumberStyles.HexNumber);
+                result[i] = $"\x1b[38;2;{r};{g};{b}m";
+            }
+        }
+
+        return result;
+    }
+
+    private static string RebuildAnsiContent(string chars, List<int> indices, string[] paletteAnsi)
+    {
+        // Estimate capacity: chars + ~20% color escape overhead
+        var sb = new StringBuilder(chars.Length + chars.Length / 5 * 19);
         var lastColorIdx = -1;
 
         for (var i = 0; i < chars.Length; i++)
@@ -567,32 +701,28 @@ public class OptimizedDocument
 
             if (colorIdx != lastColorIdx)
             {
-                if (colorIdx == 0 || colorIdx >= palette.Length || string.IsNullOrEmpty(palette[colorIdx]))
-                {
-                    sb.Append("\x1b[0m");
-                }
+                if (colorIdx < paletteAnsi.Length)
+                    sb.Append(paletteAnsi[colorIdx]);
                 else
-                {
-                    var hex = palette[colorIdx];
-                    if (hex.Length >= 6)
-                    {
-                        var r = Convert.ToInt32(hex.Substring(0, 2), 16);
-                        var g = Convert.ToInt32(hex.Substring(2, 2), 16);
-                        var b = Convert.ToInt32(hex.Substring(4, 2), 16);
-                        sb.Append($"\x1b[38;2;{r};{g};{b}m");
-                    }
-                }
+                    sb.Append("\x1b[0m");
 
                 lastColorIdx = colorIdx;
             }
 
-            sb.Append(chars[i]);
-
-            // Reset at end of line to prevent color bleeding
-            if (chars[i] == '\n' && lastColorIdx != 0)
+            // Reset before newline to prevent color bleeding (avoids sb.Insert shift)
+            if (chars[i] == '\n')
             {
-                sb.Insert(sb.Length - 1, "\x1b[0m");
-                lastColorIdx = 0;
+                if (lastColorIdx != 0)
+                {
+                    sb.Append("\x1b[0m");
+                    lastColorIdx = 0;
+                }
+
+                sb.Append('\n');
+            }
+            else
+            {
+                sb.Append(chars[i]);
             }
         }
 

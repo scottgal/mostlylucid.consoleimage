@@ -1,6 +1,7 @@
 // ConsolePlayer - Plays PlayerDocument frames to the console
 // Zero dependencies beyond .NET runtime
 
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -14,7 +15,6 @@ namespace ConsoleImage.Player;
 public class ConsolePlayer : IDisposable
 {
     private readonly int _loopCount;
-    private readonly float _speedMultiplier;
     private readonly PlayerSubtitleTrack? _subtitles;
     private readonly int _subtitleWidth;
     private bool _disposed;
@@ -34,7 +34,7 @@ public class ConsolePlayer : IDisposable
     {
         ConsoleHelper.EnableAnsiSupport();
         Document = document;
-        _speedMultiplier = speedMultiplier ?? document.Settings.AnimationSpeedMultiplier;
+        SpeedMultiplier = speedMultiplier ?? document.Settings.AnimationSpeedMultiplier;
         _loopCount = loopCount ?? document.Settings.LoopCount;
         _subtitleWidth = document.Settings.MaxWidth > 0 ? document.Settings.MaxWidth : 80;
 
@@ -47,6 +47,34 @@ public class ConsolePlayer : IDisposable
     ///     The document being played
     /// </summary>
     public PlayerDocument Document { get; }
+
+    /// <summary>
+    ///     Current playback speed multiplier. Can be changed during playback.
+    ///     Values > 1 speed up, values &lt; 1 slow down.
+    /// </summary>
+    public float SpeedMultiplier { get; set; }
+
+    /// <summary>
+    ///     Maximum playback duration in milliseconds (content time, not wall time).
+    ///     Null or 0 = no limit. Playback stops after this amount of content has played.
+    /// </summary>
+    public int? MaxDurationMs { get; set; }
+
+    /// <summary>
+    ///     First frame to play (inclusive, 0-based). Null = start from beginning.
+    /// </summary>
+    public int? StartFrame { get; set; }
+
+    /// <summary>
+    ///     Last frame to play (exclusive, 0-based). Null = play to end.
+    /// </summary>
+    public int? EndFrame { get; set; }
+
+    /// <summary>
+    ///     Frame step for downsampling. 1 = every frame (default), 2 = every other frame, etc.
+    ///     Skipped frames still contribute to elapsed time for subtitle sync.
+    /// </summary>
+    public int FrameStep { get; set; } = 1;
 
     public void Dispose()
     {
@@ -67,16 +95,22 @@ public class ConsolePlayer : IDisposable
 
     /// <summary>
     ///     Play the document asynchronously with animation support.
+    ///     Respects StartFrame, EndFrame, MaxDurationMs, FrameStep, and SpeedMultiplier.
     /// </summary>
     public async Task PlayAsync(CancellationToken ct = default)
     {
         if (Document.Frames.Count == 0)
             return;
 
+        // Resolve frame range
+        var firstFrame = Math.Clamp(StartFrame ?? 0, 0, Document.Frames.Count - 1);
+        var lastFrame = Math.Clamp(EndFrame ?? Document.Frames.Count, 1, Document.Frames.Count);
+        var step = Math.Max(1, FrameStep);
+
         // Single frame - just display it
-        if (!Document.IsAnimated)
+        if (!Document.IsAnimated || lastFrame - firstFrame <= 1)
         {
-            Console.Write(Document.Frames[0].Content);
+            Console.Write(Document.Frames[firstFrame].Content);
             DisplaySubtitle(0);
             return;
         }
@@ -92,37 +126,53 @@ public class ConsolePlayer : IDisposable
         {
             var loopsRemaining = _loopCount == 0 ? int.MaxValue : _loopCount;
             var currentLoop = 0;
-            var elapsedMs = 0;
+            var totalElapsedMs = 0;
+            var maxDuration = MaxDurationMs ?? 0;
+            var isFirstFrame = true;
 
             while (loopsRemaining > 0 && !ct.IsCancellationRequested)
             {
-                elapsedMs = 0;
-                for (var i = 0; i < Document.Frames.Count && !ct.IsCancellationRequested; i++)
+                for (var i = firstFrame; i < lastFrame && !ct.IsCancellationRequested; i += step)
                 {
-                    var frame = Document.Frames[i];
+                    // Check duration limit
+                    if (maxDuration > 0 && totalElapsedMs >= maxDuration)
+                        goto done;
 
+                    var frame = Document.Frames[i];
                     OnFrameChanged?.Invoke(i, Document.Frames.Count);
 
-                    // Move cursor to start (except first frame of first loop)
-                    if (i > 0 || currentLoop > 0)
+                    // Move cursor to start (except first displayed frame)
+                    if (!isFirstFrame)
                         Console.Write($"\x1b[{totalHeight}A\r");
+                    isFirstFrame = false;
 
                     // Synchronized output for flicker-free rendering
                     Console.Write("\x1b[?2026h");
                     Console.Write(frame.Content);
 
                     // Display subtitle if available
-                    if (_subtitles != null) DisplaySubtitle(elapsedMs / 1000.0);
+                    if (_subtitles != null) DisplaySubtitle(totalElapsedMs / 1000.0);
 
                     Console.Write("\x1b[?2026l");
                     Console.Out.Flush();
 
-                    // Frame delay
-                    if (frame.DelayMs > 0)
+                    // Accumulate elapsed time for all frames in the step (including skipped)
+                    var stepDelayMs = 0;
+                    for (var s = 0; s < step && i + s < lastFrame; s++)
+                        stepDelayMs += Document.Frames[i + s].DelayMs;
+                    totalElapsedMs += stepDelayMs;
+
+                    // Adaptive delay: compensate for render time
+                    if (stepDelayMs > 0)
                     {
-                        var delay = (int)(frame.DelayMs / _speedMultiplier);
-                        await Task.Delay(delay, ct);
-                        elapsedMs += frame.DelayMs;
+                        var renderStart = Stopwatch.GetTimestamp();
+                        var targetDelay = (int)(stepDelayMs / SpeedMultiplier);
+
+                        // Subtract time already spent rendering
+                        var renderTimeMs = (Stopwatch.GetTimestamp() - renderStart) * 1000.0 /
+                                           Stopwatch.Frequency;
+                        var remainingDelay = Math.Max(1, targetDelay - (int)renderTimeMs);
+                        await Task.Delay(remainingDelay, ct);
                     }
                 }
 
@@ -132,6 +182,8 @@ public class ConsolePlayer : IDisposable
                 if (_loopCount != 0)
                     loopsRemaining--;
             }
+
+            done: ;
         }
         catch (OperationCanceledException)
         {
@@ -392,7 +444,7 @@ public class ConsolePlayer : IDisposable
         if (Document.IsAnimated)
         {
             info.AppendLine($"Duration: {Document.TotalDurationMs}ms");
-            info.AppendLine($"Speed: {_speedMultiplier}x");
+            info.AppendLine($"Speed: {SpeedMultiplier}x");
             info.AppendLine($"Loop Count: {(_loopCount == 0 ? "infinite" : _loopCount.ToString())}");
         }
 

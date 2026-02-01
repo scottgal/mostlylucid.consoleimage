@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -96,6 +97,19 @@ public sealed class WhisperTranscriptionService : IDisposable
         {
             if (Factory != null) return;
 
+            // Report CPU capabilities for diagnostics (AVX mismatch = segfault on Linux)
+            if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
+            {
+                var avxStatus = WhisperRuntimeDownloader.IsAvxSupported() ? "supported" : "NOT supported";
+                progress?.Report((0, 0, $"CPU: x64, AVX {avxStatus}"));
+                if (WhisperRuntimeDownloader.NeedsNoAvxVariant())
+                    progress?.Report((0, 0, "Using NoAvx runtime variant (CPU lacks AVX)"));
+            }
+            else
+            {
+                progress?.Report((0, 0, $"CPU: {RuntimeInformation.ProcessArchitecture}"));
+            }
+
             // Step 1: Configure runtime search path early (adds library dirs to PATH)
             WhisperRuntimeDownloader.ConfigureRuntimePath();
 
@@ -157,6 +171,12 @@ public sealed class WhisperTranscriptionService : IDisposable
 
             var fileInfo = new FileInfo(modelPath);
             progress?.Report((0, 0, $"Model file: {fileInfo.Length / 1024 / 1024}MB at {modelPath}"));
+
+            // On Linux, check for missing shared library dependencies before loading
+            // (missing deps can cause segfault instead of a catchable exception)
+            var depCheck = WhisperRuntimeDownloader.CheckLinuxDependencies();
+            if (depCheck != null)
+                progress?.Report((0, 0, $"Warning: {depCheck}"));
 
             try
             {

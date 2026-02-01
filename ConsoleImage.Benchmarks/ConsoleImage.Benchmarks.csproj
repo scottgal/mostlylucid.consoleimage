@@ -9,6 +9,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj"/>
+        <ProjectReference Include="..\ConsoleImage.Player\ConsoleImage.Player.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

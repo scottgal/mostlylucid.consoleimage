@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 
@@ -366,5 +368,215 @@ public class PlayerDocumentTests
         Assert.Equal(0, frame.DelayMs);
         Assert.Equal(0, frame.Width);
         Assert.Equal(0, frame.Height);
+    }
+
+    [Fact]
+    public void FromCompressedBytes_ReadsGzipV1Format()
+    {
+        var json = """
+                   {
+                       "Version": "2.0",
+                       "RenderMode": "Braille",
+                       "Frames": [
+                           { "Content": "GZip test", "DelayMs": 50, "Width": 9, "Height": 1 }
+                       ]
+                   }
+                   """;
+
+        // Compress with GZip (v1 format - no header)
+        using var ms = new MemoryStream();
+        using (var gzip = new GZipStream(ms, CompressionLevel.Fastest, true))
+        {
+            var bytes = Encoding.UTF8.GetBytes(json);
+            gzip.Write(bytes, 0, bytes.Length);
+        }
+
+        var doc = PlayerDocument.FromCompressedBytes(ms.ToArray());
+
+        Assert.Equal("Braille", doc.RenderMode);
+        Assert.Single(doc.Frames);
+        Assert.Equal("GZip test", doc.Frames[0].Content);
+    }
+
+    [Fact]
+    public void FromCompressedBytes_ReadsCidzV2BrotliFormat()
+    {
+        // Create an optimized document JSON
+        var optimizedJson = """
+                            {
+                                "@type": "OptimizedConsoleImageDocument",
+                                "Version": "3.1",
+                                "RenderMode": "Braille",
+                                "Settings": { "MaxWidth": 80, "UseColor": true },
+                                "Palette": ["", "FF0000", "00FF00", "0000FF"],
+                                "KeyframeInterval": 30,
+                                "Frames": [
+                                    {
+                                        "IsKeyframe": true,
+                                        "Characters": "AB\nCD",
+                                        "ColorIndices": "1,2;2,2",
+                                        "Width": 2,
+                                        "Height": 2,
+                                        "DelayMs": 100
+                                    }
+                                ]
+                            }
+                            """;
+
+        // Build CIDZ v2: header (6 bytes) + Brotli(json)
+        using var ms = new MemoryStream();
+        ms.Write("CIDZ"u8); // 4 bytes magic
+        ms.WriteByte(2); // version
+        ms.WriteByte(0); // flags
+        using (var brotli = new BrotliStream(ms, CompressionLevel.Fastest, true))
+        {
+            var bytes = Encoding.UTF8.GetBytes(optimizedJson);
+            brotli.Write(bytes, 0, bytes.Length);
+        }
+
+        var doc = PlayerDocument.FromCompressedBytes(ms.ToArray());
+
+        Assert.Equal("Braille", doc.RenderMode);
+        Assert.Single(doc.Frames);
+        Assert.Equal(100, doc.Frames[0].DelayMs);
+        // Verify ANSI content was reconstructed (should contain color codes)
+        Assert.Contains("\x1b[38;2;255;0;0m", doc.Frames[0].Content); // FF0000 = red
+    }
+
+    [Fact]
+    public void FromCompressedBytes_ReadsCidzV2WithSubtitleSeparator()
+    {
+        // Test that subtitle data after null separator is stripped
+        var optimizedJson = """
+                            {
+                                "@type": "OptimizedConsoleImageDocument",
+                                "Version": "3.1",
+                                "RenderMode": "ASCII",
+                                "Settings": {},
+                                "Palette": ["", "FFFFFF"],
+                                "KeyframeInterval": 30,
+                                "Frames": [
+                                    {
+                                        "IsKeyframe": true,
+                                        "Characters": "X",
+                                        "ColorIndices": "1",
+                                        "Width": 1,
+                                        "Height": 1,
+                                        "DelayMs": 50
+                                    }
+                                ]
+                            }
+                            """;
+
+        // Build CIDZ v2 with subtitle data after null separator
+        using var ms = new MemoryStream();
+        ms.Write("CIDZ"u8);
+        ms.WriteByte(2);
+        ms.WriteByte(1); // flag: has subtitles
+        using (var brotli = new BrotliStream(ms, CompressionLevel.Fastest, true))
+        {
+            var jsonBytes = Encoding.UTF8.GetBytes(optimizedJson);
+            brotli.Write(jsonBytes, 0, jsonBytes.Length);
+            brotli.WriteByte(0); // null separator
+            var vttBytes = Encoding.UTF8.GetBytes("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nTest subtitle");
+            brotli.Write(vttBytes, 0, vttBytes.Length);
+        }
+
+        var doc = PlayerDocument.FromCompressedBytes(ms.ToArray());
+
+        Assert.Single(doc.Frames);
+        Assert.Equal("X", doc.Frames[0].Content.Replace("\x1b[38;2;255;255;255m", "").Replace("\x1b[0m", ""));
+    }
+
+    [Fact]
+    public async Task LoadAsync_DetectsCidzV2Format()
+    {
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            // Create a CIDZ v2 file
+            var optimizedJson = """
+                                {
+                                    "@type": "OptimizedConsoleImageDocument",
+                                    "Version": "3.1",
+                                    "RenderMode": "ColorBlocks",
+                                    "Settings": { "MaxWidth": 60 },
+                                    "Palette": ["", "AABBCC"],
+                                    "KeyframeInterval": 30,
+                                    "Frames": [
+                                        {
+                                            "IsKeyframe": true,
+                                            "Characters": "Z",
+                                            "ColorIndices": "1",
+                                            "Width": 1,
+                                            "Height": 1,
+                                            "DelayMs": 33
+                                        }
+                                    ]
+                                }
+                                """;
+
+            await using (var fs = File.Create(tempFile))
+            {
+                fs.Write("CIDZ"u8);
+                fs.WriteByte(2);
+                fs.WriteByte(0);
+                await using var brotli = new BrotliStream(fs, CompressionLevel.Fastest, true);
+                var bytes = Encoding.UTF8.GetBytes(optimizedJson);
+                await brotli.WriteAsync(bytes);
+            }
+
+            var doc = await PlayerDocument.LoadAsync(tempFile);
+
+            Assert.Equal("ColorBlocks", doc.RenderMode);
+            Assert.Single(doc.Frames);
+            Assert.Equal(33, doc.Frames[0].DelayMs);
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void FromJson_ParsesOptimizedDocumentWithDeltaFrames()
+    {
+        // Test delta decompression
+        var json = """
+                   {
+                       "@type": "OptimizedConsoleImageDocument",
+                       "Version": "3.1",
+                       "RenderMode": "ASCII",
+                       "Settings": {},
+                       "Palette": ["", "FF0000", "00FF00"],
+                       "KeyframeInterval": 30,
+                       "Frames": [
+                           {
+                               "IsKeyframe": true,
+                               "Characters": "ABCD",
+                               "ColorIndices": "1,4",
+                               "Width": 4,
+                               "Height": 1,
+                               "DelayMs": 100
+                           },
+                           {
+                               "IsKeyframe": false,
+                               "Delta": "1:X,2",
+                               "Width": 4,
+                               "Height": 1,
+                               "DelayMs": 100
+                           }
+                       ]
+                   }
+                   """;
+
+        var doc = PlayerDocument.FromJson(json);
+
+        Assert.Equal(2, doc.FrameCount);
+        // First frame: ABCD all in red (palette index 1)
+        Assert.Contains("A", doc.Frames[0].Content);
+        // Second frame: position 1 changed from B to X, color changed to green (index 2)
+        Assert.Contains("X", doc.Frames[1].Content);
+        Assert.Contains("\x1b[38;2;0;255;0m", doc.Frames[1].Content); // green for X
     }
 }

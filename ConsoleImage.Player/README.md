@@ -191,6 +191,13 @@ new ConsolePlayer(
 await ConsolePlayer.FromFileAsync("file.cidz", speedMultiplier: 1.5f, loopCount: 3);
 ConsolePlayer.FromJson(jsonString, loopCount: 1);
 
+// Playback controls (can be set before or during playback)
+player.SpeedMultiplier = 2.0f;         // Runtime speed change (> 1 = faster)
+player.MaxDurationMs = 5000;           // Stop after 5s of content time
+player.StartFrame = 10;               // Start at frame 10
+player.EndFrame = 50;                 // Stop before frame 50
+player.FrameStep = 2;                 // Play every other frame (downsampling)
+
 // Playback
 await player.PlayAsync(cancellationToken);  // Animated playback
 player.Display();                           // First frame only
@@ -212,6 +219,16 @@ player.Dispose();  // or use `using`
 - `0` = loop forever (until cancelled)
 - `1` = play once
 - `N` = play N times
+
+**Playback control properties:**
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `SpeedMultiplier` | `float` | from doc | Playback speed (2.0 = 2x, 0.5 = half). Can change during playback. |
+| `MaxDurationMs` | `int?` | `null` | Stop after N ms of content time. Null = no limit. |
+| `StartFrame` | `int?` | `null` | First frame to play (0-based). Null = beginning. |
+| `EndFrame` | `int?` | `null` | Frame to stop before (exclusive). Null = end. |
+| `FrameStep` | `int` | `1` | Play every Nth frame. 2 = skip alternate frames. |
 
 ### PlayerDocument
 

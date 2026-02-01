@@ -6,8 +6,10 @@
 // - Fallback download: Simple attempt, graceful failure if unavailable
 // - NO REFLECTION: Fully AOT compatible
 
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 using Whisper.net.LibraryLoader;
 
 namespace ConsoleImage.Transcription;
@@ -46,6 +48,131 @@ public static class WhisperRuntimeDownloader
     ///     Get the last error message from runtime initialization.
     /// </summary>
     public static string? LastError { get; private set; }
+
+    /// <summary>
+    ///     Path to a marker file tracking which variant (avx/noavx) was downloaded.
+    /// </summary>
+    private static string VariantMarkerPath => Path.Combine(RuntimesDirectory, ".whisper-variant");
+
+    /// <summary>
+    ///     Check if the current x64 CPU supports AVX instructions.
+    ///     Whisper.net.Runtime (standard) is compiled with AVX; running it on a CPU
+    ///     without AVX causes SIGILL → segfault on Linux (uncatchable in managed code).
+    /// </summary>
+    public static bool IsAvxSupported()
+    {
+        try
+        {
+            // AVX is an x86/x64 feature — ARM uses NEON instead, no AVX concern
+            if (RuntimeInformation.ProcessArchitecture != Architecture.X64
+                && RuntimeInformation.ProcessArchitecture != Architecture.X86)
+                return false;
+
+            return Avx.IsSupported;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    ///     Whether this CPU needs the NoAvx variant of the Whisper runtime.
+    ///     True for x64 CPUs without AVX. ARM64 uses NEON and doesn't need NoAvx.
+    /// </summary>
+    public static bool NeedsNoAvxVariant()
+    {
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            return false; // ARM64, x86 — not applicable
+
+        return !IsAvxSupported();
+    }
+
+    /// <summary>
+    ///     Check if the cached runtime variant matches what this CPU needs.
+    ///     Returns false if an AVX variant is cached but the CPU doesn't support AVX.
+    /// </summary>
+    private static bool IsCorrectVariantCached()
+    {
+        if (!NeedsNoAvxVariant())
+            return true; // CPU supports AVX, any variant works
+
+        // CPU needs NoAvx — check what's cached
+        try
+        {
+            if (!File.Exists(VariantMarkerPath))
+                return true; // No marker = unknown, assume ok (first run)
+
+            var cached = File.ReadAllText(VariantMarkerPath).Trim();
+            return string.Equals(cached, "noavx", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
+    ///     Write a marker file recording which variant was installed.
+    /// </summary>
+    private static void WriteVariantMarker(string variant)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(VariantMarkerPath)!);
+            File.WriteAllText(VariantMarkerPath, variant);
+        }
+        catch
+        {
+            // Best effort
+        }
+    }
+
+    /// <summary>
+    ///     On Linux, check for missing shared library dependencies using ldd.
+    ///     Returns a diagnostic string if dependencies are missing, null otherwise.
+    /// </summary>
+    public static string? CheckLinuxDependencies()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return null;
+
+        var libPath = GetAvailableRuntimePath();
+        if (libPath == null)
+            return null;
+
+        try
+        {
+            var psi = new ProcessStartInfo("ldd", libPath)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var proc = Process.Start(psi);
+            if (proc == null) return null;
+
+            var output = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit(5000);
+
+            var missing = output.Split('\n')
+                .Where(l => l.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                .Select(l => l.Trim())
+                .ToList();
+
+            if (missing.Count > 0)
+                return $"Missing dependencies for {Path.GetFileName(libPath)}:\n  " +
+                       string.Join("\n  ", missing);
+        }
+        catch
+        {
+            // ldd not available
+        }
+
+        return null;
+    }
 
     /// <summary>
     ///     Get platform-specific runtime identifier.
@@ -240,16 +367,25 @@ public static class WhisperRuntimeDownloader
         // Check if bundled runtime is available and loadable
         if (IsRuntimeAvailable())
         {
-            if (CanLoadRuntime(out var loadError))
+            // Check if cached variant matches CPU capabilities
+            if (!IsCorrectVariantCached())
+            {
+                progress?.Report((0, 0,
+                    "Cached Whisper runtime is AVX variant but CPU lacks AVX support. Re-downloading NoAvx variant..."));
+                // Fall through to download the correct variant
+            }
+            else if (CanLoadRuntime(out var loadError))
             {
                 progress?.Report((0, 0, "Whisper runtime available"));
                 _checked = true;
                 _available = true;
                 return true;
             }
-
-            // File exists but can't load - might be corrupt or wrong architecture
-            progress?.Report((0, 0, $"Runtime file found but cannot load: {loadError}"));
+            else
+            {
+                // File exists but can't load - might be corrupt or wrong architecture
+                progress?.Report((0, 0, $"Runtime file found but cannot load: {loadError}"));
+            }
         }
 
         // Try to download runtime
@@ -271,9 +407,15 @@ public static class WhisperRuntimeDownloader
                     // Copy to app directory for reliability
                     CopyToAppDirectory(targetDir);
 
+                    // Track which variant was installed for future runs
+                    var variant = name.Contains("NoAvx", StringComparison.OrdinalIgnoreCase)
+                        ? "noavx"
+                        : "avx";
+                    WriteVariantMarker(variant);
+
                     if (CanLoadRuntime(out _))
                     {
-                        progress?.Report((0, 0, "Whisper runtime downloaded successfully"));
+                        progress?.Report((0, 0, $"Whisper runtime downloaded successfully ({variant})"));
                         _checked = true;
                         _available = true;
                         return true;
@@ -301,26 +443,35 @@ public static class WhisperRuntimeDownloader
 
     /// <summary>
     ///     Get download sources in priority order.
+    ///     If CPU lacks AVX, the NoAvx variant is tried first to prevent segfault.
     /// </summary>
     private static List<(string name, string url)> GetDownloadSources(string rid)
     {
         const string version = "1.9.0";
         var sources = new List<(string, string)>();
 
-        // Whisper.net.Runtime contains CPU binaries for all platforms
-        // This is the standard package that works on Windows, Linux, and macOS
-        // Requires AVX instruction set support
-        sources.Add((
-            "NuGet (Whisper.net.Runtime)",
-            $"https://api.nuget.org/v3-flatcontainer/whisper.net.runtime/{version}/whisper.net.runtime.{version}.nupkg"
-        ));
+        var avxSource = (
+            name: "NuGet (Whisper.net.Runtime)",
+            url: $"https://api.nuget.org/v3-flatcontainer/whisper.net.runtime/{version}/whisper.net.runtime.{version}.nupkg"
+        );
 
-        // Whisper.net.Runtime.NoAvx - fallback for CPUs without AVX support
-        // Same native library, compiled without AVX instructions
-        sources.Add((
-            "NuGet (Whisper.net.Runtime.NoAvx)",
-            $"https://api.nuget.org/v3-flatcontainer/whisper.net.runtime.noavx/{version}/whisper.net.runtime.noavx.{version}.nupkg"
-        ));
+        var noAvxSource = (
+            name: "NuGet (Whisper.net.Runtime.NoAvx)",
+            url: $"https://api.nuget.org/v3-flatcontainer/whisper.net.runtime.noavx/{version}/whisper.net.runtime.noavx.{version}.nupkg"
+        );
+
+        if (NeedsNoAvxVariant())
+        {
+            // CPU doesn't support AVX — NoAvx first to prevent segfault
+            sources.Add(noAvxSource);
+            sources.Add(avxSource);
+        }
+        else
+        {
+            // CPU supports AVX (or is ARM64 where AVX isn't relevant)
+            sources.Add(avxSource);
+            sources.Add(noAvxSource);
+        }
 
         return sources;
     }
@@ -436,6 +587,18 @@ public static class WhisperRuntimeDownloader
 
         if (extractedCount > 0)
         {
+            // On macOS, remove quarantine attributes and ad-hoc sign extracted libraries.
+            // Without this, Gatekeeper blocks dlopen for downloaded unsigned dylibs.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                var extractedFiles = Directory.GetFiles(targetDir)
+                    .Where(f => nativeExtensions.Any(ext =>
+                        f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+                RemoveMacQuarantine(extractedFiles);
+                progress?.Report((0, 0, "Cleared macOS quarantine and signed libraries"));
+            }
+
             progress?.Report((0, 0, $"Extracted {extractedCount} native libraries for {rid}"));
             return true;
         }
@@ -658,6 +821,11 @@ public static class WhisperRuntimeDownloader
                     : 0)
                 .ToList();
 
+            // On macOS, remove quarantine attributes before loading.
+            // Downloaded files get com.apple.quarantine which causes Gatekeeper to block dlopen.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                RemoveMacQuarantine(nativeFiles);
+
             foreach (var file in nativeFiles)
                 try
                 {
@@ -671,6 +839,48 @@ public static class WhisperRuntimeDownloader
         catch
         {
             // Best effort
+        }
+    }
+
+    /// <summary>
+    ///     On macOS, remove the com.apple.quarantine extended attribute from downloaded files.
+    ///     Files downloaded from the internet are quarantined by Gatekeeper and will fail
+    ///     to load via dlopen with "library not valid for use in process" or similar errors.
+    ///     Also handles codesign requirements for ad-hoc signing of unsigned binaries.
+    /// </summary>
+    private static void RemoveMacQuarantine(IEnumerable<string> files)
+    {
+        foreach (var file in files)
+        {
+            try
+            {
+                // Remove quarantine attribute
+                var xattr = new ProcessStartInfo("xattr", $"-d com.apple.quarantine \"{file}\"")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var xattrProc = Process.Start(xattr);
+                xattrProc?.WaitForExit(5000);
+
+                // Ad-hoc codesign — required on Apple Silicon for unsigned dylibs.
+                // The -f flag re-signs even if already signed (handles corrupt/missing signatures).
+                var codesign = new ProcessStartInfo("codesign", $"--force --sign - \"{file}\"")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var codesignProc = Process.Start(codesign);
+                codesignProc?.WaitForExit(5000);
+            }
+            catch
+            {
+                // Best effort — xattr/codesign may not be available
+            }
         }
     }
 

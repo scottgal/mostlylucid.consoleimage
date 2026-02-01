@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Text;
 using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
+using ConsoleImage.Player;
 
 namespace ConsoleImage.Benchmarks;
 
@@ -22,6 +23,8 @@ public static class DocumentBenchmarks
         RunStatusLineBenchmark();
         Console.WriteLine();
         RunDocumentPlayerFrameBuffer();
+        Console.WriteLine();
+        RunPlayerCidzDecompressionBenchmark();
     }
 
     private static void RunCidzRoundtripBenchmark()
@@ -261,6 +264,59 @@ public static class DocumentBenchmarks
         }
 
         return content.AsSpan(start, end - start);
+    }
+
+    private static void RunPlayerCidzDecompressionBenchmark()
+    {
+        Console.WriteLine("--- Player CIDZ Decompression (span-based) ---");
+
+        // Create a test document, save as cidz, then measure Player decompression
+        var doc = CreateTestDocument(60, 80, 40);
+        var subtitleTrack = CreateTestSubtitles(60, 33);
+        var tempPath = Path.Combine(Path.GetTempPath(), $"bench_{Guid.NewGuid():N}.cidz");
+
+        try
+        {
+            // Save with Core's CompressedDocumentArchive
+            CompressedDocumentArchive.SaveAsync(doc, tempPath, 30, subtitleTrack).GetAwaiter().GetResult();
+            var fileBytes = File.ReadAllBytes(tempPath);
+            var fileSize = fileBytes.Length;
+
+            // Warm up Player decompression
+            for (var i = 0; i < 3; i++)
+                PlayerDocument.FromCompressedBytes(fileBytes);
+
+            // Measure Player decompression (includes GZip decompress + JSON parse + delta reconstruction)
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            var gen0Before = GC.CollectionCount(0);
+
+            const int iterations = 20;
+            var sw = Stopwatch.StartNew();
+            PlayerDocument? result = null;
+            for (var i = 0; i < iterations; i++)
+                result = PlayerDocument.FromCompressedBytes(fileBytes);
+            sw.Stop();
+
+            var gen0After = GC.CollectionCount(0);
+            Console.WriteLine(
+                $"FromCompressedBytes ({doc.FrameCount}f, {fileSize / 1024} KB): {sw.Elapsed.TotalMilliseconds / iterations:F1} ms/load, Gen0: {gen0After - gen0Before}");
+            Console.WriteLine(
+                $"  Reconstructed: {result!.FrameCount} frames, {result.TotalDurationMs}ms duration");
+
+            // Measure just file load (includes disk I/O)
+            sw.Restart();
+            for (var i = 0; i < iterations; i++)
+                PlayerDocument.LoadAsync(tempPath).GetAwaiter().GetResult();
+            sw.Stop();
+            Console.WriteLine(
+                $"LoadAsync ({doc.FrameCount}f, {fileSize / 1024} KB): {sw.Elapsed.TotalMilliseconds / iterations:F1} ms/load");
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
     }
 
     // --- Helpers ---

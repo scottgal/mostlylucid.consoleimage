@@ -178,6 +178,57 @@ public class ConsolePlayerTests
         await Assert.ThrowsAsync<FileNotFoundException>(() => ConsolePlayer.FromFileAsync(nonExistent));
     }
 
+    [Fact]
+    public void SpeedMultiplier_DefaultsFromDocument()
+    {
+        var doc = CreateTestDocument(2);
+        doc.Settings.AnimationSpeedMultiplier = 1.5f;
+
+        var player = new ConsolePlayer(doc);
+
+        Assert.Equal(1.5f, player.SpeedMultiplier);
+    }
+
+    [Fact]
+    public void SpeedMultiplier_CanBeChangedAtRuntime()
+    {
+        var doc = CreateTestDocument(2);
+        var player = new ConsolePlayer(doc);
+
+        player.SpeedMultiplier = 3.0f;
+
+        Assert.Equal(3.0f, player.SpeedMultiplier);
+    }
+
+    [Fact]
+    public void PlaybackControls_DefaultValues()
+    {
+        var doc = CreateTestDocument(3);
+        var player = new ConsolePlayer(doc);
+
+        Assert.Null(player.MaxDurationMs);
+        Assert.Null(player.StartFrame);
+        Assert.Null(player.EndFrame);
+        Assert.Equal(1, player.FrameStep);
+    }
+
+    [Fact]
+    public void PlaybackControls_CanBeSet()
+    {
+        var doc = CreateTestDocument(10);
+        var player = new ConsolePlayer(doc);
+
+        player.MaxDurationMs = 5000;
+        player.StartFrame = 2;
+        player.EndFrame = 8;
+        player.FrameStep = 2;
+
+        Assert.Equal(5000, player.MaxDurationMs);
+        Assert.Equal(2, player.StartFrame);
+        Assert.Equal(8, player.EndFrame);
+        Assert.Equal(2, player.FrameStep);
+    }
+
     private static PlayerDocument CreateTestDocument(int frameCount)
     {
         var doc = new PlayerDocument
