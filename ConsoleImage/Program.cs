@@ -813,73 +813,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     {
         // Fall through to VideoHandler below - FFmpeg handles GIFs
     }
-    // Image files (jpg, png, gif, svg, etc.) - normal rendering
+    // Image files (jpg, png, gif, etc.) - normal rendering
     else if (IsImageFile(extension))
     {
-        // SVG files need rasterization via FFmpeg (ImageSharp has no SVG decoder)
-        string? svgTempFile = null;
-        var effectiveInput = input;
-        if (IsSvgFile(extension))
-        {
-            try
-            {
-                var svgFfmpeg = ffmpegPath;
-                if (string.IsNullOrEmpty(svgFfmpeg) && !noAutoDownload)
-                    svgFfmpeg = await FFmpegProvider.GetFFmpegPathAsync(ffmpegPath, null, cancellationToken);
-
-                if (string.IsNullOrEmpty(svgFfmpeg))
-                {
-                    Console.Error.WriteLine("FFmpeg is required to rasterize SVG files.");
-                    Console.Error.WriteLine("  Windows: winget install FFmpeg");
-                    Console.Error.WriteLine("  macOS:   brew install ffmpeg");
-                    Console.Error.WriteLine("  Linux:   apt install ffmpeg");
-                    return 1;
-                }
-
-                // Rasterize SVG to temp PNG at high resolution
-                var targetWidth = (width ?? maxWidth) * 8; // 8 pixels per character for quality
-                if (targetWidth < 800) targetWidth = 1920;
-                svgTempFile = Path.Combine(Path.GetTempPath(), $"consoleimage_svg_{Guid.NewGuid():N}.png");
-
-                var psi = new ProcessStartInfo
-                {
-                    FileName = svgFfmpeg,
-                    Arguments = $"-i \"{input.FullName}\" -vf \"scale={targetWidth}:-1\" -y \"{svgTempFile}\"",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using var process = Process.Start(psi);
-                if (process != null)
-                {
-                    await process.WaitForExitAsync(cancellationToken);
-                    if (process.ExitCode != 0 || !File.Exists(svgTempFile))
-                    {
-                        Console.Error.WriteLine("Failed to rasterize SVG. FFmpeg may not support SVG input.");
-                        Console.Error.WriteLine("Try converting with: inkscape -o output.png input.svg");
-                        return 1;
-                    }
-                }
-
-                effectiveInput = new FileInfo(svgTempFile);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"SVG rasterization failed: {ex.Message}");
-                return 1;
-            }
-        }
-
-        try
-        {
         // Compute perceptual hash of source image if requested
         if (showHash)
         {
             try
             {
-                using var hashImage = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(effectiveInput.FullName);
+                using var hashImage = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(input.FullName);
                 var (hash, avgBrightness) = FrameHasher.ComputeHashWithBrightness(hashImage);
                 Console.Error.WriteLine($"Hash: 0x{hash:X16}  Brightness: {avgBrightness}  ({input.Name})");
             }
@@ -890,7 +832,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
 
         return await ImageHandler.HandleAsync(
-            effectiveInput, width, height, maxWidth, maxHeight,
+            input, width, height, maxWidth, maxHeight,
             charAspect, savedCalibration,
             useBlocks, useBraille,
             useMatrix, matrixColor, matrixFullColor,
@@ -905,13 +847,6 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             useGreyscaleAnsi,
             noDither,
             cancellationToken);
-        }
-        finally
-        {
-            // Cleanup SVG temp file
-            if (svgTempFile != null && File.Exists(svgTempFile))
-                try { File.Delete(svgTempFile); } catch { }
-        }
     }
 
     // Load subtitles based on --subs value
@@ -1372,12 +1307,7 @@ static bool IsDocumentFile(string extension, string fileName)
 
 static bool IsImageFile(string extension)
 {
-    return extension is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif" or ".svg";
-}
-
-static bool IsSvgFile(string extension)
-{
-    return extension is ".svg";
+    return extension is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif";
 }
 
 // Easter egg: play embedded Star Wars animation
