@@ -54,6 +54,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
 
     // Load template settings if specified
     TemplateSettings? template = null;
+    
     if (!string.IsNullOrEmpty(templatePath))
     {
         template = TemplateHelper.Load(templatePath);

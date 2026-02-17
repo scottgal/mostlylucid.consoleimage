@@ -91,6 +91,44 @@ public static class BrightnessHelper
     }
 
     /// <summary>
+    ///     Convert a single sRGB channel value (0-1) to linear light.
+    ///     Uses the exact sRGB transfer function (IEC 61966-2-1).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static float SrgbToLinear(float v)
+    {
+        return v <= 0.04045f
+            ? v / 12.92f
+            : MathF.Pow((v + 0.055f) / 1.055f, 2.4f);
+    }
+
+    /// <summary>
+    ///     Convert a single linear light value (0-1) back to sRGB.
+    ///     Inverse of <see cref="SrgbToLinear"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static float LinearToSrgb(float v)
+    {
+        return v <= 0.0031308f
+            ? v * 12.92f
+            : 1.055f * MathF.Pow(v, 1f / 2.4f) - 0.055f;
+    }
+
+    /// <summary>
+    ///     Calculate perceived brightness in linear light space.
+    ///     Linearizes each sRGB channel before applying BT.601 luminance weights,
+    ///     giving physically correct results for dithering and edge detection.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static float GetLinearBrightness(Rgba32 pixel)
+    {
+        var rLin = SrgbToLinear(pixel.R / 255f);
+        var gLin = SrgbToLinear(pixel.G / 255f);
+        var bLin = SrgbToLinear(pixel.B / 255f);
+        return RedCoefficient * rLin + GreenCoefficient * gLin + BlueCoefficient * bLin;
+    }
+
+    /// <summary>
     ///     Apply gamma correction to a brightness value.
     ///     Gamma less than 1.0 brightens, greater than 1.0 darkens.
     /// </summary>

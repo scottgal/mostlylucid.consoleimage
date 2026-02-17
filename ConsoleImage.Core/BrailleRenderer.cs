@@ -925,7 +925,7 @@ public class BrailleRenderer : IDisposable
                             (byte)(pixel.B / quantStep * quantStep),
                             pixel.A);
 
-                    brightness[rowOffset + x] = BrightnessHelper.GetBrightness(pixel);
+                    brightness[rowOffset + x] = BrightnessHelper.GetLinearBrightness(pixel);
                     colors[rowOffset + x] = pixel;
                 }
             }

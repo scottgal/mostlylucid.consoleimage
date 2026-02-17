@@ -46,7 +46,7 @@ public static class EdgeDirection
         var magnitudes = new float[outputHeight, outputWidth];
         var angles = new float[outputHeight, outputWidth];
 
-        // Convert to grayscale for edge detection
+        // Convert to linear-light grayscale for physically correct edge detection
         var grayscale = new float[image.Height, image.Width];
         image.ProcessPixelRows(accessor =>
         {
@@ -56,10 +56,39 @@ public static class EdgeDirection
                 for (var x = 0; x < row.Length; x++)
                 {
                     var p = row[x];
-                    grayscale[y, x] = (p.R * 0.299f + p.G * 0.587f + p.B * 0.114f) / 255f;
+                    grayscale[y, x] = BrightnessHelper.GetLinearBrightness(p);
                 }
             }
         });
+
+        // Apply lightweight unsharp mask on linear luminance to sharpen edges before Sobel.
+        // USM = original + amount * (original - blurred), with radius-1 box blur.
+        const float usmAmount = 0.25f;
+        var sharpened = new float[image.Height, image.Width];
+        for (var y = 0; y < image.Height; y++)
+        for (var x = 0; x < image.Width; x++)
+        {
+            // 3x3 box blur (radius 1)
+            float sum = 0;
+            var count = 0;
+            for (var ky = -1; ky <= 1; ky++)
+            for (var kx = -1; kx <= 1; kx++)
+            {
+                var ny = y + ky;
+                var nx = x + kx;
+                if (ny >= 0 && ny < image.Height && nx >= 0 && nx < image.Width)
+                {
+                    sum += grayscale[ny, nx];
+                    count++;
+                }
+            }
+
+            var blurred = sum / count;
+            var val = grayscale[y, x] + usmAmount * (grayscale[y, x] - blurred);
+            sharpened[y, x] = Math.Clamp(val, 0f, 1f);
+        }
+
+        grayscale = sharpened;
 
         // Compute edge gradients for each cell
         for (var cy = 0; cy < outputHeight; cy++)

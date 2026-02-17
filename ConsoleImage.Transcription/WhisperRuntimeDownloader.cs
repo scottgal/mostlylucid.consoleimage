@@ -90,25 +90,28 @@ public static class WhisperRuntimeDownloader
 
     /// <summary>
     ///     Check if the cached runtime variant matches what this CPU needs.
-    ///     Returns false if an AVX variant is cached but the CPU doesn't support AVX.
+    ///     Returns false if an AVX variant might be cached on a CPU without AVX support.
+    ///     Conservative: on non-AVX CPUs, returns false unless we KNOW NoAvx was installed
+    ///     (because loading the wrong variant = uncatchable SIGSEGV on Linux).
     /// </summary>
     private static bool IsCorrectVariantCached()
     {
         if (!NeedsNoAvxVariant())
             return true; // CPU supports AVX, any variant works
 
-        // CPU needs NoAvx — check what's cached
+        // CPU needs NoAvx — only trust an explicit "noavx" marker.
+        // No marker = unknown origin = assume AVX (dangerous) = force re-download.
         try
         {
             if (!File.Exists(VariantMarkerPath))
-                return true; // No marker = unknown, assume ok (first run)
+                return false; // No marker on non-AVX CPU: assume wrong variant
 
             var cached = File.ReadAllText(VariantMarkerPath).Trim();
             return string.Equals(cached, "noavx", StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
-            return true;
+            return false; // Can't read marker on non-AVX CPU: assume wrong variant
         }
     }
 
@@ -297,10 +300,21 @@ public static class WhisperRuntimeDownloader
 
     /// <summary>
     ///     Test if the native library can actually be loaded.
+    ///     IMPORTANT: On non-AVX CPUs, refuses to load if the variant marker doesn't confirm NoAvx,
+    ///     because dlopen of an AVX-compiled .so causes SIGSEGV (uncatchable process crash on Linux).
     /// </summary>
     public static bool CanLoadRuntime(out string? errorMessage)
     {
         errorMessage = null;
+
+        // Guard: don't even attempt dlopen if we might have the wrong variant.
+        // On Linux, loading an AVX .so on a non-AVX CPU = instant SIGSEGV (kills process).
+        if (NeedsNoAvxVariant() && !IsCorrectVariantCached())
+        {
+            errorMessage = "CPU lacks AVX support and cached runtime may be AVX variant (would segfault). Need NoAvx variant.";
+            return false;
+        }
+
         var path = GetAvailableRuntimePath();
 
         if (path == null)
@@ -389,10 +403,21 @@ public static class WhisperRuntimeDownloader
         }
 
         // Try to download runtime
-        progress?.Report((0, 0, "Whisper runtime not bundled, attempting download..."));
-
         var rid = GetRuntimeIdentifier();
         var targetDir = Path.Combine(RuntimesDirectory, rid, "native");
+
+        if (NeedsNoAvxVariant())
+        {
+            progress?.Report((0, 0, $"CPU lacks AVX — downloading NoAvx runtime for {rid}..."));
+
+            // Clean out any existing AVX libraries to prevent accidental loading
+            CleanNativeLibraries(targetDir);
+            CleanNativeLibraries(AppContext.BaseDirectory);
+        }
+        else
+        {
+            progress?.Report((0, 0, "Whisper runtime not bundled, attempting download..."));
+        }
 
         // Try each download source
         var sources = GetDownloadSources(rid);
@@ -613,6 +638,35 @@ public static class WhisperRuntimeDownloader
     }
 
     /// <summary>
+    ///     Remove all native library files from a directory.
+    ///     Used to clean out wrong-variant (e.g. AVX) libraries before downloading the correct ones.
+    /// </summary>
+    private static void CleanNativeLibraries(string directory)
+    {
+        if (!Directory.Exists(directory)) return;
+
+        var nativeExtensions = GetNativeExtensions();
+        try
+        {
+            foreach (var file in Directory.GetFiles(directory)
+                         .Where(f => nativeExtensions.Any(ext =>
+                             f.EndsWith(ext, StringComparison.OrdinalIgnoreCase))))
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    // Best effort — file may be locked
+                }
+        }
+        catch
+        {
+            // Best effort
+        }
+    }
+
+    /// <summary>
     ///     Get native library file extensions for the current platform.
     /// </summary>
     private static string[] GetNativeExtensions()
@@ -741,9 +795,15 @@ public static class WhisperRuntimeDownloader
         // whisper.dll depends on ggml-*.dll; if they're not on PATH or in the exe directory,
         // the OS loader can't find them. Pre-loading them into the process ensures they're
         // available when Whisper.NET later loads whisper.dll via DllImport.
+        //
+        // CRITICAL: Do NOT preload if the cached variant might be wrong for this CPU.
+        // On Linux, dlopen of an AVX-compiled .so on a non-AVX CPU = instant SIGSEGV
+        // (uncatchable signal, kills entire process). Let EnsureRuntimeAsync re-download
+        // the correct variant before any loading is attempted.
         if (libDir != null)
         {
-            PreloadNativeLibraries(libDir);
+            if (!NeedsNoAvxVariant() || IsCorrectVariantCached())
+                PreloadNativeLibraries(libDir);
 
             // Ensure runtimes/{rid}/ directory exists with the native DLLs.
             // Whisper.net's NativeLibraryLoader searches runtimes/{platform}-{arch}/ for CPU,
