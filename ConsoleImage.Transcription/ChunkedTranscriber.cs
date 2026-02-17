@@ -18,6 +18,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     private readonly double _chunkDurationSeconds;
     private readonly CancellationTokenSource _cts = new();
     private readonly bool _enhanceAudio;
+    private readonly string? _ffmpegPath;
     private readonly string _inputPath;
     private readonly double _startTimeOffset;
 
@@ -40,6 +41,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
     /// <param name="bufferAheadSeconds">How far ahead to transcribe (default: 60s).</param>
     /// <param name="startTimeOffset">Start transcription from this time (default: 0 = from beginning).</param>
     /// <param name="enhanceAudio">Apply FFmpeg audio preprocessing filters for better speech recognition.</param>
+    /// <param name="ffmpegPath">Pre-resolved path to FFmpeg binary. If null, falls back to local search.</param>
     public ChunkedTranscriber(
         string inputPath,
         string modelSize = "base",
@@ -47,13 +49,15 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         double chunkDurationSeconds = 30.0,
         double bufferAheadSeconds = 60.0,
         double startTimeOffset = 0.0,
-        bool enhanceAudio = true)
+        bool enhanceAudio = true,
+        string? ffmpegPath = null)
     {
         _inputPath = inputPath;
         _chunkDurationSeconds = chunkDurationSeconds;
         _bufferAheadSeconds = bufferAheadSeconds;
         _startTimeOffset = startTimeOffset;
         _enhanceAudio = enhanceAudio;
+        _ffmpegPath = ffmpegPath;
         LastTranscribedTime = startTimeOffset; // Start from the offset position
 
         _whisper = new WhisperTranscriptionService()
@@ -466,7 +470,7 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         return WhisperTranscriptionService.IsRepetitiveText(text);
     }
 
-    private static async Task<(bool success, double duration)> ExtractAudioChunkAsync(
+    private async Task<(bool success, double duration)> ExtractAudioChunkAsync(
         string inputPath,
         string outputPath,
         double startTime,
@@ -474,9 +478,13 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         bool enhanceAudio,
         CancellationToken ct)
     {
-        var ffmpegPath = FindFFmpeg();
+        var ffmpegPath = _ffmpegPath ?? FindFFmpegFallback();
         if (ffmpegPath == null)
-            throw new InvalidOperationException("FFmpeg not found. Install FFmpeg to use transcription.");
+            throw new InvalidOperationException(
+                "FFmpeg not found. Install FFmpeg to use transcription.\n" +
+                "  Windows: winget install FFmpeg\n" +
+                "  macOS:   brew install ffmpeg\n" +
+                "  Linux:   apt install ffmpeg");
 
         // Build FFmpeg arguments
         var isUrl = inputPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
@@ -551,7 +559,11 @@ public class ChunkedTranscriber : ILiveSubtitleProvider, IAsyncDisposable
         return (true, Math.Max(0, actualDuration));
     }
 
-    private static string? FindFFmpeg()
+    /// <summary>
+    ///     Fallback FFmpeg search when no path was provided via constructor.
+    ///     Prefer passing a resolved path from FFmpegProvider at construction time.
+    /// </summary>
+    private static string? FindFFmpegFallback()
     {
         var candidates = new[]
         {

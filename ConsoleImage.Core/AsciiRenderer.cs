@@ -587,11 +587,7 @@ public class AsciiRenderer : IDisposable
     private AsciiFrame RenderGifFrame(Image<Rgba32> image, int frameIndex, int width, int height,
         int cellWidth, int cellHeight, int frameStep = 1, Rgba32[]? localPixelBuffer = null)
     {
-        // Get frame metadata first
-        var metadata = image.Frames[frameIndex].Metadata.GetGifMetadata();
-
-        var delayMs = 100;
-        if (metadata.FrameDelay > 0) delayMs = metadata.FrameDelay * 10;
+        var delayMs = FrameTiming.GetFrameDelayMs(image.Frames[frameIndex]);
         // Adjust delay to account for skipped frames
         delayMs = (int)(delayMs * frameStep / _options.AnimationSpeedMultiplier);
 

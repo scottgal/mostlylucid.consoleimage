@@ -344,10 +344,7 @@ public class ColorBlockRenderer : IDisposable
         {
             using var frameImage = image.Frames.CloneFrame(i);
 
-            var metadata = image.Frames[i].Metadata.GetGifMetadata();
-
-            var delayMs = 100;
-            if (metadata.FrameDelay > 0) delayMs = metadata.FrameDelay * 10;
+            var delayMs = FrameTiming.GetFrameDelayMs(image.Frames[i]);
             // Adjust delay to account for skipped frames
             delayMs = (int)(delayMs * frameStep / _options.AnimationSpeedMultiplier);
 

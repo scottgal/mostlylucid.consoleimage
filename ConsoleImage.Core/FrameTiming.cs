@@ -3,6 +3,8 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace ConsoleImage.Core;
 
@@ -46,6 +48,27 @@ public static class FrameTiming
         }
 
         return false;
+    }
+
+    /// <summary>
+    ///     Get frame delay in milliseconds from any animated image format (GIF, WebP, etc.).
+    ///     GIF stores delay in centiseconds (1/100s), WebP stores in milliseconds.
+    ///     Returns 100ms default if no delay metadata is found.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int GetFrameDelayMs(ImageFrame<Rgba32> frame)
+    {
+        // Try GIF metadata (delay in centiseconds)
+        var gifMeta = frame.Metadata.GetGifMetadata();
+        if (gifMeta.FrameDelay > 0)
+            return gifMeta.FrameDelay * 10;
+
+        // Try WebP metadata (delay in milliseconds)
+        var webpMeta = frame.Metadata.GetWebpMetadata();
+        if (webpMeta.FrameDelay > 0)
+            return (int)webpMeta.FrameDelay;
+
+        return 100; // Default 10fps
     }
 
     /// <summary>

@@ -11,6 +11,7 @@
         <!-- AOT Compilation Support (disabled when bundling Whisper - native lib loading requires JIT) -->
         <PublishAot Condition="'$(BundleWhisperRuntime)' != 'true'">true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
+        <LongPathAware>true</LongPathAware>
         <OptimizationPreference>Size</OptimizationPreference>
 
         <!-- Single-file mode when bundling Whisper (non-AOT but still single binary) -->

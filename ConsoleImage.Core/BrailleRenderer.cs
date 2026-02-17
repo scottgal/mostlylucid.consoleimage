@@ -1239,9 +1239,7 @@ public class BrailleRenderer : IDisposable
             using var frameImage = image.Frames.CloneFrame(i);
             var content = RenderImage(frameImage);
 
-            var metadata = image.Frames[i].Metadata.GetGifMetadata();
-            var delayMs = metadata.FrameDelay * 10; // GIF delay is in centiseconds
-            if (delayMs == 0) delayMs = 100;
+            var delayMs = FrameTiming.GetFrameDelayMs(image.Frames[i]);
             delayMs = (int)(delayMs / _options.AnimationSpeedMultiplier);
 
             frames.Add(new BrailleFrame(content, delayMs));

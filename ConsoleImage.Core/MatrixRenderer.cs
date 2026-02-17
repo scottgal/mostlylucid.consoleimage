@@ -538,10 +538,8 @@ public class MatrixRenderer : IDisposable
 
             var (brightness, colors, edges) = SampleImageData(resized);
 
-            // Get frame delay from GIF metadata
-            var metadata = image.Frames[i].Metadata.GetGifMetadata();
-            var sourceDelayMs = metadata.FrameDelay * 10;
-            if (sourceDelayMs == 0) sourceDelayMs = 100;
+            // Get frame delay from image metadata (supports GIF, WebP, APNG, etc.)
+            var sourceDelayMs = FrameTiming.GetFrameDelayMs(image.Frames[i]);
 
             // Generate rain frames to fill the source frame duration
             // Use configured target FPS

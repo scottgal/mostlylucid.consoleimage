@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using ConsoleImage.Transcription;
+using ConsoleImage.Video.Core;
 
 namespace ConsoleImage.Cli.Handlers;
 
@@ -83,10 +84,31 @@ public static class TranscriptionHandler
             if (needsExtraction)
             {
                 if (!quiet)
+                    Console.Error.WriteLine("Resolving FFmpeg...");
+
+                // Resolve FFmpeg via FFmpegProvider (searches PATH, WinGet, cache, auto-downloads)
+                var ffmpegPath = opts.FfmpegPath;
+                if (string.IsNullOrEmpty(ffmpegPath))
+                {
+                    try
+                    {
+                        ffmpegPath = await FFmpegProvider.GetFFmpegPathAsync(null, null, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException(
+                            $"FFmpeg is required for transcription but could not be found: {ex.Message}\n" +
+                            "  Windows: winget install FFmpeg\n" +
+                            "  macOS:   brew install ffmpeg\n" +
+                            "  Linux:   apt install ffmpeg");
+                    }
+                }
+
+                if (!quiet)
                     Console.Error.WriteLine("Extracting audio...");
                 tempAudioPath = Path.Combine(Path.GetTempPath(), $"consoleimage_audio_{Guid.NewGuid():N}.wav");
                 await ExtractAudioAsync(opts.InputPath, tempAudioPath, opts.StartTime, opts.Duration, opts.EnhanceAudio,
-                    ct);
+                    ffmpegPath, ct);
                 audioPath = tempAudioPath;
                 if (!quiet)
                     Console.Error.WriteLine("Audio extracted.");
@@ -183,12 +205,16 @@ public static class TranscriptionHandler
     }
 
     private static async Task ExtractAudioAsync(string inputPath, string audioPath, double? startTime, double? duration,
-        bool enhanceAudio, CancellationToken ct)
+        bool enhanceAudio, string? resolvedFfmpegPath, CancellationToken ct)
     {
-        // Use FFmpeg to extract audio
-        var ffmpegPath = FindFFmpeg();
-        if (ffmpegPath == null)
-            throw new InvalidOperationException("FFmpeg not found. Install FFmpeg or use --ffmpeg-path");
+        // Use pre-resolved FFmpeg path (from FFmpegProvider)
+        var ffmpegPath = resolvedFfmpegPath;
+        if (string.IsNullOrEmpty(ffmpegPath))
+            throw new InvalidOperationException(
+                "FFmpeg not found. Install FFmpeg or ensure it is on your PATH.\n" +
+                "  Windows: winget install FFmpeg\n" +
+                "  macOS:   brew install ffmpeg\n" +
+                "  Linux:   apt install ffmpeg");
 
         // Build FFmpeg arguments - handle URLs with proper quoting
         // For URLs, we need to handle special characters and add timeout/reconnect options
@@ -269,53 +295,6 @@ public static class TranscriptionHandler
             throw new InvalidOperationException("FFmpeg completed but audio file was not created");
     }
 
-    private static string? FindFFmpeg()
-    {
-        // Check common locations
-        var candidates = new[]
-        {
-            "ffmpeg",
-            "ffmpeg.exe",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "consoleimage",
-                "ffmpeg", "ffmpeg.exe"),
-            "/usr/bin/ffmpeg",
-            "/usr/local/bin/ffmpeg"
-        };
-
-        foreach (var candidate in candidates)
-        {
-            if (File.Exists(candidate))
-                return candidate;
-
-            // Check if it's in PATH
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = candidate,
-                    Arguments = "-version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using var process = Process.Start(psi);
-                if (process != null)
-                {
-                    process.WaitForExit(1000);
-                    if (process.ExitCode == 0)
-                        return candidate;
-                }
-            }
-            catch
-            {
-            }
-        }
-
-        return null;
-    }
-
     private static string TruncateText(string text, int maxLength)
     {
         if (string.IsNullOrEmpty(text)) return "";
@@ -357,5 +336,15 @@ public static class TranscriptionHandler
         ///     Default: true. Disable with --no-enhance for recordings where filtering hurts quality.
         /// </summary>
         public bool EnhanceAudio { get; set; } = true;
+
+        /// <summary>
+        ///     Pre-resolved path to FFmpeg binary. If null, will be resolved via FFmpegProvider.
+        /// </summary>
+        public string? FfmpegPath { get; set; }
+
+        /// <summary>
+        ///     Whether to suppress auto-downloading of FFmpeg.
+        /// </summary>
+        public bool NoAutoDownload { get; set; }
     }
 }

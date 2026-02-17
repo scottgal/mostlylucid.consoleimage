@@ -666,12 +666,7 @@ public static class SlideshowHandler
     {
         var cached = new CachedSlide();
 
-        if (ImageExtensions.Contains(ext))
-        {
-            using var image = await Image.LoadAsync<Rgba32>(file, ct);
-            cached.RenderedContent = RenderImage(image, renderOptions, options);
-        }
-        else if (GifExtensions.Contains(ext))
+        if (ImageExtensions.Contains(ext) || GifExtensions.Contains(ext))
         {
             using var image = await Image.LoadAsync<Rgba32>(file, ct);
 
@@ -681,7 +676,7 @@ public static class SlideshowHandler
             }
             else
             {
-                // Pre-render all GIF frames
+                // Animated image (GIF, WebP, APNG, etc.) - pre-render all frames
                 if (options.UseBraille)
                 {
                     using var renderer = new BrailleRenderer(renderOptions);
@@ -783,15 +778,14 @@ public static class SlideshowHandler
         int contentStartLine,
         CancellationToken ct)
     {
-        if (ImageExtensions.Contains(ext))
+        if (ImageExtensions.Contains(ext) || GifExtensions.Contains(ext))
         {
-            await DisplayImageAsync(file, renderOptions, options, contentStartLine, ct);
-            return 0;
-        }
-
-        if (GifExtensions.Contains(ext))
-        {
-            await DisplayGifAsync(file, renderOptions, options, contentStartLine, ct);
+            // Check frame count to decide between static and animated display
+            using var probe = await Image.LoadAsync<Rgba32>(file, ct);
+            if (probe.Frames.Count > 1)
+                await DisplayGifAsync(file, renderOptions, options, contentStartLine, ct);
+            else
+                await DisplayImageAsync(file, renderOptions, options, contentStartLine, ct);
             return 0;
         }
 
@@ -889,9 +883,7 @@ public static class SlideshowHandler
             using var frameImage = image.Frames.CloneFrame(i);
             var content = renderer.RenderImage(frameImage);
 
-            var metadata = image.Frames[i].Metadata.GetGifMetadata();
-            var delayMs = metadata.FrameDelay * 10;
-            if (delayMs == 0) delayMs = 100;
+            var delayMs = FrameTiming.GetFrameDelayMs(image.Frames[i]);
             delayMs = (int)(delayMs / options.AnimationSpeedMultiplier);
 
             frames.Add(new BrailleFrame(content, delayMs));
@@ -914,9 +906,7 @@ public static class SlideshowHandler
             using var frameImage = image.Frames.CloneFrame(i);
             var content = renderer.RenderImage(frameImage);
 
-            var metadata = image.Frames[i].Metadata.GetGifMetadata();
-            var delayMs = metadata.FrameDelay * 10;
-            if (delayMs == 0) delayMs = 100;
+            var delayMs = FrameTiming.GetFrameDelayMs(image.Frames[i]);
             delayMs = (int)(delayMs / options.AnimationSpeedMultiplier);
 
             frames.Add(new ColorBlockFrame(content, delayMs));

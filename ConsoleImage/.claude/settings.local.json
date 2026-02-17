@@ -11,7 +11,8 @@
       "Bash(dotnet run:*)",
       "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consoleimage.exe\" \"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\icon.png\" --status -w 40)",
       "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consolevideo.exe\" \"X:\\\\Movies\\\\Superman.2025.1080p.WEB.h264-ETHEL.mkv\" --info --status)",
-      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consolevideo.exe\" \"X:\\\\Movies\\\\Superman.2025.1080p.WEB.h264-ETHEL.mkv\" -w 60 -t 2 --status)"
+      "Bash(\"E:\\\\source\\\\vectorascii\\\\ConsoleImage\\\\ConsoleImage.Video\\\\bin\\\\Release\\\\net10.0\\\\win-x64\\\\publish\\\\consolevideo.exe\" \"X:\\\\Movies\\\\Superman.2025.1080p.WEB.h264-ETHEL.mkv\" -w 60 -t 2 --status)",
+      "WebSearch"
     ]
   },
   "enableAllProjectMcpServers": true,

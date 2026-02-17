@@ -65,8 +65,12 @@ public static class ImageHandler
             DisableBrailleDithering = noDither
         };
 
-        // Check if it's an animated GIF
-        var isAnimatedGif = input.Extension.Equals(".gif", StringComparison.OrdinalIgnoreCase);
+        // Check if it's an animated image (GIF, WebP, APNG, etc.) by frame count
+        bool isAnimatedGif;
+        using (var probe = Image.Load<Rgba32>(input.FullName))
+        {
+            isAnimatedGif = probe.Frames.Count > 1;
+        }
 
         if (outputGif != null)
             return await HandleGifOutput(input, options, outputGif, isAnimatedGif,

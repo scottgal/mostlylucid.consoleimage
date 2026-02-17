@@ -56,6 +56,15 @@ public static class SecurityHelper
                 if (fullPath.Contains(".."))
                     return false;
             }
+            catch (PathTooLongException)
+            {
+                // Long paths are valid on modern Windows/.NET - don't reject them
+                // Path.GetFullPath may throw for very long relative paths with ".."
+                // but absolute long paths are fine
+                if (Path.IsPathRooted(path))
+                    return true; // Absolute long path - allow it
+                return false;
+            }
             catch
             {
                 return false;

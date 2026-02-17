@@ -12,6 +12,7 @@ using ConsoleImage.Core;
 using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Player;
 using ConsoleImage.Transcription;
+using ConsoleImage.Video.Core;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
@@ -767,6 +768,12 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
 
         // Use Whisper for transcription
+        // Resolve FFmpeg path via FFmpegProvider (finds PATH, WinGet, cache, auto-downloads)
+        var resolvedFfmpeg = ffmpegPath;
+        if (string.IsNullOrEmpty(resolvedFfmpeg) && !noAutoDownload)
+            try { resolvedFfmpeg = await FFmpegProvider.GetFFmpegPathAsync(ffmpegPath, null, cancellationToken); }
+            catch { /* Will fail later with helpful message */ }
+
         var transcriptOpts = new TranscriptionHandler.TranscriptionOptions
         {
             InputPath = inputFullPath, // Use resolved URL (YouTube stream URL, etc.)
@@ -779,7 +786,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             Quiet = false, // Show progress on stderr
             EnhanceAudio = enhanceAudio,
             StartTime = start,
-            Duration = duration
+            Duration = duration,
+            FfmpegPath = resolvedFfmpeg,
+            NoAutoDownload = noAutoDownload
         };
 
         return await TranscriptionHandler.HandleAsync(transcriptOpts, cancellationToken);
@@ -804,15 +813,73 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     {
         // Fall through to VideoHandler below - FFmpeg handles GIFs
     }
-    // Image files (jpg, png, gif, etc.) - normal rendering
+    // Image files (jpg, png, gif, svg, etc.) - normal rendering
     else if (IsImageFile(extension))
     {
+        // SVG files need rasterization via FFmpeg (ImageSharp has no SVG decoder)
+        string? svgTempFile = null;
+        var effectiveInput = input;
+        if (IsSvgFile(extension))
+        {
+            try
+            {
+                var svgFfmpeg = ffmpegPath;
+                if (string.IsNullOrEmpty(svgFfmpeg) && !noAutoDownload)
+                    svgFfmpeg = await FFmpegProvider.GetFFmpegPathAsync(ffmpegPath, null, cancellationToken);
+
+                if (string.IsNullOrEmpty(svgFfmpeg))
+                {
+                    Console.Error.WriteLine("FFmpeg is required to rasterize SVG files.");
+                    Console.Error.WriteLine("  Windows: winget install FFmpeg");
+                    Console.Error.WriteLine("  macOS:   brew install ffmpeg");
+                    Console.Error.WriteLine("  Linux:   apt install ffmpeg");
+                    return 1;
+                }
+
+                // Rasterize SVG to temp PNG at high resolution
+                var targetWidth = (width ?? maxWidth) * 8; // 8 pixels per character for quality
+                if (targetWidth < 800) targetWidth = 1920;
+                svgTempFile = Path.Combine(Path.GetTempPath(), $"consoleimage_svg_{Guid.NewGuid():N}.png");
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = svgFfmpeg,
+                    Arguments = $"-i \"{input.FullName}\" -vf \"scale={targetWidth}:-1\" -y \"{svgTempFile}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(psi);
+                if (process != null)
+                {
+                    await process.WaitForExitAsync(cancellationToken);
+                    if (process.ExitCode != 0 || !File.Exists(svgTempFile))
+                    {
+                        Console.Error.WriteLine("Failed to rasterize SVG. FFmpeg may not support SVG input.");
+                        Console.Error.WriteLine("Try converting with: inkscape -o output.png input.svg");
+                        return 1;
+                    }
+                }
+
+                effectiveInput = new FileInfo(svgTempFile);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"SVG rasterization failed: {ex.Message}");
+                return 1;
+            }
+        }
+
+        try
+        {
         // Compute perceptual hash of source image if requested
         if (showHash)
         {
             try
             {
-                using var hashImage = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(input.FullName);
+                using var hashImage = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(effectiveInput.FullName);
                 var (hash, avgBrightness) = FrameHasher.ComputeHashWithBrightness(hashImage);
                 Console.Error.WriteLine($"Hash: 0x{hash:X16}  Brightness: {avgBrightness}  ({input.Name})");
             }
@@ -823,7 +890,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
 
         return await ImageHandler.HandleAsync(
-            input, width, height, maxWidth, maxHeight,
+            effectiveInput, width, height, maxWidth, maxHeight,
             charAspect, savedCalibration,
             useBlocks, useBraille,
             useMatrix, matrixColor, matrixFullColor,
@@ -838,6 +905,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             useGreyscaleAnsi,
             noDither,
             cancellationToken);
+        }
+        finally
+        {
+            // Cleanup SVG temp file
+            if (svgTempFile != null && File.Exists(svgTempFile))
+                try { File.Delete(svgTempFile); } catch { }
+        }
     }
 
     // Load subtitles based on --subs value
@@ -939,6 +1013,13 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 }
 
                 Console.Error.WriteLine($"Starting live transcription with Whisper ({whisperModel ?? "base"})...");
+
+                // Resolve FFmpeg for chunked transcription (same provider as video playback)
+                string? chunkedFfmpeg = ffmpegPath;
+                if (string.IsNullOrEmpty(chunkedFfmpeg) && !noAutoDownload)
+                    try { chunkedFfmpeg = await FFmpegProvider.GetFFmpegPathAsync(ffmpegPath, null, cancellationToken); }
+                    catch { /* ChunkedTranscriber will fall back to its own search */ }
+
                 try
                 {
                     chunkedTranscriber = new ChunkedTranscriber(
@@ -948,7 +1029,8 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                         15.0, // Smaller chunks for faster initial results
                         30.0, // Buffer 30s ahead of playback
                         effectiveStart, // Start from --ss position
-                        enhanceAudio); // FFmpeg audio preprocessing filters
+                        enhanceAudio, // FFmpeg audio preprocessing filters
+                        chunkedFfmpeg); // Pre-resolved FFmpeg path
 
                     // Hook up progress events for visual feedback (only during initial setup)
                     var showProgress = true;
@@ -1013,7 +1095,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             subtitles = await LoadSubtitlesAsync(
                 subtitleSource, subtitleFilePath, inputFullPath, subtitleLang ?? "en",
                 whisperModel ?? "base", whisperThreads, diarize, start, duration, autoConfirmDownload, enhanceAudio,
-                cancellationToken);
+                ffmpegPath, cancellationToken);
         }
     }
 
@@ -1290,7 +1372,12 @@ static bool IsDocumentFile(string extension, string fileName)
 
 static bool IsImageFile(string extension)
 {
-    return extension is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif";
+    return extension is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif" or ".webp" or ".tiff" or ".tif" or ".svg";
+}
+
+static bool IsSvgFile(string extension)
+{
+    return extension is ".svg";
 }
 
 // Easter egg: play embedded Star Wars animation
@@ -1454,6 +1541,7 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
     double? duration,
     bool autoConfirm,
     bool enhanceAudio,
+    string? ffmpegPath,
     CancellationToken ct)
 {
     try
@@ -1473,7 +1561,7 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
 
             case "whisper":
                 return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize,
-                    startTime, duration, autoConfirm, enhanceAudio, ct);
+                    startTime, duration, autoConfirm, enhanceAudio, ffmpegPath, ct);
 
             case "auto":
                 // Auto mode priority:
@@ -1510,7 +1598,7 @@ static async Task<SubtitleTrack?> LoadSubtitlesAsync(
                 {
                     Console.Error.WriteLine("No subtitles found, using Whisper transcription...");
                     return await TranscribeWithWhisperAsync(inputPath, lang, whisperModel, whisperThreads, diarize,
-                        startTime, duration, autoConfirm, enhanceAudio, ct);
+                        startTime, duration, autoConfirm, enhanceAudio, ffmpegPath, ct);
                 }
 
                 Console.Error.WriteLine(
@@ -1616,6 +1704,7 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
     double? duration,
     bool autoConfirm,
     bool enhanceAudio,
+    string? ffmpegPath,
     CancellationToken ct)
 {
     // Check model availability and prompt if needed
@@ -1629,6 +1718,12 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
 
     try
     {
+        // Resolve FFmpeg if not already provided
+        var resolvedFfmpeg = ffmpegPath;
+        if (string.IsNullOrEmpty(resolvedFfmpeg))
+            try { resolvedFfmpeg = await FFmpegProvider.GetFFmpegPathAsync(null, null, ct); }
+            catch { /* Will fail later with helpful message */ }
+
         var opts = new TranscriptionHandler.TranscriptionOptions
         {
             InputPath = inputPath,
@@ -1639,7 +1734,8 @@ static async Task<SubtitleTrack?> TranscribeWithWhisperAsync(
             Threads = threads,
             StartTime = startTime,
             Duration = duration,
-            EnhanceAudio = enhanceAudio
+            EnhanceAudio = enhanceAudio,
+            FfmpegPath = resolvedFfmpeg
         };
 
         var result = await TranscriptionHandler.HandleAsync(opts, ct);
@@ -1786,6 +1882,11 @@ static Command CreateTranscribeSubcommand()
         if (!string.IsNullOrEmpty(whisperUrl))
             return await TranscribeWithRemoteApiAsync(input, output, lang ?? "en", whisperUrl, ct);
 
+        // Resolve FFmpeg via FFmpegProvider for audio extraction
+        string? resolvedFfmpeg = null;
+        try { resolvedFfmpeg = await FFmpegProvider.GetFFmpegPathAsync(null, null, ct); }
+        catch { /* Will fail later with helpful message */ }
+
         var opts = new TranscriptionHandler.TranscriptionOptions
         {
             InputPath = input,
@@ -1796,7 +1897,8 @@ static Command CreateTranscribeSubcommand()
             Threads = threads,
             StreamToStdout = stream,
             Quiet = quiet,
-            EnhanceAudio = !noEnhance
+            EnhanceAudio = !noEnhance,
+            FfmpegPath = resolvedFfmpeg
         };
 
         return await TranscriptionHandler.HandleAsync(opts, ct);
