@@ -552,7 +552,7 @@ jobs:
           cd consoleimage-mcp-${{ matrix.rid }} && tar -czvf ../consoleimage-mcp-${{ matrix.rid }}.tar.gz *
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.rid }}
           path: |

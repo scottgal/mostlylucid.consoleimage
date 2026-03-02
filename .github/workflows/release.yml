@@ -158,19 +158,19 @@ jobs:
           tar -czvf ../${{ matrix.artifact }}-mcp.tar.gz *
 
       - name: Upload artifact - CLI
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: archive/${{ matrix.artifact }}.*
 
       - name: Upload artifact - CLI Whisper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}-whisper
           path: archive/${{ matrix.artifact }}-whisper.*
 
       - name: Upload artifact - MCP
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}-mcp
           path: archive/${{ matrix.artifact }}-mcp.*
