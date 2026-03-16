@@ -909,16 +909,17 @@ public class BrailleRenderer : IDisposable
 
         // --- Pass 1: compute raw cell data ---
         // Use ArrayPool to avoid per-frame heap pressure during video playback.
-        var chars   = ArrayPool<char>.Shared.Rent(cells);
-        var cellFgR = ArrayPool<byte>.Shared.Rent(cells);
-        var cellFgG = ArrayPool<byte>.Shared.Rent(cells);
-        var cellFgB = ArrayPool<byte>.Shared.Rent(cells);
-        var rawBgR  = ArrayPool<byte>.Shared.Rent(cells);
-        var rawBgG  = ArrayPool<byte>.Shared.Rent(cells);
-        var rawBgB  = ArrayPool<byte>.Shared.Rent(cells);
-        var smBgR   = ArrayPool<byte>.Shared.Rent(cells);
-        var smBgG   = ArrayPool<byte>.Shared.Rent(cells);
-        var smBgB   = ArrayPool<byte>.Shared.Rent(cells);
+        var chars    = ArrayPool<char>.Shared.Rent(cells);
+        var cellFgR  = ArrayPool<byte>.Shared.Rent(cells);
+        var cellFgG  = ArrayPool<byte>.Shared.Rent(cells);
+        var cellFgB  = ArrayPool<byte>.Shared.Rent(cells);
+        var rawBgR   = ArrayPool<byte>.Shared.Rent(cells);
+        var rawBgG   = ArrayPool<byte>.Shared.Rent(cells);
+        var rawBgB   = ArrayPool<byte>.Shared.Rent(cells);
+        var smBgR    = ArrayPool<byte>.Shared.Rent(cells);
+        var smBgG    = ArrayPool<byte>.Shared.Rent(cells);
+        var smBgB    = ArrayPool<byte>.Shared.Rent(cells);
+        var edgeMask = ArrayPool<bool>.Shared.Rent(cells);
 
         try
         {
@@ -959,21 +960,27 @@ public class BrailleRenderer : IDisposable
                     }
 
                     // Compute raw FG (accurate, local) and raw BG (to be smoothed later).
+                    // edgeMask marks cells that are actually blurred — only mixed cells get
+                    // the AA treatment. Fully-ON and fully-OFF cells are never blurred
+                    // (blurring interior/background areas creates the "fuzzy" look). They still
+                    // CONTRIBUTE their colour to the blur samples of neighbouring edge cells.
                     if (onCount == 0)
                     {
                         // All-background cell: both colours track the OFF pixel average.
                         cellFgR[idx] = rawBgR[idx] = offCount > 0 ? (byte)(offR / offCount) : (byte)0;
                         cellFgG[idx] = rawBgG[idx] = offCount > 0 ? (byte)(offG / offCount) : (byte)0;
                         cellFgB[idx] = rawBgB[idx] = offCount > 0 ? (byte)(offB / offCount) : (byte)0;
+                        edgeMask[idx] = false;
                     }
                     else if (offCount == 0)
                     {
                         // Fully-covered cell: both colours track the ON pixel average.
-                        // BG is invisible here but we still store it for the blur — the
-                        // smoothed BG will bleed into adjacent edge-cells and improve AA there.
+                        // BG is invisible here but stored for the blur so the warm colour
+                        // bleeds into adjacent edge-cells and improves AA there.
                         cellFgR[idx] = rawBgR[idx] = (byte)(onR / onCount);
                         cellFgG[idx] = rawBgG[idx] = (byte)(onG / onCount);
                         cellFgB[idx] = rawBgB[idx] = (byte)(onB / onCount);
+                        edgeMask[idx] = false;
                     }
                     else
                     {
@@ -983,6 +990,7 @@ public class BrailleRenderer : IDisposable
                         rawBgR[idx]  = (byte)(offR / offCount);
                         rawBgG[idx]  = (byte)(offG / offCount);
                         rawBgB[idx]  = (byte)(offB / offCount);
+                        edgeMask[idx] = true; // Mixed cell — apply AA blur to BG
                     }
                 }
             }
@@ -993,7 +1001,9 @@ public class BrailleRenderer : IDisposable
             // the object's shadow colour to pure black is replaced by a gradual gradient —
             // the terminal equivalent of anti-aliased edge rendering.
             // FG is deliberately NOT blurred: dot colours must be accurate to the source.
-            SmoothenBgChannel(rawBgR, rawBgG, rawBgB, smBgR, smBgG, smBgB, charWidth, charHeight);
+            // edgeMask controls which cells receive the blurred result — only mixed (edge)
+            // cells are smoothed; fully-ON and fully-OFF cells copy rawBg as-is.
+            SmoothenBgChannel(rawBgR, rawBgG, rawBgB, smBgR, smBgG, smBgB, edgeMask, charWidth, charHeight);
 
             // --- Pass 2: apply strategy + corrections, build ANSI output ---
             var sb = new StringBuilder(cells * 30 + charHeight * 10);
@@ -1105,6 +1115,7 @@ public class BrailleRenderer : IDisposable
             ArrayPool<byte>.Shared.Return(smBgR);
             ArrayPool<byte>.Shared.Return(smBgG);
             ArrayPool<byte>.Shared.Return(smBgB);
+            ArrayPool<bool>.Shared.Return(edgeMask);
         }
     }
 
@@ -1122,12 +1133,28 @@ public class BrailleRenderer : IDisposable
     private static void SmoothenBgChannel(
         byte[] srcR, byte[] srcG, byte[] srcB,
         byte[] dstR, byte[] dstG, byte[] dstB,
+        bool[] edgeMask,
         int width, int height)
     {
         for (var cy = 0; cy < height; cy++)
         {
             for (var cx = 0; cx < width; cx++)
             {
+                var i = cy * width + cx;
+
+                // Only blur edge cells (mixed ON+OFF pixels).
+                // Fully-ON and fully-OFF cells copy rawBg directly — blurring solid
+                // interior or background areas produces the unwanted "fuzzy" look.
+                // These cells still contribute their colour as blur SOURCE for neighbouring
+                // edge cells (the sample loop below reads from all 8 neighbours unconditionally).
+                if (!edgeMask[i])
+                {
+                    dstR[i] = srcR[i];
+                    dstG[i] = srcG[i];
+                    dstB[i] = srcB[i];
+                    continue;
+                }
+
                 float totalR = 0, totalG = 0, totalB = 0, totalW = 0;
 
                 for (var ky = -1; ky <= 1; ky++)
@@ -1151,7 +1178,6 @@ public class BrailleRenderer : IDisposable
                     }
                 }
 
-                var i = cy * width + cx;
                 dstR[i] = (byte)(totalR / totalW);
                 dstG[i] = (byte)(totalG / totalW);
                 dstB[i] = (byte)(totalB / totalW);

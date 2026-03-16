@@ -1358,7 +1358,7 @@ public static class CompressedDocumentArchive
         // 7z magic: "7z\xBC\xAF\x27\x1C" - legacy format
         if (read >= 6 && magic[0] == 0x37 && magic[1] == 0x7A && magic[2] == 0xBC)
         {
-            using var archive = SevenZipArchive.Open(fileStream);
+            using var archive = SevenZipArchive.OpenArchive(fileStream, new SharpCompress.Readers.ReaderOptions());
             var entry = archive.Entries.FirstOrDefault(e => !e.IsDirectory);
             if (entry == null)
                 throw new InvalidOperationException("Archive contains no files");

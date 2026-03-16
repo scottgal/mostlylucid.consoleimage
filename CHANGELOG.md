@@ -2,6 +2,101 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.0] - 2026-03-16
+
+### Major Features
+
+#### Dual-Color Braille Mode (`--dual` / `-D`)
+- **Independent FG and BG colors per cell** - Standard braille assigns a single foreground color; dual-color assigns separate 24-bit colors to both the dot foreground and the cell background, sourced directly from the image's pixel data.
+- **Smoother gradients** - Shadows have depth, gradients look richer, and color transitions are far more natural than single-color braille.
+- **Always correct on any terminal** - Dual-color always emits an explicit ANSI background for every cell, so it looks right on dark, light, and custom terminal themes.
+
+```bash
+# Enable dual-color (default "value" strategy)
+consoleimage photo.jpg --dual
+consoleimage photo.jpg -D
+
+# Pick a color strategy
+consoleimage photo.jpg -D --dual-strategy complement
+consoleimage photo.jpg -D --ds warmcool
+
+# Video or slideshow with dual-color
+consoleimage movie.mp4 --dual --stabilize
+consoleimage ./photos --dual --ds saturate
+```
+
+#### Four Color Strategies (`--dual-strategy` / `--ds`)
+
+| Strategy | Description | Best for |
+|----------|-------------|----------|
+| `value` (default) | FG = bright pixels, BG = dark pixels — raw image colors | Photos, portraits, landscapes |
+| `complement` | FG = source color; BG = complementary hue at 30% lightness — vivid halo effect | Colorful animations, logos, neon |
+| `warmcool` | Warm pixels (R+G dominant) → FG; cool pixels (B dominant) → BG | Sunsets, firelight, scenes with natural depth |
+| `saturate` | FG boosted +30% saturation; BG reduced to 40% saturation — poster effect | Bold graphics, cartoons, high contrast |
+
+#### Gaussian Background Anti-Aliasing
+Dual-color rendering uses a two-pass pipeline with spatial smoothing on the BG channel:
+
+- **Pass 1** — Computes raw (char, fg, rawBg) for every cell using `ArrayPool` to avoid per-frame allocations.
+- **AA pass** — A 3×3 Gaussian blur (kernel: corners=1, edges=2, centre=4) is applied across all cell BG values. This smooths inter-cell BG transitions: at object edges the hard jump to black is replaced by a gradual gradient — the terminal equivalent of anti-aliased rendering. FG is deliberately NOT blurred to preserve dot-colour accuracy.
+- **Pass 2** — Applies strategy, temporal quantisation, and luminance correction using the smoothed BG.
+
+Fully-covered cells (all 8 dots ON) contribute their ON-pixel colour into the blur, so the warm glow from interior object cells bleeds naturally into neighbouring edge cells.
+
+#### Terminal Background Detection
+- **OSC 11 query** — `ConsoleHelper.DetectTerminalBackground()` sends `\x1b]11;?\x1b\\` and reads back the terminal's actual background colour.
+- **Alpha compositing** — Transparent pixels in PNG/WebP images are composited against the real terminal background instead of black, eliminating the "hard black cutoff" artefact on non-black terminals.
+- **Automatic** — Applied at startup by `ImageHandler`, `VideoHandler`, and `SlideshowHandler`; exposed via `RenderOptions.TerminalBackground`.
+
+```bash
+# No flags needed — terminal background is detected automatically when rendering transparent images
+consoleimage logo.png --dual
+```
+
+### Bug Fixes
+
+#### Dual-Color Banding Fix
+- **Root cause** — `ApplyAtkinsonDithering` returns a new dithered buffer. The FG/BG pixel-group split was using dithered binary values (0/1) against a 0.5 threshold instead of the original continuous brightness against the Otsu threshold. Atkinson error diffuses left-to-right and top-to-bottom, producing systematically different ON/OFF distributions per row — causing horizontal banding.
+- **Fix** — The call site now preserves `originalBrightness` before overwriting with the dithered result. `RenderBrailleContentDual` receives both; `originalBrightness` is used for the pixel group split, the dithered result only for the dot-pattern character.
+
+#### Dual-Color Color Bleed Fix
+- Removed logic that skipped outputting cells with near-black BG (bare space output). Dual-color mode now always emits an explicit ANSI background so no cell ever exposes the terminal's own background colour.
+
+#### GIF Output for Dual-Color Mode
+- **Root cause** — `GifWriter.ParseBrailleLineStatic` only tracked FG colour (`38;2`), ignoring BG (`48;2`). The render loop only drew pixels where braille dots were ON; OFF-dot pixels fell back to the global black background.
+- **Fix** — `ParseBrailleLineStatic` now tracks both FG and BG by delegating to `ParseColorBlockCodesStatic`. The render loop fills every dot pixel: ON dots use `fgColor`, OFF dots use `bgColor`. Dual-color GIF output now correctly displays the per-cell background fill.
+
+### New CLI Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--dual` | `-D` | Enable dual-color braille mode | OFF |
+| `--dual-strategy` | `--ds` | Color strategy: `value`, `complement`, `warmcool`, `saturate` | `value` |
+
+### Documentation
+
+- **`docs/DUAL-COLOR.md`** — New comprehensive guide covering what dual-color is, the full rendering pipeline, all four strategies with sample GIFs and a comparison table, technical details (ANSI sequence, temporal stability, terminal BG detection, performance), and tips for choosing strategies.
+- **`docs/CLI-GUIDE.md`** — Added dual-color to the modes table and a dedicated "Dual-Color Braille" section with examples and strategy reference.
+- **`docs/BRAILLE-RENDERING.md`** — Added "Dual-Color Mode" section explaining the pipeline difference from standard braille and why original brightness is used for the pixel split.
+- **`README.md`** — Updated modes table with dual-color row; added "Dual-Color Braille: Maximum Color Quality" section with four-strategy GIF comparison table.
+- **`samples/`** — Added `wiggum_dual_value.gif`, `wiggum_dual_complement.gif`, `wiggum_dual_warmcool.gif`, `wiggum_dual_saturate.gif`.
+
+### Technical Details
+
+**ANSI sequence per cell in dual-color mode:**
+```
+ESC[38;2;<R>;<G>;<B>;48;2;<R>;<G>;<B>m<braille char>
+```
+This is ~2× the output size of standard braille mode. Output compresses well in `.cidz` files.
+
+**Otsu threshold for pixel-group split:**
+Dual-color always uses Otsu's method to find the threshold that maximises between-class variance. This ensures roughly equal representation of FG and BG pixels per image, so neither colour dominates everywhere.
+
+**Temporal stability in dual-color:**
+`--stabilize` / `--colors N` snap both FG and BG to a coarse palette grid after averaging, preventing small frame-to-frame drift from causing flicker. Strongly recommended for video: two independent colour averages per cell are more susceptible to drift than a single average.
+
+---
+
 ## [4.1.0] - 2025-01-25
 
 ### Bug Fixes
