@@ -428,20 +428,22 @@ public class GifWriter : IDisposable
             var cells = ParseBrailleLineStatic(lines[lineY]);
             for (var x = 0; x < cells.Count; x++)
             {
-                var (brailleChar, fgColor) = cells[x];
+                var (brailleChar, fgColor, bgColor) = cells[x];
                 var dots = DecodeBraille(brailleChar);
+                var fgPixel = ToRgba32(fgColor);
+                var bgPixel = ToRgba32(bgColor);
 
                 for (var dy = 0; dy < 4; dy++)
                 for (var dx = 0; dx < 2; dx++)
-                    if (dots[dy, dx])
-                    {
-                        var px = (x * 2 + dx) * dotSize;
-                        var py = (lineY * 4 + dy) * dotSize;
-                        for (var iy = 0; iy < dotSize; iy++)
-                        for (var ix = 0; ix < dotSize; ix++)
-                            if (px + ix < image.Width && py + iy < image.Height)
-                                image[px + ix, py + iy] = ToRgba32(fgColor);
-                    }
+                {
+                    var px = (x * 2 + dx) * dotSize;
+                    var py = (lineY * 4 + dy) * dotSize;
+                    var pixel = dots[dy, dx] ? fgPixel : bgPixel;
+                    for (var iy = 0; iy < dotSize; iy++)
+                    for (var ix = 0; ix < dotSize; ix++)
+                        if (px + ix < image.Width && py + iy < image.Height)
+                            image[px + ix, py + iy] = pixel;
+                }
             }
         }
 
@@ -544,21 +546,22 @@ public class GifWriter : IDisposable
         return image;
     }
 
-    private static List<(char BrailleChar, Color FgColor)> ParseBrailleLineStatic(string line)
+    private static List<(char BrailleChar, Color FgColor, Color BgColor)> ParseBrailleLineStatic(string line)
     {
-        var result = new List<(char, Color)>();
+        var result = new List<(char, Color, Color)>();
         var currentFg = Color.White;
+        var currentBg = Color.Black;
 
         foreach (Match match in AnsiOrCharRegex.Matches(line))
             if (match.Groups[1].Success)
             {
                 var codes = match.Groups[1].Value.Split(';', StringSplitOptions.RemoveEmptyEntries);
-                currentFg = ParseAnsiCodesStatic(codes, currentFg);
+                (currentFg, currentBg) = ParseColorBlockCodesStatic(codes, currentFg, currentBg);
             }
             else if (match.Groups[2].Success)
             {
                 var c = match.Groups[2].Value[0];
-                result.Add((c, currentFg));
+                result.Add((c, currentFg, currentBg));
             }
 
         return result;

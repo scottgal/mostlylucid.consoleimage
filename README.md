@@ -92,12 +92,13 @@ Use `-y` / `--yes` to auto-confirm all downloads without prompts. All downloads 
 
 ## Render Modes
 
-| Mode        | Command                     | Resolution         | Best For                     |
-|-------------|-----------------------------|--------------------|------------------------------|
-| **Braille** | `consoleimage photo.jpg`    | 8x (2x4 dots/cell) | **DEFAULT** - Maximum detail |
-| **ASCII**   | `consoleimage photo.jpg -a` | Standard           | Widest compatibility         |
-| **Blocks**  | `consoleimage photo.jpg -b` | 2x vertical        | Photos, high fidelity        |
-| **Matrix**  | `consoleimage photo.jpg -M` | Digital rain       | Special effects              |
+| Mode             | Command                          | Resolution         | Best For                       |
+|------------------|----------------------------------|--------------------|--------------------------------|
+| **Braille**      | `consoleimage photo.jpg`         | 8x (2x4 dots/cell) | **DEFAULT** - Maximum detail   |
+| **Dual-Color**   | `consoleimage photo.jpg --dual`  | 8x + filled BG     | Richest color, smooth gradients |
+| **ASCII**        | `consoleimage photo.jpg -a`      | Standard           | Widest compatibility           |
+| **Blocks**       | `consoleimage photo.jpg -b`      | 2x vertical        | Photos, high fidelity          |
+| **Matrix**       | `consoleimage photo.jpg -M`      | Digital rain       | Special effects                |
 
 ### Comparison
 
@@ -105,6 +106,23 @@ Use `-y` / `--yes` to auto-confirm all downloads without prompts. All downloads 
 |---|---|---|
 | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="250" alt="Braille Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_ascii.gif" width="250" alt="ASCII Mode"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_blocks.gif" width="250" alt="ColorBlocks Mode"> |
 | 2x4 dot patterns (8x resolution) | Shape-matched characters | Unicode half-blocks |
+
+### Dual-Color Braille: Maximum Color Quality
+
+Dual-color mode assigns independent 24-bit colors to both the dot foreground and the cell background, filling in between dots with image-sampled color for the smoothest, richest output:
+
+| Standard Braille | Dual-Color (value) | Dual-Color (complement) | Dual-Color (saturate) |
+|---|---|---|---|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="160" alt="Standard Braille"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_dual_value.gif" width="160" alt="Dual Value"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_dual_complement.gif" width="160" alt="Dual Complement"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_dual_saturate.gif" width="160" alt="Dual Saturate"> |
+
+```bash
+consoleimage photo.jpg --dual                  # default: photorealistic
+consoleimage photo.jpg -D --ds complement      # complementary hue BG
+consoleimage photo.jpg -D --ds warmcool        # warm FG / cool BG
+consoleimage photo.jpg -D --ds saturate        # vivid FG / muted BG
+```
+
+> See **[docs/DUAL-COLOR.md](docs/DUAL-COLOR.md)** for full documentation.
 
 ### Monochrome Braille: Compact & Fast
 
@@ -133,7 +151,8 @@ For the complete CLI guide covering all modes, subtitles, YouTube, slideshow, ex
 - **SIMD braille vectorization**: 8D shape vectors for all 256 braille patterns with `Vector256<float>` hardware acceleration
 - **Expanded ASCII character sets**: Full 95 printable ASCII characters with disk-cached shape vectors
 - **Braille interlace mode** (experimental): Temporal super-resolution via rapid frame cycling (FRC-inspired)
-- **Multiple render modes**: ASCII, ColorBlocks, Braille, Matrix, iTerm2, Kitty, Sixel
+- **Dual-color braille**: Independent 24-bit FG+BG per cell from image data — four color strategies (value, complement, warmcool, saturate)
+- **Multiple render modes**: ASCII, ColorBlocks, Braille, Dual-Color, Matrix, iTerm2, Kitty, Sixel
 - **Animated GIF/video support**: Flicker-free DECSET 2026 synchronized output
 - **Dynamic resize**: Animations re-render when you resize the console window
 - **Live AI subtitles**: Real-time Whisper transcription during video playback

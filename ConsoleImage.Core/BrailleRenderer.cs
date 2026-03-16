@@ -882,173 +882,281 @@ public class BrailleRenderer : IDisposable
 
     /// <summary>
     ///     Render braille with dual-color mode: FG from ON pixels, BG from OFF pixels.
-    ///     Uses post-dithered binary data to split pixels into two color groups.
+    ///
+    ///     Two-pass anti-aliased pipeline:
+    ///       Pass 1  — compute raw (char, fg, rawBg) for every cell from pixel data.
+    ///       AA pass — apply a 3×3 Gaussian blur to rawBg across cells.
+    ///                 This is the terminal equivalent of edge anti-aliasing: instead of each
+    ///                 cell's background jumping hard to black at object edges, the blurred BG
+    ///                 carries neighboring cells' ambient color into the transition zone, producing
+    ///                 smooth gradients rather than harsh cutoffs.
+    ///       Pass 2  — apply color strategy, gamma, and luminance correction on smoothed BG,
+    ///                 then emit ANSI.
+    ///
+    ///     FG is deliberately kept local (2×4 cell only) for accuracy.
+    ///     BG is smoothed across cells because it is the "background fill" — the ambient
+    ///     colour between and around the dots — and smooth inter-cell transitions look far
+    ///     better than independent per-cell averages at object boundaries.
     /// </summary>
     private string RenderBrailleContentDual(float[] brightness, float[] originalBrightness, Rgba32[] colors,
         int pixelWidth, int pixelHeight, float threshold, string strategy)
     {
         var charWidth = pixelWidth / 2;
         var charHeight = pixelHeight / 4;
+        var cells = charWidth * charHeight;
         var invertMode = _options.Invert;
-        // Hoist strategy lookup out of per-cell loop
         var strategyLower = strategy.ToLowerInvariant();
 
-        var sb = new StringBuilder(charWidth * charHeight * 30 + charHeight * 10);
+        // --- Pass 1: compute raw cell data ---
+        // Use ArrayPool to avoid per-frame heap pressure during video playback.
+        var chars   = ArrayPool<char>.Shared.Rent(cells);
+        var cellFgR = ArrayPool<byte>.Shared.Rent(cells);
+        var cellFgG = ArrayPool<byte>.Shared.Rent(cells);
+        var cellFgB = ArrayPool<byte>.Shared.Rent(cells);
+        var rawBgR  = ArrayPool<byte>.Shared.Rent(cells);
+        var rawBgG  = ArrayPool<byte>.Shared.Rent(cells);
+        var rawBgB  = ArrayPool<byte>.Shared.Rent(cells);
+        var smBgR   = ArrayPool<byte>.Shared.Rent(cells);
+        var smBgG   = ArrayPool<byte>.Shared.Rent(cells);
+        var smBgB   = ArrayPool<byte>.Shared.Rent(cells);
 
-        byte lastFgR = 0, lastFgG = 0, lastFgB = 0;
-        byte lastBgR = 0, lastBgG = 0, lastBgB = 0;
-        var hasLastColor = false;
-
-        for (var cy = 0; cy < charHeight; cy++)
+        try
         {
-            for (var cx = 0; cx < charWidth; cx++)
+            for (var cy = 0; cy < charHeight; cy++)
             {
-                var px = cx * 2;
-                var py = cy * 4;
-
-                var brailleChar = ComputeBrailleCodeDirect(brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
-
-                int onR = 0, onG = 0, onB = 0, onCount = 0;
-                int offR = 0, offG = 0, offB = 0, offCount = 0;
-
-                for (var dy = 0; dy < 4; dy++)
+                for (var cx = 0; cx < charWidth; cx++)
                 {
-                    var imgY = py + dy;
-                    if (imgY >= pixelHeight) continue;
-                    var rowOffset = imgY * pixelWidth;
+                    var idx = cy * charWidth + cx;
+                    var px  = cx * 2;
+                    var py  = cy * 4;
 
-                    for (var dx = 0; dx < 2; dx++)
+                    chars[idx] = ComputeBrailleCodeDirect(brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
+
+                    int onR = 0, onG = 0, onB = 0, onCount  = 0;
+                    int offR = 0, offG = 0, offB = 0, offCount = 0;
+
+                    for (var dy = 0; dy < 4; dy++)
                     {
-                        var imgX = px + dx;
-                        if (imgX >= pixelWidth) continue;
+                        var imgY = py + dy;
+                        if (imgY >= pixelHeight) continue;
+                        var rowOffset = imgY * pixelWidth;
 
-                        var c = colors[rowOffset + imgX];
-                        var origB = originalBrightness[rowOffset + imgX];
-                        // Use original (pre-dithered) brightness with the Otsu threshold to split
-                        // pixels into FG/BG color groups. Using dithered binary values causes
-                        // dithering-pattern banding because the error diffusion creates different
-                        // ON/OFF distributions row-to-row. Original brightness gives stable splits.
-                        var isOn = invertMode ? origB > threshold : origB <= threshold;
+                        for (var dx = 0; dx < 2; dx++)
+                        {
+                            var imgX = px + dx;
+                            if (imgX >= pixelWidth) continue;
 
-                        if (isOn)
-                        {
-                            onR += c.R; onG += c.G; onB += c.B;
-                            onCount++;
-                        }
-                        else
-                        {
-                            offR += c.R; offG += c.G; offB += c.B;
-                            offCount++;
+                            var c     = colors[rowOffset + imgX];
+                            var origB = originalBrightness[rowOffset + imgX];
+                            // Use original (pre-dithered) brightness with the Otsu threshold.
+                            // Dithered binary values cause row-level banding (Atkinson error
+                            // diffusion creates different ON/OFF distributions per row).
+                            if (invertMode ? origB > threshold : origB <= threshold)
+                            { onR  += c.R; onG  += c.G; onB  += c.B; onCount++;  }
+                            else
+                            { offR += c.R; offG += c.G; offB += c.B; offCount++; }
                         }
                     }
-                }
 
-                byte fgR, fgG, fgB, bgR, bgG, bgB;
-
-                if (onCount == 0 && offCount == 0)
-                {
-                    sb.Append(' ');
-                    continue;
-                }
-                else if (onCount == 0)
-                {
-                    // Empty braille cell — only BG visible; use OFF pixel color for both
-                    bgR = fgR = (byte)(offR / offCount);
-                    bgG = fgG = (byte)(offG / offCount);
-                    bgB = fgB = (byte)(offB / offCount);
-                }
-                else if (offCount == 0)
-                {
-                    // Fully-filled cell — only FG visible; use ON pixel color for both
-                    bgR = fgR = (byte)(onR / onCount);
-                    bgG = fgG = (byte)(onG / onCount);
-                    bgB = fgB = (byte)(onB / onCount);
-                }
-                else
-                {
-                    var rawFgR = (byte)(onR / onCount);
-                    var rawFgG = (byte)(onG / onCount);
-                    var rawFgB = (byte)(onB / onCount);
-                    var rawBgR = (byte)(offR / offCount);
-                    var rawBgG = (byte)(offG / offCount);
-                    var rawBgB = (byte)(offB / offCount);
-
-                    (fgR, fgG, fgB, bgR, bgG, bgB) = strategyLower switch
+                    // Compute raw FG (accurate, local) and raw BG (to be smoothed later).
+                    if (onCount == 0)
                     {
-                        "complement" => ApplyComplementStrategy(rawFgR, rawFgG, rawFgB, rawBgR, rawBgG, rawBgB),
-                        "warmcool" => ApplyWarmCoolStrategy(rawFgR, rawFgG, rawFgB, rawBgR, rawBgG, rawBgB),
-                        "saturate" => ApplySaturateStrategy(rawFgR, rawFgG, rawFgB, rawBgR, rawBgG, rawBgB),
-                        _ => (rawFgR, rawFgG, rawFgB, rawBgR, rawBgG, rawBgB)
-                    };
-
-                    // Temporal stability: snap FG and BG to a coarse grid to reduce per-frame flicker.
-                    // Averaging ON/OFF pixel groups can produce fine-grained values that shift each frame;
-                    // re-quantizing here matches what PrecomputePixelData already does to the input colors.
-                    if (_options.EnableTemporalStability || (_options.ColorCount.HasValue && _options.ColorCount.Value > 0))
+                        // All-background cell: both colours track the OFF pixel average.
+                        cellFgR[idx] = rawBgR[idx] = offCount > 0 ? (byte)(offR / offCount) : (byte)0;
+                        cellFgG[idx] = rawBgG[idx] = offCount > 0 ? (byte)(offG / offCount) : (byte)0;
+                        cellFgB[idx] = rawBgB[idx] = offCount > 0 ? (byte)(offB / offCount) : (byte)0;
+                    }
+                    else if (offCount == 0)
                     {
-                        var quantStep = (_options.ColorCount.HasValue && _options.ColorCount.Value > 0)
-                            ? Math.Max(1, 256 / _options.ColorCount.Value)
-                            : Math.Max(1, _options.ColorStabilityThreshold / 2);
-                        if (quantStep > 1)
-                        {
-                            fgR = (byte)(fgR / quantStep * quantStep);
-                            fgG = (byte)(fgG / quantStep * quantStep);
-                            fgB = (byte)(fgB / quantStep * quantStep);
-                            bgR = (byte)(bgR / quantStep * quantStep);
-                            bgG = (byte)(bgG / quantStep * quantStep);
-                            bgB = (byte)(bgB / quantStep * quantStep);
-                        }
+                        // Fully-covered cell: both colours track the ON pixel average.
+                        // BG is invisible here but we still store it for the blur — the
+                        // smoothed BG will bleed into adjacent edge-cells and improve AA there.
+                        cellFgR[idx] = rawBgR[idx] = (byte)(onR / onCount);
+                        cellFgG[idx] = rawBgG[idx] = (byte)(onG / onCount);
+                        cellFgB[idx] = rawBgB[idx] = (byte)(onB / onCount);
+                    }
+                    else
+                    {
+                        cellFgR[idx] = (byte)(onR  / onCount);
+                        cellFgG[idx] = (byte)(onG  / onCount);
+                        cellFgB[idx] = (byte)(onB  / onCount);
+                        rawBgR[idx]  = (byte)(offR / offCount);
+                        rawBgG[idx]  = (byte)(offG / offCount);
+                        rawBgB[idx]  = (byte)(offB / offCount);
                     }
                 }
-
-                // FG: mild brighten (dots are sparse, slight boost makes them pop without colour distortion)
-                // BG: mild darken (background fill should clearly recede behind the dots)
-                (fgR, fgG, fgB) = BoostBrailleColor(fgR, fgG, fgB, 0.85f);
-                (bgR, bgG, bgB) = BoostBrailleColor(bgR, bgG, bgB, 1.2f);
-
-                // Only correct when BG ends up brighter than FG (dots must always be the dominant colour).
-                // An absolute margin like (fgLum < bgLum + 0.15) clamps bright backgrounds in light
-                // image areas — never use a positive offset; only fix when the order is inverted.
-                var fgLum = 0.299f * fgR / 255f + 0.587f * fgG / 255f + 0.114f * fgB / 255f;
-                var bgLum = 0.299f * bgR / 255f + 0.587f * bgG / 255f + 0.114f * bgB / 255f;
-                if (bgLum > fgLum)
-                {
-                    bgR = (byte)(bgR * 0.65f);
-                    bgG = (byte)(bgG * 0.65f);
-                    bgB = (byte)(bgB * 0.65f);
-                }
-
-                // Always render every cell in dual-color mode — skipping to space lets the terminal
-                // background bleed through, creating artifacts on non-black terminals.
-                var colorChanged = !hasLastColor ||
-                    fgR != lastFgR || fgG != lastFgG || fgB != lastFgB ||
-                    bgR != lastBgR || bgG != lastBgG || bgB != lastBgB;
-
-                if (colorChanged)
-                {
-                    sb.Append("\x1b[38;2;");
-                    sb.Append(fgR); sb.Append(';'); sb.Append(fgG); sb.Append(';'); sb.Append(fgB);
-                    sb.Append(";48;2;");
-                    sb.Append(bgR); sb.Append(';'); sb.Append(bgG); sb.Append(';'); sb.Append(bgB);
-                    sb.Append('m');
-                    lastFgR = fgR; lastFgG = fgG; lastFgB = fgB;
-                    lastBgR = bgR; lastBgG = bgG; lastBgB = bgB;
-                    hasLastColor = true;
-                }
-
-                sb.Append(brailleChar);
             }
 
-            if (cy < charHeight - 1)
+            // --- AA pass: Gaussian blur on raw BG channel ---
+            // 3×3 kernel (unnormalised weights: corners=1, edges=2, centre=4; sum=16).
+            // This smooths inter-cell BG transitions: at an object edge, the hard jump from
+            // the object's shadow colour to pure black is replaced by a gradual gradient —
+            // the terminal equivalent of anti-aliased edge rendering.
+            // FG is deliberately NOT blurred: dot colours must be accurate to the source.
+            SmoothenBgChannel(rawBgR, rawBgG, rawBgB, smBgR, smBgG, smBgB, charWidth, charHeight);
+
+            // --- Pass 2: apply strategy + corrections, build ANSI output ---
+            var sb = new StringBuilder(cells * 30 + charHeight * 10);
+
+            byte lastFgR = 0, lastFgG = 0, lastFgB = 0;
+            byte lastBgR = 0, lastBgG = 0, lastBgB = 0;
+            var hasLastColor = false;
+
+            // Pre-compute quantisation step once (temporal stability / palette reduction).
+            var quantStep = 0;
+            if (_options.EnableTemporalStability || (_options.ColorCount.HasValue && _options.ColorCount.Value > 0))
             {
-                sb.Append("\x1b[0m");
-                sb.AppendLine();
-                hasLastColor = false;
+                quantStep = (_options.ColorCount.HasValue && _options.ColorCount.Value > 0)
+                    ? Math.Max(1, 256 / _options.ColorCount.Value)
+                    : Math.Max(1, _options.ColorStabilityThreshold / 2);
+                if (quantStep <= 1) quantStep = 0; // 0 = disabled
+            }
+
+            for (var cy = 0; cy < charHeight; cy++)
+            {
+                for (var cx = 0; cx < charWidth; cx++)
+                {
+                    var idx = cy * charWidth + cx;
+
+                    var brailleChar = chars[idx];
+                    byte fgR = cellFgR[idx], fgG = cellFgG[idx], fgB = cellFgB[idx];
+                    byte bgR = smBgR[idx],   bgG = smBgG[idx],   bgB = smBgB[idx];
+
+                    // Apply colour strategy to the mixed-cell case.
+                    // For fully-ON or fully-OFF cells both colours are the same so strategy is a no-op.
+                    if (fgR != bgR || fgG != bgG || fgB != bgB)
+                    {
+                        (fgR, fgG, fgB, bgR, bgG, bgB) = strategyLower switch
+                        {
+                            "complement" => ApplyComplementStrategy(fgR, fgG, fgB, bgR, bgG, bgB),
+                            "warmcool"   => ApplyWarmCoolStrategy  (fgR, fgG, fgB, bgR, bgG, bgB),
+                            "saturate"   => ApplySaturateStrategy  (fgR, fgG, fgB, bgR, bgG, bgB),
+                            _            => (fgR, fgG, fgB, bgR, bgG, bgB)
+                        };
+                    }
+
+                    // Temporal stability: snap both colours to a coarse grid to reduce flicker.
+                    if (quantStep > 0)
+                    {
+                        fgR = (byte)(fgR / quantStep * quantStep);
+                        fgG = (byte)(fgG / quantStep * quantStep);
+                        fgB = (byte)(fgB / quantStep * quantStep);
+                        bgR = (byte)(bgR / quantStep * quantStep);
+                        bgG = (byte)(bgG / quantStep * quantStep);
+                        bgB = (byte)(bgB / quantStep * quantStep);
+                    }
+
+                    // FG: mild brighten so sparse dots pop without colour distortion.
+                    // BG: mild darken so the fill clearly recedes behind the dots.
+                    (fgR, fgG, fgB) = BoostBrailleColor(fgR, fgG, fgB, 0.85f);
+                    (bgR, bgG, bgB) = BoostBrailleColor(bgR, bgG, bgB, 1.2f);
+
+                    // Correct inverted luminance: dots must always be the dominant colour.
+                    var fgLum = 0.299f * fgR / 255f + 0.587f * fgG / 255f + 0.114f * fgB / 255f;
+                    var bgLum = 0.299f * bgR / 255f + 0.587f * bgG / 255f + 0.114f * bgB / 255f;
+                    if (bgLum > fgLum)
+                    {
+                        bgR = (byte)(bgR * 0.65f);
+                        bgG = (byte)(bgG * 0.65f);
+                        bgB = (byte)(bgB * 0.65f);
+                    }
+
+                    // Always emit an explicit ANSI cell — never a bare space — so the
+                    // terminal's own background never shows through in dual-color mode.
+                    var colorChanged = !hasLastColor ||
+                        fgR != lastFgR || fgG != lastFgG || fgB != lastFgB ||
+                        bgR != lastBgR || bgG != lastBgG || bgB != lastBgB;
+
+                    if (colorChanged)
+                    {
+                        sb.Append("\x1b[38;2;");
+                        sb.Append(fgR); sb.Append(';'); sb.Append(fgG); sb.Append(';'); sb.Append(fgB);
+                        sb.Append(";48;2;");
+                        sb.Append(bgR); sb.Append(';'); sb.Append(bgG); sb.Append(';'); sb.Append(bgB);
+                        sb.Append('m');
+                        lastFgR = fgR; lastFgG = fgG; lastFgB = fgB;
+                        lastBgR = bgR; lastBgG = bgG; lastBgB = bgB;
+                        hasLastColor = true;
+                    }
+
+                    sb.Append(brailleChar);
+                }
+
+                if (cy < charHeight - 1)
+                {
+                    sb.Append("\x1b[0m");
+                    sb.AppendLine();
+                    hasLastColor = false;
+                }
+            }
+
+            sb.Append("\x1b[0m");
+            return sb.ToString();
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(chars);
+            ArrayPool<byte>.Shared.Return(cellFgR);
+            ArrayPool<byte>.Shared.Return(cellFgG);
+            ArrayPool<byte>.Shared.Return(cellFgB);
+            ArrayPool<byte>.Shared.Return(rawBgR);
+            ArrayPool<byte>.Shared.Return(rawBgG);
+            ArrayPool<byte>.Shared.Return(rawBgB);
+            ArrayPool<byte>.Shared.Return(smBgR);
+            ArrayPool<byte>.Shared.Return(smBgG);
+            ArrayPool<byte>.Shared.Return(smBgB);
+        }
+    }
+
+    /// <summary>
+    ///     Apply a 3×3 Gaussian blur to the BG colour channel across the cell grid.
+    ///     This is the anti-aliasing step for dual-color braille:
+    ///     each cell's background colour becomes a weighted average of itself and its
+    ///     8 neighbours, smoothing the hard transitions at object edges.
+    ///
+    ///     Unnormalised kernel weights:
+    ///       1  2  1
+    ///       2  4  2     (sum = 16; border cells normalise over available neighbours)
+    ///       1  2  1
+    /// </summary>
+    private static void SmoothenBgChannel(
+        byte[] srcR, byte[] srcG, byte[] srcB,
+        byte[] dstR, byte[] dstG, byte[] dstB,
+        int width, int height)
+    {
+        for (var cy = 0; cy < height; cy++)
+        {
+            for (var cx = 0; cx < width; cx++)
+            {
+                float totalR = 0, totalG = 0, totalB = 0, totalW = 0;
+
+                for (var ky = -1; ky <= 1; ky++)
+                {
+                    var ny = cy + ky;
+                    if (ny < 0 || ny >= height) continue;
+                    var wy = ky == 0 ? 2f : 1f;
+
+                    for (var kx = -1; kx <= 1; kx++)
+                    {
+                        var nx = cx + kx;
+                        if (nx < 0 || nx >= width) continue;
+                        var wx = kx == 0 ? 2f : 1f;
+                        var w  = wx * wy;
+
+                        var ni = ny * width + nx;
+                        totalR += srcR[ni] * w;
+                        totalG += srcG[ni] * w;
+                        totalB += srcB[ni] * w;
+                        totalW += w;
+                    }
+                }
+
+                var i = cy * width + cx;
+                dstR[i] = (byte)(totalR / totalW);
+                dstG[i] = (byte)(totalG / totalW);
+                dstB[i] = (byte)(totalB / totalW);
             }
         }
-
-        sb.Append("\x1b[0m");
-        return sb.ToString();
     }
 
     private static (byte fgR, byte fgG, byte fgB, byte bgR, byte bgG, byte bgB) ApplyComplementStrategy(

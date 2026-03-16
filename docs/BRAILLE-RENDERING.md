@@ -670,6 +670,41 @@ For a 100×50 character output:
 
 Braille provides **8x the resolution** of ASCII and **4x the resolution** of color blocks.
 
+## Dual-Color Mode: Independent FG and BG Colors
+
+Standard braille assigns one foreground color per cell. **Dual-color mode** (`--dual`) also sets the ANSI background color, sampling it independently from the image's "dark" pixels. This bridges braille's resolution advantage with block mode's filled-color quality.
+
+### How It Differs from Standard Mode
+
+```
+Standard braille cell:         Dual-color braille cell:
+
+  FG = avg(lit dot pixels)       FG = avg(bright pixels, original brightness)
+  BG = terminal default          BG = avg(dark pixels, original brightness)
+  Character = dithered dots      Character = dithered dots (same algorithm)
+```
+
+The key design decision: the FG/BG color split uses the **original pre-dithered brightness** against an Otsu threshold, not the binary dithered values. Atkinson dithering creates spatially structured ON/OFF patterns that vary row by row — using those patterns for color grouping would produce horizontal banding artifacts. The original continuous brightness gives stable, content-driven splits.
+
+### Color Strategies
+
+Four strategies control how FG and BG colors relate:
+
+| Strategy | FG | BG | Use when |
+|---|---|---|---|
+| `value` | Bright pixel average | Dark pixel average | Photorealistic output |
+| `complement` | Source average | Hue-shifted 180°, 30% lightness | High-contrast glow effect |
+| `warmcool` | Warm pixels (higher R+G−B) | Cool pixels | Depth cues from color temperature |
+| `saturate` | +30% saturation | −60% saturation | Stylized, poster-like appearance |
+
+### Temporal Stability in Dual-Color
+
+Per-cell averaging of two independent pixel groups can produce fine-grained color values that shift slightly frame-to-frame. When `--stabilize` or `--colors N` is active, both FG and BG averages are re-quantized to a coarse grid after strategy application — matching what `PrecomputePixelData` already does to input colors.
+
+For the full documentation including sample images and usage examples, see [DUAL-COLOR.md](DUAL-COLOR.md).
+
+---
+
 ## Conclusion
 
 The braille rendering technique combines several clever algorithms:

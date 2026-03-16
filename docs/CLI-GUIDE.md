@@ -2,7 +2,7 @@
 
 Complete reference for the `consoleimage` command-line tool.
 
-**See also:** [README](../README.md) | [Library API](LIBRARY-API.md) | [JSON Format](JSON-FORMAT.md) | [How It Works](HOW-IT-WORKS.md)
+**See also:** [README](../README.md) | [Library API](LIBRARY-API.md) | [JSON Format](JSON-FORMAT.md) | [How It Works](HOW-IT-WORKS.md) | [Dual-Color Braille](DUAL-COLOR.md) | [Braille Rendering](BRAILLE-RENDERING.md)
 
 ## Table of Contents
 
@@ -10,6 +10,7 @@ Complete reference for the `consoleimage` command-line tool.
 - [Common Options](#common-options)
 - [Matrix Mode](#matrix-mode)
 - [Monochrome Braille](#monochrome-braille)
+- [Dual-Color Braille](#dual-color-braille)
 - [Slideshow Mode](#slideshow-mode)
 - [YouTube Support](#youtube-support)
 - [Subtitles & Transcription](#subtitles--transcription)
@@ -24,12 +25,13 @@ Complete reference for the `consoleimage` command-line tool.
 
 ## Render Modes
 
-| Mode        | Command                     | Resolution         | Best For                     |
-|-------------|-----------------------------|--------------------|------------------------------|
-| **Braille** | `consoleimage photo.jpg`    | 8x (2x4 dots/cell) | **DEFAULT** - Maximum detail |
-| **ASCII**   | `consoleimage photo.jpg -a` | Standard           | Widest compatibility         |
-| **Blocks**  | `consoleimage photo.jpg -b` | 2x vertical        | Photos, high fidelity        |
-| **Matrix**  | `consoleimage photo.jpg -M` | Digital rain       | Special effects              |
+| Mode             | Command                          | Resolution         | Best For                      |
+|------------------|----------------------------------|--------------------|-------------------------------|
+| **Braille**      | `consoleimage photo.jpg`         | 8x (2x4 dots/cell) | **DEFAULT** - Maximum detail  |
+| **Dual-Color**   | `consoleimage photo.jpg --dual`  | 8x + filled BG     | Richest color, smooth gradients |
+| **ASCII**        | `consoleimage photo.jpg -a`      | Standard           | Widest compatibility          |
+| **Blocks**       | `consoleimage photo.jpg -b`      | 2x vertical        | Photos, high fidelity         |
+| **Matrix**       | `consoleimage photo.jpg -M`      | Digital rain       | Special effects               |
 
 **Braille mode** is the default because it packs 8 dots into each character cell, giving you the highest resolution output:
 
@@ -133,6 +135,37 @@ Matrix mode always animates continuously, even on still images.
 | `--matrix-fullcolor` | Use source image colors | OFF |
 | `--matrix-density` | Rain density (0.1-2.0) | 0.5 |
 | `--matrix-speed` | Rain speed multiplier (0.5-3.0) | 1.0 |
+
+---
+
+## Dual-Color Braille
+
+Dual-color mode assigns independent ANSI colors to both the braille dot foreground **and** the cell background, sampling each from the image's own pixels. This combines braille's 8x resolution with block mode's filled color quality.
+
+| Standard Braille | Dual-Color (value) | Dual-Color (complement) |
+|---|---|---|
+| <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_braille.gif" width="180" alt="Standard Braille"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_dual_value.gif" width="180" alt="Dual Value"> | <img src="https://github.com/scottgal/mostlylucid.consoleimage/raw/master/samples/wiggum_dual_complement.gif" width="180" alt="Dual Complement"> |
+
+```bash
+consoleimage photo.jpg --dual                        # Default "value" strategy
+consoleimage photo.jpg -D --ds complement            # Complementary hue background
+consoleimage photo.jpg -D --ds warmcool              # Warm FG, cool BG (depth effect)
+consoleimage photo.jpg -D --ds saturate              # Vivid FG, muted BG
+
+consoleimage movie.mp4 --dual --stabilize            # Video with flicker reduction
+consoleimage ./photos --dual --ds saturate           # Slideshow
+```
+
+**`--dual-strategy` / `--ds` options:**
+
+| Strategy | Effect | Best For |
+|---|---|---|
+| `value` | FG = bright pixels, BG = dark pixels (default) | Photos, portraits |
+| `complement` | BG = complementary hue (180°), darkened | Cartoons, logos |
+| `warmcool` | Warm pixels → FG, cool pixels → BG | Landscapes, indoor scenes |
+| `saturate` | FG +30% saturation, BG −60% saturation | Bold graphics, stylized look |
+
+> **Full documentation:** [docs/DUAL-COLOR.md](DUAL-COLOR.md)
 
 ---
 
