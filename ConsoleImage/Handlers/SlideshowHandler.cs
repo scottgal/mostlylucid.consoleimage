@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
+using ConsoleImage.Player;
 using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Video.Core;
 using Microsoft.Extensions.FileSystemGlobbing;
@@ -59,6 +60,10 @@ public record SlideshowOptions
 
     // Performance
     public bool NoDither { get; init; }
+
+    // Dual-color braille
+    public bool UseDualColor { get; init; }
+    public string DualColorStrategy { get; init; } = "value";
 
     // Calibration
     public CalibrationSettings? SavedCalibration { get; init; }
@@ -411,6 +416,7 @@ public static class SlideshowHandler
                 using var displayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 Task<int> displayTask; // Returns navigation direction (0=none, -1=prev, +1=next)
 
+                var isAnimatedOrVideo = false;
                 if (cached?.RenderedContent != null && !cached.IsAnimated && !cached.IsVideo && !cached.IsDocument)
                 {
                     // Use cached static image - instant display!
@@ -424,6 +430,7 @@ public static class SlideshowHandler
                 else if (cached?.AnimationFrames != null && cached.IsAnimated)
                 {
                     // Use cached GIF frames - play in-place without alt screen
+                    isAnimatedOrVideo = true;
                     if (cached.AnimationFrames.Count > 0)
                     {
                         contentLines = CountLines(cached.AnimationFrames[0].Content);
@@ -439,6 +446,10 @@ public static class SlideshowHandler
                     // Not cached - estimate content size from render options
                     contentLines = renderOptions.MaxHeight;
                     contentWidth = renderOptions.MaxWidth;
+                    // GIFs and videos advance immediately when done; only still images need a hold delay
+                    isAnimatedOrVideo = cached?.IsVideo == true
+                        || VideoExtensions.Contains(ext)
+                        || GifExtensions.Contains(ext);
                     // Not cached - render now (wrap in try-catch to continue on errors)
                     displayTask = SafeDisplayFileAsync(file, ext, options, renderOptions, contentStartLine,
                         displayCts.Token);
@@ -555,6 +566,12 @@ public static class SlideshowHandler
                     // Check if we should auto-advance (only if delayMs > 0)
                     if (delayMs > 0 && displayTask.IsCompleted && !paused)
                     {
+                        // GIFs and videos advance immediately after finishing — no hold delay needed
+                        if (isAnimatedOrVideo)
+                        {
+                            currentIndex = (currentIndex + 1) % fileCount;
+                            break;
+                        }
                         elapsed += pollInterval;
                         if (elapsed >= delayMs)
                         {
@@ -1046,7 +1063,10 @@ public static class SlideshowHandler
             ContrastPower = options.Contrast,
             Gamma = options.Gamma,
             LoopCount = 1,
-            DisableBrailleDithering = options.NoDither
+            DisableBrailleDithering = options.NoDither,
+            UseDualColor = options.UseDualColor,
+            DualColorStrategy = options.DualColorStrategy,
+            TerminalBackground = ConsoleHelper.DetectTerminalBackground()
         };
     }
 

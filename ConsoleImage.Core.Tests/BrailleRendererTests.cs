@@ -311,11 +311,12 @@ public class BrailleRendererTests : IDisposable
 
         // Black image should either have black color codes OR no color codes (spaces for invisible)
         // If it has color codes, they should be dark (< 50 per channel)
+        // Pattern matches fg color in both plain (\x1b[38;2;R;G;Bm) and
+        // combined fg+bg (\x1b[38;2;R;G;B;48;2;...m) formats
         if (output.Contains("\x1b[38;2;"))
         {
-            // Extract color values from ANSI codes
             var matches = Regex.Matches(
-                output, @"\x1b\[38;2;(\d+);(\d+);(\d+)m");
+                output, @"\x1b\[38;2;(\d+);(\d+);(\d+)[;m]");
 
             foreach (Match match in matches)
             {
@@ -348,9 +349,11 @@ public class BrailleRendererTests : IDisposable
         // Should contain red-ish ANSI codes
         Assert.Contains("\x1b[38;2;", output);
 
-        // Extract color values - red channel should be > 100, green/blue should be lower
+        // Extract fg color values from both plain and combined fg+bg ANSI sequences.
+        // Plain:    \x1b[38;2;R;G;Bm
+        // Combined: \x1b[38;2;R;G;B;48;2;R;G;Bm  (braille bg-fill format)
         var matches = Regex.Matches(
-            output, @"\x1b\[38;2;(\d+);(\d+);(\d+)m");
+            output, @"\x1b\[38;2;(\d+);(\d+);(\d+)[;m]");
 
         Assert.True(matches.Count > 0, "Red image should output color codes");
 

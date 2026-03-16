@@ -2,6 +2,7 @@
 
 using ConsoleImage.Cli.Utilities;
 using ConsoleImage.Core;
+using PlayerConsoleHelper = ConsoleImage.Player.ConsoleHelper;
 using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Video.Core;
 using SixLabors.Fonts;
@@ -1130,7 +1131,10 @@ public static class VideoHandler
                 DarkTerminalBrightnessThreshold = opts.DarkCutoff,
                 LightTerminalBrightnessThreshold = opts.LightCutoff,
                 EnableTemporalStability = opts.Dejitter,
-                ColorStabilityThreshold = opts.ColorThreshold ?? 15
+                ColorStabilityThreshold = opts.ColorThreshold ?? 15,
+                UseDualColor = opts.UseDualColor,
+                DualColorStrategy = opts.DualColorStrategy,
+                TerminalBackground = PlayerConsoleHelper.DetectTerminalBackground()
             },
             StartTime = opts.Start,
             EndTime = end,
@@ -1203,7 +1207,10 @@ public static class VideoHandler
             DarkTerminalBrightnessThreshold = opts.DarkCutoff,
             LightTerminalBrightnessThreshold = opts.LightCutoff,
             EnableTemporalStability = opts.Dejitter,
-            ColorStabilityThreshold = opts.ColorThreshold ?? 15
+            ColorStabilityThreshold = opts.ColorThreshold ?? 15,
+            UseDualColor = opts.UseDualColor,
+            DualColorStrategy = opts.DualColorStrategy,
+            TerminalBackground = PlayerConsoleHelper.DetectTerminalBackground()
         };
     }
 
@@ -1493,6 +1500,8 @@ public class VideoHandlerOptions
     public bool NoParallel { get; init; }
     public bool NoDither { get; init; }
     public bool NoEdgeChars { get; init; }
+    public bool UseDualColor { get; init; }
+    public string DualColorStrategy { get; init; } = "value";
 
     // FFmpeg
     public string? FfmpegPath { get; init; }

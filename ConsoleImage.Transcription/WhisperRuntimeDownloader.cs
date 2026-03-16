@@ -755,7 +755,10 @@ public static class WhisperRuntimeDownloader
         var nativeLibPath = GetAvailableRuntimePath();
         var libDir = nativeLibPath != null ? Path.GetDirectoryName(nativeLibPath) : null;
 
-        if (nativeLibPath != null)
+        // Only set LibraryPath if the variant is safe to use on this CPU.
+        // Don't point LibraryPath to an AVX-compiled dll on a non-AVX CPU:
+        // Whisper.net's internal CPU check will throw even if LibraryPath is set.
+        if (nativeLibPath != null && (!NeedsNoAvxVariant() || IsCorrectVariantCached()))
             RuntimeOptions.LibraryPath = nativeLibPath;
 
         // Also check the download cache directory

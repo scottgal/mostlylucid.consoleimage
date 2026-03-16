@@ -34,6 +34,8 @@ public static class ImageHandler
         Core.ColorDepth colorDepth,
         bool useGreyscaleAnsi,
         bool noDither,
+        bool useDualColor,
+        string? dualStrategy,
         CancellationToken ct)
     {
         ConsoleHelper.EnableAnsiSupport();
@@ -62,7 +64,10 @@ public static class ImageHandler
             ColorCount = colorCount,
             ColorDepth = colorDepth,
             UseGreyscaleAnsi = useGreyscaleAnsi,
-            DisableBrailleDithering = noDither
+            DisableBrailleDithering = noDither,
+            UseDualColor = useDualColor,
+            DualColorStrategy = dualStrategy ?? "value",
+            TerminalBackground = ConsoleHelper.DetectTerminalBackground()
         };
 
         // Check if it's an animated image (GIF, WebP, APNG, etc.) by frame count

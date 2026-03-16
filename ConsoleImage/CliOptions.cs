@@ -105,7 +105,6 @@ public class CliOptions
 
         // Render modes (braille is default - highest detail, smallest output)
         Ascii = new Option<bool>("--ascii") { Description = "Use ASCII characters instead of braille" };
-        Ascii.Aliases.Add("-a");
 
         Blocks = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks instead of braille" };
         Blocks.Aliases.Add("-b");
@@ -349,6 +348,15 @@ public class CliOptions
         InterlaceFps = new Option<float?>("--interlace-fps")
             { Description = "[EXPERIMENTAL] Visible frame rate for interlace cycling (default 20)" };
 
+        // Dual-color braille mode
+        Dual = new Option<bool>("--dual")
+            { Description = "Dual-color braille: dots (FG) and background (BG) use complementary colors for smoother gradients and better fill" };
+        Dual.Aliases.Add("-D");
+
+        DualStrategy = new Option<string?>("--dual-strategy")
+            { Description = "Color strategy for --dual: value (light/dark split), complement (hue 180°), warmcool (depth), saturate (vibrant)" };
+        DualStrategy.Aliases.Add("--ds");
+
         // Easter egg
         EasterEgg = new Option<bool>("--ee") { Description = "Play animation demo" };
 
@@ -523,6 +531,10 @@ public class CliOptions
     public Option<float?> InterlaceSpread { get; }
     public Option<float?> InterlaceFps { get; }
 
+    // Dual-color braille mode
+    public Option<bool> Dual { get; }
+    public Option<string?> DualStrategy { get; }
+
     // Easter egg
     public Option<bool> EasterEgg { get; }
 
@@ -690,6 +702,10 @@ public class CliOptions
         command.Options.Add(InterlaceFrames);
         command.Options.Add(InterlaceSpread);
         command.Options.Add(InterlaceFps);
+
+        // Dual-color braille
+        command.Options.Add(Dual);
+        command.Options.Add(DualStrategy);
 
         command.Options.Add(EasterEgg);
         command.Options.Add(Debug);

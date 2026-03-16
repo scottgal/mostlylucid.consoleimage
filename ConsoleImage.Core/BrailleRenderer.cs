@@ -563,10 +563,14 @@ public class BrailleRenderer : IDisposable
         // Calculate threshold using autocontrast
         var invertMode = _options.Invert;
 
+        // For dual-color mode: always use Otsu threshold to ensure balanced ON/OFF mix
+        // — with invert=true the 0.15f threshold turns everything on, hiding the BG color entirely.
         // For COLOR/GREYSCALE mode: show most dots, only hide truly dark pixels
         // For MONOCHROME mode: use Otsu's method for optimal separation
         float threshold;
-        if (_options.UseColor || _options.UseGreyscaleAnsi)
+        if (_options.UseDualColor)
+            threshold = CalculateOtsuThreshold(brightness);
+        else if (_options.UseColor || _options.UseGreyscaleAnsi)
             threshold = invertMode ? 0.15f : 0.85f;
         else
             threshold = CalculateOtsuThreshold(brightness);
@@ -581,9 +585,19 @@ public class BrailleRenderer : IDisposable
             return result;
         }
 
+        // Keep original brightness for color grouping in dual-color mode.
+        // ApplyAtkinsonDithering returns a separate pool buffer, so originalBrightness
+        // still points to the unmodified pre-dithered values.
+        var originalBrightness = brightness;
         brightness = ApplyAtkinsonDithering(brightness, pixelWidth, pixelHeight, threshold);
-        // After dithering, values are 0 or 1, so use 0.5 threshold
-        var result2 = RenderBrailleContent(brightness, colors, pixelWidth, pixelHeight, 0.5f);
+        // After dithering, values are 0 or 1 — use direct pixel read to avoid ring-sampling smear
+        string result2;
+        if (_options.UseDualColor)
+            // Pass original brightness + Otsu threshold for color grouping (avoids dithering-pattern banding).
+            // The dithered brightness is used only for the character dot pattern.
+            result2 = RenderBrailleContentDual(brightness, originalBrightness, colors, pixelWidth, pixelHeight, threshold, _options.DualColorStrategy ?? "value");
+        else
+            result2 = RenderBrailleContent(brightness, colors, pixelWidth, pixelHeight, 0.5f, binaryData: true);
 
         resized.Dispose();
         return result2;
@@ -629,8 +643,8 @@ public class BrailleRenderer : IDisposable
             // Apply Atkinson dithering with biased threshold (creates a new array)
             var dithered = ApplyAtkinsonDithering(baseBrightness, pixelWidth, pixelHeight, threshold);
 
-            // Render to braille string using post-dithering threshold of 0.5
-            var content = RenderBrailleContent(dithered, colors, pixelWidth, pixelHeight, 0.5f);
+            // Render to braille string using post-dithered binary data
+            var content = RenderBrailleContent(dithered, colors, pixelWidth, pixelHeight, 0.5f, binaryData: true);
             frames.Add(new BrailleFrame(content, delayMs));
         }
 
@@ -643,7 +657,7 @@ public class BrailleRenderer : IDisposable
     ///     This is the core rendering step shared by RenderImage and RenderInterlaceFrames.
     /// </summary>
     private string RenderBrailleContent(float[] brightness, Rgba32[] colors,
-        int pixelWidth, int pixelHeight, float threshold)
+        int pixelWidth, int pixelHeight, float threshold, bool binaryData = false)
     {
         var charWidth = pixelWidth / 2;
         var charHeight = pixelHeight / 4;
@@ -675,16 +689,20 @@ public class BrailleRenderer : IDisposable
                     var px = cx * 2;
                     var py = cy * 4;
 
-                    // Sample 8 braille dot positions using concentric rings
-                    SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
-
-                    // Invert coverage if needed (swap dot on/off semantics)
-                    if (invertMode)
-                        for (var i = 0; i < 8; i++)
-                            target8[i] = 1f - target8[i];
-
-                    // Find best matching braille character via shape vector matching
-                    var brailleChar = _brailleMap.FindBestMatch(target8);
+                    char brailleChar;
+                    if (binaryData)
+                    {
+                        brailleChar = ComputeBrailleCodeDirect(
+                            brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
+                    }
+                    else
+                    {
+                        SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
+                        if (invertMode)
+                            for (var i = 0; i < 8; i++)
+                                target8[i] = 1f - target8[i];
+                        brailleChar = _brailleMap.FindBestMatch(target8);
+                    }
 
                     // Collect average color from all pixels in cell
                     int totalR = 0, totalG = 0, totalB = 0;
@@ -770,16 +788,20 @@ public class BrailleRenderer : IDisposable
                     var px = cx * 2;
                     var py = cy * 4;
 
-                    // Sample 8 braille dot positions using concentric rings
-                    SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
-
-                    // Invert coverage if needed
-                    if (invertMode)
-                        for (var i = 0; i < 8; i++)
-                            target8[i] = 1f - target8[i];
-
-                    // Find best matching braille character via shape vector matching
-                    var brailleChar = _brailleMap.FindBestMatch(target8);
+                    char brailleChar;
+                    if (binaryData)
+                    {
+                        brailleChar = ComputeBrailleCodeDirect(
+                            brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
+                    }
+                    else
+                    {
+                        SampleBrailleCell(brightness, pixelWidth, pixelHeight, px, py, target8);
+                        if (invertMode)
+                            for (var i = 0; i < 8; i++)
+                                target8[i] = 1f - target8[i];
+                        brailleChar = _brailleMap.FindBestMatch(target8);
+                    }
 
                     if (useAnsiOutput)
                     {
@@ -859,6 +881,253 @@ public class BrailleRenderer : IDisposable
     }
 
     /// <summary>
+    ///     Render braille with dual-color mode: FG from ON pixels, BG from OFF pixels.
+    ///     Uses post-dithered binary data to split pixels into two color groups.
+    /// </summary>
+    private string RenderBrailleContentDual(float[] brightness, float[] originalBrightness, Rgba32[] colors,
+        int pixelWidth, int pixelHeight, float threshold, string strategy)
+    {
+        var charWidth = pixelWidth / 2;
+        var charHeight = pixelHeight / 4;
+        var invertMode = _options.Invert;
+        // Hoist strategy lookup out of per-cell loop
+        var strategyLower = strategy.ToLowerInvariant();
+
+        var sb = new StringBuilder(charWidth * charHeight * 30 + charHeight * 10);
+
+        byte lastFgR = 0, lastFgG = 0, lastFgB = 0;
+        byte lastBgR = 0, lastBgG = 0, lastBgB = 0;
+        var hasLastColor = false;
+
+        for (var cy = 0; cy < charHeight; cy++)
+        {
+            for (var cx = 0; cx < charWidth; cx++)
+            {
+                var px = cx * 2;
+                var py = cy * 4;
+
+                var brailleChar = ComputeBrailleCodeDirect(brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
+
+                int onR = 0, onG = 0, onB = 0, onCount = 0;
+                int offR = 0, offG = 0, offB = 0, offCount = 0;
+
+                for (var dy = 0; dy < 4; dy++)
+                {
+                    var imgY = py + dy;
+                    if (imgY >= pixelHeight) continue;
+                    var rowOffset = imgY * pixelWidth;
+
+                    for (var dx = 0; dx < 2; dx++)
+                    {
+                        var imgX = px + dx;
+                        if (imgX >= pixelWidth) continue;
+
+                        var c = colors[rowOffset + imgX];
+                        var origB = originalBrightness[rowOffset + imgX];
+                        // Use original (pre-dithered) brightness with the Otsu threshold to split
+                        // pixels into FG/BG color groups. Using dithered binary values causes
+                        // dithering-pattern banding because the error diffusion creates different
+                        // ON/OFF distributions row-to-row. Original brightness gives stable splits.
+                        var isOn = invertMode ? origB > threshold : origB <= threshold;
+
+                        if (isOn)
+                        {
+                            onR += c.R; onG += c.G; onB += c.B;
+                            onCount++;
+                        }
+                        else
+                        {
+                            offR += c.R; offG += c.G; offB += c.B;
+                            offCount++;
+                        }
+                    }
+                }
+
+                byte fgR, fgG, fgB, bgR, bgG, bgB;
+
+                if (onCount == 0 && offCount == 0)
+                {
+                    sb.Append(' ');
+                    continue;
+                }
+                else if (onCount == 0)
+                {
+                    // Empty braille cell — only BG visible; use OFF pixel color for both
+                    bgR = fgR = (byte)(offR / offCount);
+                    bgG = fgG = (byte)(offG / offCount);
+                    bgB = fgB = (byte)(offB / offCount);
+                }
+                else if (offCount == 0)
+                {
+                    // Fully-filled cell — only FG visible; use ON pixel color for both
+                    bgR = fgR = (byte)(onR / onCount);
+                    bgG = fgG = (byte)(onG / onCount);
+                    bgB = fgB = (byte)(onB / onCount);
+                }
+                else
+                {
+                    var rawFgR = (byte)(onR / onCount);
+                    var rawFgG = (byte)(onG / onCount);
+                    var rawFgB = (byte)(onB / onCount);
+                    var rawBgR = (byte)(offR / offCount);
+                    var rawBgG = (byte)(offG / offCount);
+                    var rawBgB = (byte)(offB / offCount);
+
+                    (fgR, fgG, fgB, bgR, bgG, bgB) = strategyLower switch
+                    {
+                        "complement" => ApplyComplementStrategy(rawFgR, rawFgG, rawFgB, rawBgR, rawBgG, rawBgB),
+                        "warmcool" => ApplyWarmCoolStrategy(rawFgR, rawFgG, rawFgB, rawBgR, rawBgG, rawBgB),
+                        "saturate" => ApplySaturateStrategy(rawFgR, rawFgG, rawFgB, rawBgR, rawBgG, rawBgB),
+                        _ => (rawFgR, rawFgG, rawFgB, rawBgR, rawBgG, rawBgB)
+                    };
+
+                    // Temporal stability: snap FG and BG to a coarse grid to reduce per-frame flicker.
+                    // Averaging ON/OFF pixel groups can produce fine-grained values that shift each frame;
+                    // re-quantizing here matches what PrecomputePixelData already does to the input colors.
+                    if (_options.EnableTemporalStability || (_options.ColorCount.HasValue && _options.ColorCount.Value > 0))
+                    {
+                        var quantStep = (_options.ColorCount.HasValue && _options.ColorCount.Value > 0)
+                            ? Math.Max(1, 256 / _options.ColorCount.Value)
+                            : Math.Max(1, _options.ColorStabilityThreshold / 2);
+                        if (quantStep > 1)
+                        {
+                            fgR = (byte)(fgR / quantStep * quantStep);
+                            fgG = (byte)(fgG / quantStep * quantStep);
+                            fgB = (byte)(fgB / quantStep * quantStep);
+                            bgR = (byte)(bgR / quantStep * quantStep);
+                            bgG = (byte)(bgG / quantStep * quantStep);
+                            bgB = (byte)(bgB / quantStep * quantStep);
+                        }
+                    }
+                }
+
+                // FG: mild brighten (dots are sparse, slight boost makes them pop without colour distortion)
+                // BG: mild darken (background fill should clearly recede behind the dots)
+                (fgR, fgG, fgB) = BoostBrailleColor(fgR, fgG, fgB, 0.85f);
+                (bgR, bgG, bgB) = BoostBrailleColor(bgR, bgG, bgB, 1.2f);
+
+                // Only correct when BG ends up brighter than FG (dots must always be the dominant colour).
+                // An absolute margin like (fgLum < bgLum + 0.15) clamps bright backgrounds in light
+                // image areas — never use a positive offset; only fix when the order is inverted.
+                var fgLum = 0.299f * fgR / 255f + 0.587f * fgG / 255f + 0.114f * fgB / 255f;
+                var bgLum = 0.299f * bgR / 255f + 0.587f * bgG / 255f + 0.114f * bgB / 255f;
+                if (bgLum > fgLum)
+                {
+                    bgR = (byte)(bgR * 0.65f);
+                    bgG = (byte)(bgG * 0.65f);
+                    bgB = (byte)(bgB * 0.65f);
+                }
+
+                // Always render every cell in dual-color mode — skipping to space lets the terminal
+                // background bleed through, creating artifacts on non-black terminals.
+                var colorChanged = !hasLastColor ||
+                    fgR != lastFgR || fgG != lastFgG || fgB != lastFgB ||
+                    bgR != lastBgR || bgG != lastBgG || bgB != lastBgB;
+
+                if (colorChanged)
+                {
+                    sb.Append("\x1b[38;2;");
+                    sb.Append(fgR); sb.Append(';'); sb.Append(fgG); sb.Append(';'); sb.Append(fgB);
+                    sb.Append(";48;2;");
+                    sb.Append(bgR); sb.Append(';'); sb.Append(bgG); sb.Append(';'); sb.Append(bgB);
+                    sb.Append('m');
+                    lastFgR = fgR; lastFgG = fgG; lastFgB = fgB;
+                    lastBgR = bgR; lastBgG = bgG; lastBgB = bgB;
+                    hasLastColor = true;
+                }
+
+                sb.Append(brailleChar);
+            }
+
+            if (cy < charHeight - 1)
+            {
+                sb.Append("\x1b[0m");
+                sb.AppendLine();
+                hasLastColor = false;
+            }
+        }
+
+        sb.Append("\x1b[0m");
+        return sb.ToString();
+    }
+
+    private static (byte fgR, byte fgG, byte fgB, byte bgR, byte bgG, byte bgB) ApplyComplementStrategy(
+        byte fgR, byte fgG, byte fgB, byte _, byte __, byte ___)
+    {
+        RgbToHsl(fgR, fgG, fgB, out var h, out var s, out var l);
+        h = (h + 0.5f) % 1.0f;
+        var (bgR, bgG, bgB) = HslToRgb(h, s, l * 0.3f);
+        return (fgR, fgG, fgB, bgR, bgG, bgB);
+    }
+
+    private static (byte fgR, byte fgG, byte fgB, byte bgR, byte bgG, byte bgB) ApplyWarmCoolStrategy(
+        byte fgR, byte fgG, byte fgB, byte bgR, byte bgG, byte bgB)
+    {
+        var fgWarmth = (fgR / 255f + fgG / 255f * 0.5f - fgB / 255f) * 0.5f;
+        var bgWarmth = (bgR / 255f + bgG / 255f * 0.5f - bgB / 255f) * 0.5f;
+        if (fgWarmth < bgWarmth)
+            return (bgR, bgG, bgB, fgR, fgG, fgB);
+        return (fgR, fgG, fgB, bgR, bgG, bgB);
+    }
+
+    private static (byte fgR, byte fgG, byte fgB, byte bgR, byte bgG, byte bgB) ApplySaturateStrategy(
+        byte fgR, byte fgG, byte fgB, byte bgR, byte bgG, byte bgB)
+    {
+        RgbToHsl(fgR, fgG, fgB, out var fgH, out var fgS, out var fgL);
+        fgS = MathF.Min(1.0f, fgS * 1.3f);
+        var (satFgR, satFgG, satFgB) = HslToRgb(fgH, fgS, fgL);
+
+        RgbToHsl(bgR, bgG, bgB, out var bgH, out var bgS, out var bgL);
+        bgS *= 0.4f;
+        var (desatBgR, desatBgG, desatBgB) = HslToRgb(bgH, bgS, bgL);
+
+        return (satFgR, satFgG, satFgB, desatBgR, desatBgG, desatBgB);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void RgbToHsl(byte r, byte g, byte b, out float h, out float s, out float l)
+    {
+        var rf = r / 255f;
+        var gf = g / 255f;
+        var bf = b / 255f;
+
+        var max = MathF.Max(rf, MathF.Max(gf, bf));
+        var min = MathF.Min(rf, MathF.Min(gf, bf));
+        l = (max + min) / 2f;
+
+        if (max == min) { h = s = 0f; return; }
+
+        var d = max - min;
+        s = l > 0.5f ? d / (2f - max - min) : d / (max + min);
+
+        if (max == rf) h = ((gf - bf) / d + (gf < bf ? 6f : 0f)) / 6f;
+        else if (max == gf) h = ((bf - rf) / d + 2f) / 6f;
+        else h = ((rf - gf) / d + 4f) / 6f;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (byte r, byte g, byte b) HslToRgb(float h, float s, float l)
+    {
+        if (s == 0f) { var g = (byte)(l * 255f); return (g, g, g); }
+
+        float HueToRgb(float p, float q, float t)
+        {
+            if (t < 0f) t += 1f;
+            if (t > 1f) t -= 1f;
+            if (t < 1f / 6f) return p + (q - p) * 6f * t;
+            if (t < 1f / 2f) return q;
+            if (t < 2f / 3f) return p + (q - p) * (2f / 3f - t) * 6f;
+            return p;
+        }
+
+        var q = l < 0.5f ? l * (1f + s) : l + s - l * s;
+        var p = 2f * l - q;
+        return ((byte)(HueToRgb(p, q, h + 1f / 3f) * 255f),
+                (byte)(HueToRgb(p, q, h) * 255f),
+                (byte)(HueToRgb(p, q, h - 1f / 3f) * 255f));
+    }
+
+    /// <summary>
     ///     Pre-compute brightness and color data for all pixels.
     ///     This is faster than individual pixel access during rendering.
     ///     Applies color quantization if ColorCount is set.
@@ -907,6 +1176,13 @@ public class BrailleRenderer : IDisposable
             quantize = true;
         }
 
+        // Terminal background for alpha compositing — avoids black edge artifacts on light terminals
+        var termBg = _options.TerminalBackground;
+        var termBgR = termBg?.R ?? 0;
+        var termBgG = termBg?.G ?? 0;
+        var termBgB = termBg?.B ?? 0;
+        var hasTermBg = termBg.HasValue && (termBgR > 0 || termBgG > 0 || termBgB > 0);
+
         image.ProcessPixelRows(accessor =>
         {
             for (var y = 0; y < accessor.Height; y++)
@@ -917,6 +1193,19 @@ public class BrailleRenderer : IDisposable
                 {
                     var pixel = row[x];
 
+                    // Composite semi-transparent pixels against terminal background.
+                    // Without this, alpha < 255 pixels bleed black on light terminals.
+                    if (hasTermBg && pixel.A < 255)
+                    {
+                        var a = pixel.A / 255f;
+                        var ia = 1f - a;
+                        pixel = new Rgba32(
+                            (byte)(pixel.R * a + termBgR * ia),
+                            (byte)(pixel.G * a + termBgG * ia),
+                            (byte)(pixel.B * a + termBgB * ia),
+                            255);
+                    }
+
                     // Apply color quantization for palette reduction
                     if (quantize && quantStep > 1)
                         pixel = new Rgba32(
@@ -925,7 +1214,7 @@ public class BrailleRenderer : IDisposable
                             (byte)(pixel.B / quantStep * quantStep),
                             pixel.A);
 
-                    brightness[rowOffset + x] = BrightnessHelper.GetLinearBrightness(pixel);
+                    brightness[rowOffset + x] = BrightnessHelper.GetBrightness(pixel);
                     colors[rowOffset + x] = pixel;
                 }
             }
@@ -1127,12 +1416,6 @@ public class BrailleRenderer : IDisposable
     {
         var bufferLength = brightness.Length;
 
-        // Normalize brightness values to 0-1 range based on min/max
-        var (min, max) = GetBrightnessRangeFromSpan(brightness.AsSpan());
-        var range = max - min;
-        if (range < 0.01f) range = 1f;
-        var invRange = 1f / range; // Multiply is faster than divide in inner loop
-
         // Reuse dithering buffer from ArrayPool
         if (_ditheringBuffer == null || _ditheringBuffer.Length < bufferLength)
         {
@@ -1143,9 +1426,10 @@ public class BrailleRenderer : IDisposable
 
         var result = _ditheringBuffer;
 
-        // Copy and normalize in one pass
+        // Copy directly — perceptual brightness is already in [0,1].
+        // Avoid per-frame min/max normalization which causes brightness to jump between frames.
         for (var i = 0; i < bufferLength; i++)
-            result[i] = (brightness[i] - min) * invRange;
+            result[i] = brightness[i];
 
         // Atkinson error diffusion pattern:
         //       X   1   1

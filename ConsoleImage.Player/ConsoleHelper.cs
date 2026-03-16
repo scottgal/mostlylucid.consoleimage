@@ -24,6 +24,8 @@ public static class ConsoleHelper
     private static bool _ansiEnabled;
     private static bool _cellAspectDetected;
     private static float? _detectedCellAspect;
+    private static bool _terminalBgDetected;
+    private static (byte R, byte G, byte B)? _detectedTerminalBg;
 
     /// <summary>
     ///     Check if ANSI escape sequences are supported
@@ -210,6 +212,148 @@ public static class ConsoleHelper
                 return null;
 
             return ratio;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///     Detect the terminal's background color using OSC 11 query.
+    ///     Supported by Windows Terminal, iTerm2, kitty, WezTerm, xterm, foot, Alacritty, etc.
+    ///     Returns null if detection fails or times out (caller should assume black).
+    ///     Result is cached for the session.
+    /// </summary>
+    public static (byte R, byte G, byte B)? DetectTerminalBackground()
+    {
+        if (_terminalBgDetected)
+            return _detectedTerminalBg;
+
+        _terminalBgDetected = true;
+
+        try
+        {
+            if (Console.IsInputRedirected || Console.IsOutputRedirected)
+                return null;
+        }
+        catch
+        {
+            return null;
+        }
+
+        _detectedTerminalBg = TryDetectTerminalBackgroundAnsi();
+        return _detectedTerminalBg;
+    }
+
+    /// <summary>
+    ///     Query terminal background color via OSC 11.
+    ///     Send: ESC ] 11 ; ? ESC \
+    ///     Response: ESC ] 11 ; rgb:RRRR/GGGG/BBBB ESC \
+    ///     Each channel is 4 hex digits (16-bit); take the high byte for 8-bit color.
+    /// </summary>
+    private static (byte R, byte G, byte B)? TryDetectTerminalBackgroundAnsi()
+    {
+        try
+        {
+            // Drain any pending input
+            while (Console.KeyAvailable)
+                Console.ReadKey(true);
+
+            // OSC 11 background color query; ST = ESC \
+            Console.Write("\x1b]11;?\x1b\\");
+            Console.Out.Flush();
+
+            // Read response with 300ms timeout
+            var sb = new StringBuilder();
+            var deadline = Environment.TickCount64 + 300;
+            var gotEsc = false;
+            var inOsc = false;
+            var complete = false;
+
+            while (Environment.TickCount64 < deadline)
+            {
+                if (!Console.KeyAvailable)
+                {
+                    Thread.Sleep(5);
+                    continue;
+                }
+
+                var key = Console.ReadKey(true);
+                var ch = key.KeyChar;
+
+                if (ch == '\x1b')
+                {
+                    if (inOsc)
+                    {
+                        // ESC inside OSC marks the start of ST (ESC \)
+                        gotEsc = true;
+                    }
+                    else
+                    {
+                        // Start of a new escape sequence
+                        gotEsc = true;
+                        sb.Clear();
+                    }
+                    continue;
+                }
+
+                if (gotEsc && ch == ']')
+                {
+                    // ESC ] → start of OSC
+                    inOsc = true;
+                    gotEsc = false;
+                    sb.Clear();
+                    continue;
+                }
+
+                if (inOsc)
+                {
+                    if (gotEsc && ch == '\\')
+                    {
+                        // ST received — OSC complete
+                        complete = true;
+                        break;
+                    }
+
+                    if (ch == '\a')
+                    {
+                        // BEL terminator (older style)
+                        complete = true;
+                        break;
+                    }
+
+                    gotEsc = false;
+                    sb.Append(ch);
+                }
+            }
+
+            // Drain any remaining response characters
+            Thread.Sleep(10);
+            while (Console.KeyAvailable)
+                Console.ReadKey(true);
+
+            if (!complete)
+                return null;
+
+            // Parse: 11;rgb:RRRR/GGGG/BBBB
+            var text = sb.ToString();
+            var rgbIdx = text.IndexOf("rgb:", StringComparison.OrdinalIgnoreCase);
+            if (rgbIdx < 0)
+                return null;
+
+            var rgbPart = text.Substring(rgbIdx + 4); // after "rgb:"
+            var channels = rgbPart.Split('/');
+            if (channels.Length != 3)
+                return null;
+
+            // Each channel is 4 hex digits (16-bit); use the high byte
+            if (!int.TryParse(channels[0][..Math.Min(2, channels[0].Length)], System.Globalization.NumberStyles.HexNumber, null, out var r) ||
+                !int.TryParse(channels[1][..Math.Min(2, channels[1].Length)], System.Globalization.NumberStyles.HexNumber, null, out var g) ||
+                !int.TryParse(channels[2][..Math.Min(2, channels[2].Length)], System.Globalization.NumberStyles.HexNumber, null, out var b))
+                return null;
+
+            return ((byte)r, (byte)g, (byte)b);
         }
         catch
         {

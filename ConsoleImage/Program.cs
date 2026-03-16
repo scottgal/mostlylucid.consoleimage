@@ -13,6 +13,7 @@ using ConsoleImage.Core.Subtitles;
 using ConsoleImage.Player;
 using ConsoleImage.Transcription;
 using ConsoleImage.Video.Core;
+using Spectre.Console;
 
 // Enable ANSI escape sequence processing on Windows
 ConsoleHelper.EnableAnsiSupport();
@@ -47,6 +48,10 @@ rootCommand.Subcommands.Add(transcribeCommand);
 var toolsCommand = CreateToolsSubcommand();
 rootCommand.Subcommands.Add(toolsCommand);
 
+// Add plex subcommand: consoleimage plex [query] / plex login / plex play <id>
+var plexCommand = CreatePlexSubcommand();
+rootCommand.Subcommands.Add(plexCommand);
+
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
     // Parse template options first
@@ -58,6 +63,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     
     if (!string.IsNullOrEmpty(templatePath))
     {
+
+
+
         template = TemplateHelper.Load(templatePath);
         if (template == null)
         {
@@ -184,6 +192,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var interlaceFrames = parseResult.GetValue(cliOptions.InterlaceFrames);
     var interlaceSpread = parseResult.GetValue(cliOptions.InterlaceSpread);
     var interlaceFps = parseResult.GetValue(cliOptions.InterlaceFps);
+
+    // Dual-color braille mode (combines braille resolution with block fill)
+    var useDualColor = parseResult.GetValue(cliOptions.Dual);
+    var dualStrategy = parseResult.GetValue(cliOptions.DualStrategy) ?? "value";
 
     var colorCount = parseResult.GetValue(cliOptions.Colors) ?? template?.Colors;
     var contrast = template?.Contrast ?? parseResult.GetValue(cliOptions.Contrast);
@@ -473,6 +485,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             SubtitleLang = subtitleLang ?? "en",
             // Performance
             NoDither = noDither,
+            // Dual-color braille
+            UseDualColor = useDualColor,
+            DualColorStrategy = dualStrategy,
             // Calibration
             SavedCalibration = savedCalibration
         };
@@ -846,6 +861,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             colorDepth,
             useGreyscaleAnsi,
             noDither,
+            useDualColor, dualStrategy,
             cancellationToken);
     }
 
@@ -1124,6 +1140,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         // Temporal stability
         Dejitter = dejitter,
         ColorThreshold = colorThreshold,
+
+        // Dual-color braille
+        UseDualColor = useDualColor,
+        DualColorStrategy = dualStrategy,
 
         // Subtitles - use live transcriber if available, otherwise static subtitles
         Subtitles = subtitles,
@@ -2305,6 +2325,53 @@ static Command CreateToolsSubcommand()
         Console.WriteLine("           Gotcha: macOS uses 'macos' RID, not 'osx' in NuGet packages");
 
         return 0;
+    });
+
+    return cmd;
+}
+
+// === Plex subcommand ===
+
+static Command CreatePlexSubcommand()
+{
+    var queryArg     = new Argument<string?>("query") { Description = "Search query (omit to browse libraries)", Arity = ArgumentArity.ZeroOrOne };
+    var loginOpt     = new Option<bool>("--login")      { Description = "Save Plex server URL and token" };
+    var playOpt      = new Option<string?>("--play")    { Description = "Play item by Plex rating key" };
+    var brailleOpt   = new Option<bool>("--braille", "-B") { Description = "Braille render mode (default)" };
+    var blocksOpt    = new Option<bool>("--blocks", "-b")  { Description = "Color blocks render mode" };
+    var widthOpt     = new Option<int?>("--width", "-w")   { Description = "Max render width in characters" };
+    var yesOpt       = new Option<bool>("--yes", "-y")     { Description = "Auto-confirm downloads" };
+
+    var cmd = new Command("plex", "Browse and play media from a Plex Media Server");
+    cmd.Arguments.Add(queryArg);
+    cmd.Options.Add(loginOpt);
+    cmd.Options.Add(playOpt);
+    cmd.Options.Add(brailleOpt);
+    cmd.Options.Add(blocksOpt);
+    cmd.Options.Add(widthOpt);
+    cmd.Options.Add(yesOpt);
+
+    cmd.SetAction(async (parseResult, ct) =>
+    {
+        var query       = parseResult.GetValue(queryArg);
+        var doLogin     = parseResult.GetValue(loginOpt);
+        var directPlay  = parseResult.GetValue(playOpt);
+        var useBraille  = parseResult.GetValue(brailleOpt);
+        var useBlocks   = parseResult.GetValue(blocksOpt);
+        var width       = parseResult.GetValue(widthOpt);
+        var autoConfirm = parseResult.GetValue(yesOpt);
+
+        var maxWidth  = width ?? (Console.WindowWidth  > 4 ? Console.WindowWidth  - 2 : 120);
+        var maxHeight =           Console.WindowHeight > 4 ? Console.WindowHeight - 4 : 40;
+
+        return await PlexHandler.HandleAsync(
+            query, directPlay, doLogin,
+            useBraille, useBlocks,
+            maxWidth, maxHeight,
+            ffmpegPath: null,
+            noAutoDownload: false,
+            autoConfirm: autoConfirm,
+            ct);
     });
 
     return cmd;

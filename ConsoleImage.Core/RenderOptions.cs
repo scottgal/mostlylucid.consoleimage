@@ -244,6 +244,13 @@ public class RenderOptions
     public bool BrailleFullBlocks { get; set; }
 
     /// <summary>
+    ///     Terminal background color detected via OSC 11 query, or null if unknown/black.
+    ///     Used by renderers to blend edge cells against the actual terminal background
+    ///     instead of assuming black, avoiding harsh cutoff artifacts on light terminals.
+    /// </summary>
+    public (byte R, byte G, byte B)? TerminalBackground { get; set; }
+
+    /// <summary>
     ///     Maximum number of colors in the output palette.
     ///     Null = full 24-bit color, or specify 2, 4, 8, 16, 32, 64, 128, or 256.
     ///     Lower values create a posterized/retro look, higher values preserve more detail.
@@ -285,6 +292,24 @@ public class RenderOptions
     ///     Default: 20 fps (80 Hz subframes with 4 frames)
     /// </summary>
     public float InterlaceFps { get; set; } = 20f;
+
+    /// <summary>
+    ///     Enable dual-color braille mode: braille dots (FG) use different color than background fill (BG).
+    ///     This combines braille's high resolution with block mode's fill quality.
+    ///     FG color = brighter/highlight pixels, BG color = darker/average pixels.
+    ///     Creates smoother gradients and better edge rendering than single-color braille.
+    ///     Default: false
+    /// </summary>
+    public bool UseDualColor { get; set; }
+
+    /// <summary>
+    ///     Color split strategy for dual-color braille mode.
+    ///     - "value": Light pixels → FG, dark pixels → BG (default, smooth gradients)
+    ///     - "complement": BG = complementary color (hue 180°), creates glow effect
+    ///     - "warmcool": Warm pixels → FG, cool pixels → BG, creates depth
+    ///     - "saturate": FG = saturated, BG = desaturated, colors pop more
+    /// </summary>
+    public string DualColorStrategy { get; set; } = "value";
 
     /// <summary>
     ///     Gets the effective character set, considering presets
@@ -533,11 +558,14 @@ public class RenderOptions
             ColorStabilityThreshold = ColorStabilityThreshold,
             CharacterStabilityBias = CharacterStabilityBias,
             BrailleFullBlocks = BrailleFullBlocks,
+            TerminalBackground = TerminalBackground,
             ColorCount = ColorCount,
             InterlaceEnabled = InterlaceEnabled,
             InterlaceFrameCount = InterlaceFrameCount,
             InterlaceSpread = InterlaceSpread,
-            InterlaceFps = InterlaceFps
+            InterlaceFps = InterlaceFps,
+            UseDualColor = UseDualColor,
+            DualColorStrategy = DualColorStrategy
         };
     }
 }
