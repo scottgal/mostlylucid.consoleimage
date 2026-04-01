@@ -24,7 +24,7 @@ public static class FFmpegProvider
         ["linux-arm64"] =
             "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
         ["osx-x64"] = "https://evermeet.cx/ffmpeg/getrelease/zip",
-        ["osx-arm64"] = "https://evermeet.cx/ffmpeg/getrelease/zip"
+        ["osx-arm64"] = "https://www.osxexperts.net/ffmpeg81arm.zip"
     };
 
     /// <summary>
@@ -125,6 +125,13 @@ public static class FFmpegProvider
         return downloaded;
     }
 
+    // FFprobe download URLs (separate from FFmpeg for sources that don't bundle both)
+    private static readonly Dictionary<string, string> FFprobeDownloadUrls = new()
+    {
+        ["osx-arm64"] = "https://www.osxexperts.net/ffprobe81arm.zip",
+        ["osx-x64"] = "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"
+    };
+
     /// <summary>
     ///     Gets path to ffprobe executable, downloading if necessary.
     /// </summary>
@@ -141,8 +148,52 @@ public static class FFmpegProvider
         if (File.Exists(ffprobePath))
             return ffprobePath;
 
-        // Fallback to search
-        return FindInPath("ffprobe") ?? "ffprobe";
+        // Search system PATH
+        var inPath = FindInPath("ffprobe");
+        if (inPath != null)
+            return inPath;
+
+        // Download ffprobe separately if a source exists for this platform
+        var rid = GetRuntimeIdentifier();
+        if (FFprobeDownloadUrls.TryGetValue(rid, out var probeUrl))
+        {
+            progress?.Report(("Downloading ffprobe...", 0.1));
+            try
+            {
+                using var client = new HttpClient();
+                client.Timeout = TimeSpan.FromMinutes(5);
+                var archivePath = Path.Combine(CacheDirectory, "ffprobe.zip");
+
+                using var response = await client.GetAsync(probeUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+                response.EnsureSuccessStatusCode();
+
+                await using var contentStream = await response.Content.ReadAsStreamAsync(ct);
+                await using var fileStream = File.Create(archivePath);
+                await contentStream.CopyToAsync(fileStream, ct);
+                fileStream.Close();
+
+                // Extract
+                ZipFile.ExtractToDirectory(archivePath, CacheDirectory, true);
+                try { File.Delete(archivePath); } catch { }
+
+                var extractedProbe = FindInCache("ffprobe");
+                if (extractedProbe != null)
+                {
+                    await SetExecutablePermissionAsync(extractedProbe, ct);
+                    if (OperatingSystem.IsMacOS())
+                        await RemoveMacQuarantineAsync(extractedProbe, ct);
+                    progress?.Report(("ffprobe ready!", 1.0));
+                    return extractedProbe;
+                }
+            }
+            catch (Exception ex)
+            {
+                progress?.Report(($"ffprobe download failed: {ex.Message}", 0));
+            }
+        }
+
+        // Last resort fallback
+        return "ffprobe";
     }
 
     /// <summary>
@@ -435,6 +486,15 @@ public static class FFmpegProvider
             var ffprobePath = Path.Combine(Path.GetDirectoryName(ffmpegPath)!, "ffprobe");
             if (File.Exists(ffprobePath))
                 await SetExecutablePermissionAsync(ffprobePath, ct);
+
+            // On macOS, remove quarantine and ad-hoc sign downloaded binaries.
+            // Without this, Gatekeeper blocks execution of downloaded executables.
+            if (OperatingSystem.IsMacOS())
+            {
+                await RemoveMacQuarantineAsync(ffmpegPath, ct);
+                if (File.Exists(ffprobePath))
+                    await RemoveMacQuarantineAsync(ffprobePath, ct);
+            }
         }
 
         progress?.Report(("FFmpeg ready!", 1.0));
@@ -489,6 +549,44 @@ public static class FFmpegProvider
         }
         catch
         {
+        }
+    }
+
+    /// <summary>
+    ///     On macOS, remove quarantine attribute and ad-hoc sign a downloaded binary.
+    ///     Downloaded files are quarantined by Gatekeeper and blocked from execution.
+    /// </summary>
+    private static async Task RemoveMacQuarantineAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            // Remove quarantine attribute
+            var xattr = new ProcessStartInfo("xattr", $"-d com.apple.quarantine \"{path}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var xattrProc = Process.Start(xattr);
+            if (xattrProc != null)
+                await xattrProc.WaitForExitAsync(ct);
+
+            // Ad-hoc codesign — required on Apple Silicon for unsigned binaries
+            var codesign = new ProcessStartInfo("codesign", $"--force --sign - \"{path}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var codesignProc = Process.Start(codesign);
+            if (codesignProc != null)
+                await codesignProc.WaitForExitAsync(ct);
+        }
+        catch
+        {
+            // Best effort
         }
     }
 

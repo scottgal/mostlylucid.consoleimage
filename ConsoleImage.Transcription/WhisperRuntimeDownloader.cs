@@ -325,6 +325,13 @@ public static class WhisperRuntimeDownloader
 
         try
         {
+            // Pre-load dependency libraries (ggml-*) from the same directory first.
+            // libwhisper depends on them via @rpath (macOS) or DT_NEEDED (Linux),
+            // and NativeLibrary.TryLoad won't resolve them unless they're already loaded.
+            var libDir = Path.GetDirectoryName(path);
+            if (libDir != null)
+                PreloadNativeLibraries(libDir);
+
             if (NativeLibrary.TryLoad(path, out var handle))
             {
                 NativeLibrary.Free(handle);
@@ -432,19 +439,26 @@ public static class WhisperRuntimeDownloader
                     // Copy to app directory for reliability
                     CopyToAppDirectory(targetDir);
 
-                    // Track which variant was installed for future runs
+                    // Determine variant name
                     var variant = name.Contains("NoAvx", StringComparison.OrdinalIgnoreCase)
                         ? "noavx"
                         : "avx";
-                    WriteVariantMarker(variant);
+
+                    // Re-configure paths to pick up new files
+                    ConfigureRuntimePath();
 
                     if (CanLoadRuntime(out _))
                     {
+                        // Only write variant marker AFTER confirming the library actually loads.
+                        // Writing it before a successful load would prevent re-download on next run.
+                        WriteVariantMarker(variant);
                         progress?.Report((0, 0, $"Whisper runtime downloaded successfully ({variant})"));
                         _checked = true;
                         _available = true;
                         return true;
                     }
+
+                    progress?.Report((0, 0, $"Downloaded {variant} variant but load test failed, trying next source..."));
                 }
             }
             catch (OperationCanceledException)
@@ -612,16 +626,19 @@ public static class WhisperRuntimeDownloader
 
         if (extractedCount > 0)
         {
-            // On macOS, remove quarantine attributes and ad-hoc sign extracted libraries.
-            // Without this, Gatekeeper blocks dlopen for downloaded unsigned dylibs.
+            // On macOS, fix @rpath references, remove quarantine, and ad-hoc sign.
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
+                // Fix @rpath → @loader_path so dylibs can find each other
+                foreach (var dylib in Directory.GetFiles(targetDir, "*.dylib"))
+                    FixDylibRpaths(dylib);
+
                 var extractedFiles = Directory.GetFiles(targetDir)
                     .Where(f => nativeExtensions.Any(ext =>
                         f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
                     .ToList();
                 RemoveMacQuarantine(extractedFiles);
-                progress?.Report((0, 0, "Cleared macOS quarantine and signed libraries"));
+                progress?.Report((0, 0, "Fixed rpaths, cleared quarantine, and signed libraries"));
             }
 
             progress?.Report((0, 0, $"Extracted {extractedCount} native libraries for {rid}"));
@@ -713,6 +730,20 @@ public static class WhisperRuntimeDownloader
             }
         }
 
+        // On macOS, fix @rpath and sign the copied libraries
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            var copiedFiles = nativeFiles
+                .Select(f => Path.Combine(appDir, Path.GetFileName(f)))
+                .Where(File.Exists)
+                .ToList();
+
+            foreach (var dylib in copiedFiles.Where(f => f.EndsWith(".dylib", StringComparison.OrdinalIgnoreCase)))
+                FixDylibRpaths(dylib);
+
+            RemoveMacQuarantine(copiedFiles);
+        }
+
         // Also copy to runtimes/{rid}/ layout that Whisper.net's NativeLibraryLoader searches.
         // For RuntimeLibrary.Cpu, it searches runtimes/{platform}-{arch}/ (no "native" subfolder).
         try
@@ -732,6 +763,20 @@ public static class WhisperRuntimeDownloader
                 {
                     /* Best effort */
                 }
+            }
+
+            // Fix rpaths and sign in runtimes dir too
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                var runtimeCopies = nativeFiles
+                    .Select(f => Path.Combine(runtimeDir, Path.GetFileName(f)))
+                    .Where(File.Exists)
+                    .ToList();
+
+                foreach (var dylib in runtimeCopies.Where(f => f.EndsWith(".dylib", StringComparison.OrdinalIgnoreCase)))
+                    FixDylibRpaths(dylib);
+
+                RemoveMacQuarantine(runtimeCopies);
             }
         }
         catch
@@ -754,6 +799,12 @@ public static class WhisperRuntimeDownloader
         // a directory path, it returns the PARENT directory, missing the actual DLLs.
         var nativeLibPath = GetAvailableRuntimePath();
         var libDir = nativeLibPath != null ? Path.GetDirectoryName(nativeLibPath) : null;
+
+        // On macOS, fix @rpath → @loader_path in all directories that contain dylibs.
+        // Whisper.net's NativeLibraryLoader searches multiple paths (app dir, runtimes/, etc.),
+        // so we must fix rpaths everywhere, not just in one cached copy.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && libDir != null)
+            FixAllMacOSLibraryPaths(libDir);
 
         // Only set LibraryPath if the variant is safe to use on this CPU.
         // Don't point LibraryPath to an AVX-compiled dll on a non-AVX CPU:
@@ -817,10 +868,11 @@ public static class WhisperRuntimeDownloader
     }
 
     /// <summary>
-    ///     Ensure the runtimes/{rid}/ directory exists with native DLLs.
-    ///     Whisper.net's NativeLibraryLoader searches runtimes/{platform}-{arch}/ for CPU runtime.
-    ///     In published single-file builds, the NuGet targets' copies get bundled inside the exe,
-    ///     so this directory may not exist. Create it at runtime by copying from the source directory.
+    ///     Ensure the runtimes/{platform}-{arch}/ directory exists with native DLLs.
+    ///     Whisper.net's NativeLibraryLoader searches runtimes/{platform}-{arch}/ for CPU runtime,
+    ///     using 'macos' (not 'osx') as the platform name. We must create both variants
+    ///     since .NET uses 'osx' but Whisper.net uses 'macos'.
+    ///     In published builds, the csproj copies to runtimes/{.NET RID}/ which may not match.
     /// </summary>
     private static void EnsureRuntimesDirectory(string sourceDirectory)
     {
@@ -829,9 +881,8 @@ public static class WhisperRuntimeDownloader
         try
         {
             var rid = GetRuntimeIdentifier();
-            var runtimeDir = Path.Combine(sourceDirectory, "runtimes", rid);
-
-            if (Directory.Exists(runtimeDir)) return; // Already exists
+            // Whisper.net uses 'macos' not 'osx' as platform name
+            var whisperRid = rid.Replace("osx-", "macos-");
 
             var nativeExtensions = GetNativeExtensions();
             var nativeFiles = Directory.GetFiles(sourceDirectory)
@@ -840,15 +891,26 @@ public static class WhisperRuntimeDownloader
 
             if (nativeFiles.Count == 0) return;
 
-            Directory.CreateDirectory(runtimeDir);
-
-            foreach (var sourceFile in nativeFiles)
+            // Create both RID variants so both .NET and Whisper.net can find the libs
+            var rids = new HashSet<string> { rid, whisperRid };
+            foreach (var targetRid in rids)
             {
+                var runtimeDir = Path.Combine(sourceDirectory, "runtimes", targetRid);
+                if (Directory.Exists(runtimeDir)) continue;
+
                 try
                 {
-                    var destPath = Path.Combine(runtimeDir, Path.GetFileName(sourceFile));
-                    if (!File.Exists(destPath))
-                        File.Copy(sourceFile, destPath);
+                    Directory.CreateDirectory(runtimeDir);
+                    foreach (var sourceFile in nativeFiles)
+                    {
+                        var destPath = Path.Combine(runtimeDir, Path.GetFileName(sourceFile));
+                        if (!File.Exists(destPath))
+                            File.Copy(sourceFile, destPath);
+                    }
+
+                    // Fix rpaths in copied files on macOS
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                        FixMacOSLibrariesInPlace(runtimeDir);
                 }
                 catch
                 {
@@ -875,7 +937,20 @@ public static class WhisperRuntimeDownloader
 
         try
         {
-            var nativeFiles = Directory.GetFiles(directory)
+            // On macOS, fix @rpath → @loader_path so dylibs find each other.
+            // Try in-place first (works for writable dirs like publish output),
+            // fall back to copying to a cache dir (for read-only dirs like NuGet cache).
+            var loadDir = directory;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                FixMacOSLibrariesInPlace(directory);
+                // If in-place fix didn't work (read-only), use copy approach
+                var markerPath = Path.Combine(directory, ".rpath-fixed");
+                if (!File.Exists(markerPath))
+                    loadDir = PrepareFixedMacOSLibraries(directory, nativeExtensions) ?? directory;
+            }
+
+            var nativeFiles = Directory.GetFiles(loadDir)
                 .Where(f => nativeExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
                 // Load dependencies (ggml-*) before whisper.dll
                 .OrderBy(f => Path.GetFileName(f).Contains("whisper", StringComparison.OrdinalIgnoreCase)
@@ -898,6 +973,192 @@ public static class WhisperRuntimeDownloader
                 {
                     // Best effort — some may already be loaded or not needed on this platform
                 }
+        }
+        catch
+        {
+            // Best effort
+        }
+    }
+
+    /// <summary>
+    ///     Fix @rpath in all directories where Whisper dylibs might be found.
+    /// </summary>
+    private static void FixAllMacOSLibraryPaths(string primaryDir)
+    {
+        FixMacOSLibrariesInPlace(primaryDir);
+
+        var baseDir = AppContext.BaseDirectory;
+        if (!string.IsNullOrEmpty(baseDir) && baseDir != primaryDir)
+            FixMacOSLibrariesInPlace(baseDir);
+
+        var currentRid = GetRuntimeIdentifier();
+        var runtimesDir = Path.Combine(baseDir, "runtimes", currentRid);
+        if (Directory.Exists(runtimesDir) && runtimesDir != primaryDir)
+            FixMacOSLibrariesInPlace(runtimesDir);
+    }
+
+    /// <summary>
+    ///     Fix @rpath references in-place for all dylibs in a directory.
+    ///     Used for writable directories (publish output, download cache).
+    ///     For read-only directories (NuGet cache), use PrepareFixedMacOSLibraries instead.
+    /// </summary>
+    private static void FixMacOSLibrariesInPlace(string directory)
+    {
+        if (!Directory.Exists(directory)) return;
+
+        try
+        {
+            var markerPath = Path.Combine(directory, ".rpath-fixed");
+            if (File.Exists(markerPath)) return; // Already fixed
+
+            var dylibs = Directory.GetFiles(directory, "*.dylib");
+            if (dylibs.Length == 0) return;
+
+            // Try to fix in-place (will fail if directory is read-only, e.g. NuGet cache)
+            foreach (var dylib in dylibs)
+            {
+                try
+                {
+                    FixDylibRpaths(dylib);
+
+                    // Re-sign after modification
+                    var signPsi = new ProcessStartInfo("codesign", $"--force --sign - \"{dylib}\"")
+                    {
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    using var signProc = Process.Start(signPsi);
+                    signProc?.WaitForExit(5000);
+                }
+                catch
+                {
+                    return; // Directory likely read-only, stop trying
+                }
+            }
+
+            // Write marker so we don't redo this next time
+            try { File.WriteAllText(markerPath, "fixed"); } catch { }
+        }
+        catch
+        {
+            // Best effort
+        }
+    }
+
+    /// <summary>
+    ///     On macOS, copy dylibs to a writable cache directory and rewrite @rpath references
+    ///     to @loader_path so that inter-library dependencies resolve correctly.
+    ///     The Whisper.net NuGet dylibs have @rpath entries pointing to CI build paths
+    ///     (/Users/runner/work/...) which don't exist on end-user machines.
+    /// </summary>
+    /// <returns>Path to the directory with fixed dylibs, or null if the fix failed.</returns>
+    private static string? PrepareFixedMacOSLibraries(string sourceDir, string[] nativeExtensions)
+    {
+        try
+        {
+            var rid = GetRuntimeIdentifier();
+            var fixedDir = Path.Combine(RuntimesDirectory, rid, "fixed");
+
+            // Check if we already have fixed libraries (marker file with source dir hash)
+            var markerPath = Path.Combine(fixedDir, ".fixed-marker");
+            if (Directory.Exists(fixedDir) && File.Exists(markerPath))
+            {
+                var marker = File.ReadAllText(markerPath).Trim();
+                if (marker == sourceDir)
+                    return fixedDir; // Already fixed from this source
+            }
+
+            // Copy all native files to the fixed directory
+            Directory.CreateDirectory(fixedDir);
+            var sourceFiles = Directory.GetFiles(sourceDir)
+                .Where(f => nativeExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (sourceFiles.Count == 0)
+                return null;
+
+            foreach (var src in sourceFiles)
+            {
+                var dest = Path.Combine(fixedDir, Path.GetFileName(src));
+                File.Copy(src, dest, overwrite: true);
+            }
+
+            // Rewrite @rpath → @loader_path in all dylibs
+            foreach (var dylib in Directory.GetFiles(fixedDir, "*.dylib"))
+            {
+                FixDylibRpaths(dylib);
+
+                // Re-sign after modification (required on Apple Silicon)
+                try
+                {
+                    var signPsi = new ProcessStartInfo("codesign", $"--force --sign - \"{dylib}\"")
+                    {
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    using var signProc = Process.Start(signPsi);
+                    signProc?.WaitForExit(5000);
+                }
+                catch { /* Best effort */ }
+            }
+
+            // Write marker so we don't redo this next time
+            File.WriteAllText(markerPath, sourceDir);
+            return fixedDir;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///     Use install_name_tool to change all @rpath/ references to @loader_path/
+    ///     in a macOS dylib. This makes inter-library dependencies resolve relative
+    ///     to the dylib's own location rather than hardcoded rpath search paths.
+    /// </summary>
+    private static void FixDylibRpaths(string dylibPath)
+    {
+        try
+        {
+            // Get current dependencies
+            var otoolPsi = new ProcessStartInfo("otool", $"-L \"{dylibPath}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var otoolProc = Process.Start(otoolPsi);
+            if (otoolProc == null) return;
+
+            var output = otoolProc.StandardOutput.ReadToEnd();
+            otoolProc.WaitForExit(5000);
+
+            // Find and fix @rpath references
+            foreach (var line in output.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                if (!trimmed.StartsWith("@rpath/")) continue;
+
+                var oldName = trimmed.Split(' ')[0];
+                var newName = oldName.Replace("@rpath/", "@loader_path/");
+
+                var changePsi = new ProcessStartInfo("install_name_tool",
+                    $"-change \"{oldName}\" \"{newName}\" \"{dylibPath}\"")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var changeProc = Process.Start(changePsi);
+                changeProc?.WaitForExit(5000);
+            }
         }
         catch
         {

@@ -60,10 +60,11 @@
         <WhisperRuntimeVersion>1.9.0</WhisperRuntimeVersion>
         <BundleWhisperRuntime Condition="'$(BundleWhisperRuntime)' == ''">false</BundleWhisperRuntime>
     </PropertyGroup>
+    <!-- Bundle standard Whisper runtime (works on AVX x64 and all ARM64).
+         NoAvx is NOT bundled - if a user has a non-AVX CPU, the app auto-downloads
+         the correct NoAvx variant at runtime via WhisperRuntimeDownloader. -->
     <ItemGroup Condition="'$(BundleWhisperRuntime)' == 'true'">
         <PackageReference Include="Whisper.net.Runtime" Version="$(WhisperRuntimeVersion)"/>
-        <!-- NoAvx variant for CPUs without AVX support (older x64, some VMs) -->
-        <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="$(WhisperRuntimeVersion)"/>
     </ItemGroup>
 
     <!-- Copy Whisper native DLLs to publish output -->
@@ -76,20 +77,13 @@
             <_WhisperRid Condition="$(RuntimeIdentifier.StartsWith('osx'))">$(RuntimeIdentifier.Replace('osx','macos'))</_WhisperRid>
         </PropertyGroup>
         <ItemGroup>
-            <!-- Try all known NuGet package layouts for native libraries (AVX variant) -->
+            <!-- Try all known NuGet package layouts for native libraries -->
             <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\build\$(_WhisperRid)\*" />
             <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\build\$(RuntimeIdentifier)\*" />
             <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\runtimes\$(_WhisperRid)\native\*" />
             <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\runtimes\$(RuntimeIdentifier)\native\*" />
             <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\runtimes\$(_WhisperRid)\*" />
             <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime\$(WhisperRuntimeVersion)\runtimes\$(RuntimeIdentifier)\*" />
-            <!-- NoAvx variant for CPUs without AVX support -->
-            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime.noavx\$(WhisperRuntimeVersion)\build\$(_WhisperRid)\*" />
-            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime.noavx\$(WhisperRuntimeVersion)\build\$(RuntimeIdentifier)\*" />
-            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime.noavx\$(WhisperRuntimeVersion)\runtimes\$(_WhisperRid)\native\*" />
-            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime.noavx\$(WhisperRuntimeVersion)\runtimes\$(RuntimeIdentifier)\native\*" />
-            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime.noavx\$(WhisperRuntimeVersion)\runtimes\$(_WhisperRid)\*" />
-            <_WhisperNativeFiles Include="$(NuGetPackageRoot)whisper.net.runtime.noavx\$(WhisperRuntimeVersion)\runtimes\$(RuntimeIdentifier)\*" />
         </ItemGroup>
         <!-- Deduplicate in case multiple globs match the same files -->
         <RemoveDuplicates Inputs="@(_WhisperNativeFiles)">
@@ -104,13 +98,17 @@
               DestinationFolder="$(PublishDir)"
               SkipUnchangedFiles="true"
               Condition="'@(_WhisperNativeFilesDistinct)' != ''" />
-        <!-- Also copy to runtimes/{rid}/ for Whisper.net's NativeLibraryLoader which
-             expects this directory structure. In single-file builds, the NuGet .targets
-             copies get bundled inside the exe, so this subdirectory doesn't exist. -->
+        <!-- Copy to runtimes/{rid}/ for .NET's NativeLibrary resolution -->
         <Copy SourceFiles="@(_WhisperNativeFilesDistinct)"
               DestinationFolder="$(PublishDir)runtimes\$(RuntimeIdentifier)"
               SkipUnchangedFiles="true"
               Condition="'@(_WhisperNativeFilesDistinct)' != ''" />
+        <!-- Whisper.net uses 'macos' not 'osx' for its platform name in NativeLibraryLoader.
+             Create the macos-{arch} variant so Whisper.net can find the libs. -->
+        <Copy SourceFiles="@(_WhisperNativeFilesDistinct)"
+              DestinationFolder="$(PublishDir)runtimes\$(_WhisperRid)"
+              SkipUnchangedFiles="true"
+              Condition="'@(_WhisperNativeFilesDistinct)' != '' and '$(_WhisperRid)' != '$(RuntimeIdentifier)'" />
     </Target>
 
     <ItemGroup>
@@ -124,6 +122,9 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="defaults.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

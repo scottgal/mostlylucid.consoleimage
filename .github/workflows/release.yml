@@ -68,19 +68,17 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: Publish AOT - consoleimage (with Whisper runtime)
+      - name: Publish AOT - consoleimage (with Whisper runtime bundled)
         shell: bash
         run: |
+          # BundleWhisperRuntime=true automatically disables AOT in csproj
+          # (Whisper.net native library loading requires JIT, not AOT)
+          # The binary will include Whisper native libs and auto-download models on first use
           dotnet publish ConsoleImage/ConsoleImage.csproj \
             -c Release \
             -r ${{ matrix.rid }} \
             --self-contained true \
-            -p:PublishAot=true \
             -p:BundleWhisperRuntime=true \
-            -p:OptimizationPreference=Size \
-            -p:IlcOptimizationPreference=Size \
-            -p:StripSymbols=true \
-            -p:IlcGenerateStackTraceData=false \
             -o ./publish/${{ matrix.artifact }}
 
       - name: Publish AOT - consoleimage-mcp
@@ -127,6 +125,14 @@ jobs:
           fi
           cp README.md ./archive/${{ matrix.artifact }}-whisper/
           cp ConsoleImage/calibration.json ./archive/${{ matrix.artifact }}-whisper/ || true
+
+          # Validate Whisper native libs were actually included
+          NATIVE_COUNT=$(find ./archive/${{ matrix.artifact }}-whisper -name "*.dll" -o -name "*.so" -o -name "*.dylib" 2>/dev/null | wc -l)
+          if [ "$NATIVE_COUNT" -lt 2 ]; then
+            echo "::warning::Whisper variant has only $NATIVE_COUNT native libs (expected 5+). Whisper may not work."
+          else
+            echo "Whisper variant: $NATIVE_COUNT native libraries bundled"
+          fi
 
           # === ConsoleImage MCP Server ===
           mkdir -p ./archive/${{ matrix.artifact }}-mcp

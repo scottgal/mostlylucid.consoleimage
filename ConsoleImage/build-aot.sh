@@ -53,11 +53,14 @@ echo "Output: $OUTPUT_DIR"
 echo ""
 
 # Build with all AOT optimizations
+# BundleWhisperRuntime=false explicitly to prevent conflict (AOT + Whisper JIT loading are incompatible)
+# Whisper runtime will be auto-downloaded on first use instead
 dotnet publish "$SCRIPT_DIR/ConsoleImage.csproj" \
     -c Release \
     -r "$RID" \
     --self-contained true \
     -p:PublishAot=true \
+    -p:BundleWhisperRuntime=false \
     -p:OptimizationPreference=Size \
     -p:IlcOptimizationPreference=Size \
     -p:StripSymbols=true \

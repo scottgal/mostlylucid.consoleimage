@@ -110,47 +110,34 @@ public sealed class WhisperTranscriptionService : IDisposable
                 progress?.Report((0, 0, $"CPU: {RuntimeInformation.ProcessArchitecture}"));
             }
 
-            // Step 1: Configure runtime search path early (adds library dirs to PATH)
-            WhisperRuntimeDownloader.ConfigureRuntimePath();
-
-            // Step 2: Ensure native runtime is available and loadable
-            var attemptedDownload = false;
-            if (!WhisperRuntimeDownloader.IsRuntimeAvailable())
+            // Step 1: Ensure native runtime is available (download if needed)
+            var runtimeReady = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
+            if (!runtimeReady)
             {
-                var (rid, sizeMB) = WhisperRuntimeDownloader.GetRuntimeInfo();
-                progress?.Report((0, 0, $"Downloading Whisper runtime for {rid} (~{sizeMB}MB)..."));
-
-                attemptedDownload = true;
-                var runtimeSuccess = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
-                if (!runtimeSuccess)
-                    throw new InvalidOperationException(
-                        $"Failed to obtain Whisper runtime.\n{WhisperRuntimeDownloader.GetManualInstallInstructions(rid)}");
-
-                // Re-configure after download to pick up new location
-                WhisperRuntimeDownloader.ConfigureRuntimePath();
+                var (rid, _) = WhisperRuntimeDownloader.GetRuntimeInfo();
+                throw new InvalidOperationException(
+                    $"Failed to obtain Whisper runtime.\n{WhisperRuntimeDownloader.GetManualInstallInstructions(rid)}");
             }
 
-            // Verify the runtime can actually load (catches corrupted/wrong-arch files)
+            // Step 2: Configure runtime paths AFTER ensuring correct variant is available.
+            // This must happen after EnsureRuntimeAsync so we don't point RuntimeOptions.LibraryPath
+            // at an AVX-compiled library on a non-AVX CPU (would cause SIGSEGV on Linux).
+            WhisperRuntimeDownloader.ConfigureRuntimePath();
+
+            // Verify the runtime can actually load
             if (!WhisperRuntimeDownloader.CanLoadRuntime(out var loadError))
             {
-                progress?.Report((0, 0, $"Runtime load check failed: {loadError}"));
+                progress?.Report((0, 0, $"Runtime load check failed: {loadError}. Attempting fresh download..."));
 
-                // If we haven't tried downloading yet, attempt it now
-                if (!attemptedDownload)
+                // Force re-download
+                var freshSuccess = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
+                if (freshSuccess)
                 {
-                    var (rid, sizeMB) = WhisperRuntimeDownloader.GetRuntimeInfo();
-                    progress?.Report((0, 0, $"Runtime exists but can't load. Downloading fresh copy for {rid} (~{sizeMB}MB)..."));
-
-                    var runtimeSuccess = await WhisperRuntimeDownloader.EnsureRuntimeAsync(progress, ct);
-                    if (runtimeSuccess)
-                    {
-                        WhisperRuntimeDownloader.ConfigureRuntimePath();
-
-                        if (!WhisperRuntimeDownloader.CanLoadRuntime(out loadError))
-                            progress?.Report((0, 0, $"Downloaded runtime still can't load: {loadError}"));
-                        else
-                            progress?.Report((0, 0, "Fresh runtime download loaded successfully"));
-                    }
+                    WhisperRuntimeDownloader.ConfigureRuntimePath();
+                    if (!WhisperRuntimeDownloader.CanLoadRuntime(out loadError))
+                        progress?.Report((0, 0, $"Downloaded runtime still can't load: {loadError}"));
+                    else
+                        progress?.Report((0, 0, "Fresh runtime download loaded successfully"));
                 }
             }
             else
@@ -172,11 +159,13 @@ public sealed class WhisperTranscriptionService : IDisposable
             var fileInfo = new FileInfo(modelPath);
             progress?.Report((0, 0, $"Model file: {fileInfo.Length / 1024 / 1024}MB at {modelPath}"));
 
-            // On Linux, check for missing shared library dependencies before loading
-            // (missing deps can cause segfault instead of a catchable exception)
+            // On Linux, check for missing shared library dependencies before loading.
+            // Missing deps cause segfault instead of a catchable exception.
             var depCheck = WhisperRuntimeDownloader.CheckLinuxDependencies();
             if (depCheck != null)
-                progress?.Report((0, 0, $"Warning: {depCheck}"));
+                throw new InvalidOperationException(
+                    $"Whisper native library has missing system dependencies:\n{depCheck}\n\n" +
+                    "Install missing libraries and try again.");
 
             try
             {

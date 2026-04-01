@@ -1,0 +1,68 @@
+{
+  //
+  // ConsoleImage defaults — loaded automatically on startup.
+  //
+  // Place this file in one of these locations:
+  //   1. Next to the consoleimage binary  (portable — travels with the app)
+  //   2. ~/.config/consoleimage/defaults.json  (Linux/macOS user config)
+  //   3. %APPDATA%\consoleimage\defaults.json  (Windows user config)
+  //
+  // Only set the values you want to change — omit or set to null to keep
+  // the built-in default. CLI flags always override these values.
+  //
+  // You can also use this format with --template <file.json> for per-project presets.
+  //
+
+  // ── Render mode ─────────────────────────────────────────────
+  // Set ONE of these to true. Default is braille.
+  // "Ascii":      true,      // Classic ASCII characters (shape-matched)
+  // "Blocks":     true,      // Unicode half-blocks with 24-bit color (▀▄█)
+  // "Braille":    true,      // Braille dots, 2x4 per cell (highest detail) ← default
+  // "Matrix":     true,      // Digital rain effect
+  // "Monochrome": true,      // Braille without color
+
+  // ── Dimensions ──────────────────────────────────────────────
+  // "Width":     80,         // Exact width (overrides MaxWidth)
+  // "Height":    24,         // Exact height (overrides MaxHeight)
+  // "MaxWidth":  120,        // Maximum width (null = terminal width)
+  // "MaxHeight": 30,         // Maximum height (null = terminal height)
+
+  // ── Image quality ───────────────────────────────────────────
+  // "Contrast":   2.5,       // Contrast power (1.0 = none, higher = punchier)
+  // "Gamma":      1.0,       // Gamma correction (< 1 = brighter, > 1 = darker)
+  // "CharAspect": 0.5,       // Character aspect ratio (width/height)
+  // "NoColor":    false,     // Disable color (greyscale ANSI)
+
+  // ── Playback ────────────────────────────────────────────────
+  // "Speed":  1.0,           // Playback speed multiplier
+  // "Loop":   0,             // Loop count (0 = infinite, 1 = play once)
+  // "Fps":    null,          // Target framerate (null = source fps)
+  // "Buffer": 3,             // Frames to buffer ahead (2-10)
+
+  // ── Subtitles ───────────────────────────────────────────────
+  // "Subs":         "auto",  // Subtitle source: auto, off, whisper, yt, <path>
+  // "SubtitleLang": "en",    // Preferred language code
+  // "WhisperModel": "base",  // Whisper model: tiny, base, small, medium, large
+
+  // ── ASCII mode options ──────────────────────────────────────
+  // "Charset": null,         // Custom character set string
+  // "Preset":  "extended",   // Character preset: extended, simple, block, classic
+
+  // ── Matrix mode options ─────────────────────────────────────
+  // "MatrixColor":     "green",  // Rain color: green, red, blue, amber, cyan, purple, #RRGGBB
+  // "MatrixFullColor": false,    // Use source image colors with Matrix lighting
+  // "MatrixDensity":   0.5,      // Rain density (0.1-2.0)
+  // "MatrixSpeed":     1.0,      // Rain speed multiplier (0.5-3.0)
+
+  // ── Advanced ────────────────────────────────────────────────
+  // "EnableEdge":   false,   // Enable edge detection characters
+  // "AutoBg":       false,   // Auto-detect and suppress uniform background
+  // "Dejitter":     false,   // Enable temporal stability (reduces flicker)
+  // "NoHwAccel":    false,   // Disable GPU hardware acceleration
+  // "ShowStatus":   false,   // Show status bar during playback
+
+  // ── GIF output ──────────────────────────────────────────────
+  // "GifFontSize": 10,       // Font size for text rendering in GIFs
+  // "GifScale":    1.0,      // Scale factor for GIF output
+  // "GifColors":   64        // Maximum palette colors (16-256)
+}

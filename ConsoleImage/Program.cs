@@ -48,6 +48,10 @@ rootCommand.Subcommands.Add(transcribeCommand);
 var toolsCommand = CreateToolsSubcommand();
 rootCommand.Subcommands.Add(toolsCommand);
 
+// Add config subcommand: consoleimage config [--init] [--path] [--show]
+var configCommand = CreateConfigSubcommand();
+rootCommand.Subcommands.Add(configCommand);
+
 // Add plex subcommand: consoleimage plex [query] / plex login / plex play <id>
 var plexCommand = CreatePlexSubcommand();
 rootCommand.Subcommands.Add(plexCommand);
@@ -58,14 +62,15 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var templatePath = parseResult.GetValue(cliOptions.Template);
     var saveTemplatePath = parseResult.GetValue(cliOptions.SaveTemplate);
 
-    // Load template settings if specified
+    // Load user defaults from ~/.config/consoleimage/defaults.json (if it exists)
+    // These act as fallback values — CLI flags and --template always take priority.
+    var defaults = TemplateHelper.LoadUserDefaults();
+
+    // Load template settings if specified (--template overrides defaults)
     TemplateSettings? template = null;
-    
+
     if (!string.IsNullOrEmpty(templatePath))
     {
-
-
-
         template = TemplateHelper.Load(templatePath);
         if (template == null)
         {
@@ -73,6 +78,9 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             return 1;
         }
     }
+
+    // Merge: template on top of defaults (template wins where set)
+    template = TemplateHelper.Merge(defaults, template);
 
     // Parse all option values
     var inputPath = parseResult.GetValue(cliOptions.Input);
@@ -2372,6 +2380,108 @@ static Command CreatePlexSubcommand()
             noAutoDownload: false,
             autoConfirm: autoConfirm,
             ct);
+    });
+
+    return cmd;
+}
+
+Command CreateConfigSubcommand()
+{
+    var initOpt = new Option<bool>("--init") { Description = "Create a defaults.json config file with all options documented" };
+    var pathOpt = new Option<bool>("--path") { Description = "Show the config file path" };
+    var showOpt = new Option<bool>("--show") { Description = "Show current config values" };
+
+    var cmd = new Command("config", "Manage default settings (render mode, size, gamma, etc.)");
+    cmd.Options.Add(initOpt);
+    cmd.Options.Add(pathOpt);
+    cmd.Options.Add(showOpt);
+
+    cmd.SetAction((parseResult, _) =>
+    {
+        var init = parseResult.GetValue(initOpt);
+        var showPath = parseResult.GetValue(pathOpt);
+        var show = parseResult.GetValue(showOpt);
+
+        var userPath = TemplateHelper.GetUserDefaultsPath();
+        var portablePath = Path.Combine(AppContext.BaseDirectory, "defaults.json");
+
+        if (showPath || (!init && !show))
+        {
+            Console.WriteLine("Config file locations (first found wins):");
+            Console.WriteLine($"  1. {portablePath} {(File.Exists(portablePath) ? "[EXISTS]" : "")}");
+            Console.WriteLine($"  2. {userPath} {(File.Exists(userPath) ? "[EXISTS]" : "")}");
+            Console.WriteLine();
+
+            var loaded = TemplateHelper.LoadUserDefaults();
+            if (loaded != null)
+                Console.WriteLine("Active config: loaded");
+            else
+                Console.WriteLine("No config loaded (using built-in defaults)");
+
+            Console.WriteLine();
+            Console.WriteLine("Run 'consoleimage config --init' to create a config file.");
+            Console.WriteLine("Run 'consoleimage config --show' to see current values.");
+        }
+
+        if (init)
+        {
+            if (File.Exists(userPath))
+            {
+                Console.WriteLine($"Config already exists: {userPath}");
+                Console.WriteLine("Edit it directly or delete it to re-create.");
+            }
+            else
+            {
+                TemplateHelper.CreateDefaultsFile(userPath);
+                Console.WriteLine($"Created config file: {userPath}");
+                Console.WriteLine("Edit it to set your preferred defaults.");
+                Console.WriteLine("Only set values you want to change — null/omitted values use built-in defaults.");
+            }
+        }
+
+        if (show)
+        {
+            var loaded = TemplateHelper.LoadUserDefaults();
+            if (loaded == null)
+            {
+                Console.WriteLine("No config file found. Using built-in defaults.");
+                Console.WriteLine();
+                Console.WriteLine("Built-in defaults:");
+                Console.WriteLine("  Render mode: braille");
+                Console.WriteLine("  Max size:    terminal dimensions");
+                Console.WriteLine("  Contrast:    2.5");
+                Console.WriteLine("  Gamma:       1.0");
+                Console.WriteLine("  Color:       enabled (24-bit)");
+                Console.WriteLine("  Speed:       1.0x");
+                Console.WriteLine("  Loop:        infinite");
+            }
+            else
+            {
+                Console.WriteLine("Active config values (null = built-in default):");
+                // Show non-null values
+                if (loaded.MaxWidth.HasValue) Console.WriteLine($"  MaxWidth:     {loaded.MaxWidth}");
+                if (loaded.MaxHeight.HasValue) Console.WriteLine($"  MaxHeight:    {loaded.MaxHeight}");
+                if (loaded.Width.HasValue) Console.WriteLine($"  Width:        {loaded.Width}");
+                if (loaded.Height.HasValue) Console.WriteLine($"  Height:       {loaded.Height}");
+                if (loaded.Ascii == true) Console.WriteLine("  Mode:         ascii");
+                else if (loaded.Blocks == true) Console.WriteLine("  Mode:         blocks");
+                else if (loaded.Matrix == true) Console.WriteLine("  Mode:         matrix");
+                else if (loaded.Monochrome == true) Console.WriteLine("  Mode:         monochrome");
+                else if (loaded.Braille == true) Console.WriteLine("  Mode:         braille");
+                if (loaded.Contrast.HasValue) Console.WriteLine($"  Contrast:     {loaded.Contrast}");
+                if (loaded.Gamma.HasValue) Console.WriteLine($"  Gamma:        {loaded.Gamma}");
+                if (loaded.CharAspect.HasValue) Console.WriteLine($"  CharAspect:   {loaded.CharAspect}");
+                if (loaded.NoColor == true) Console.WriteLine("  Color:        disabled");
+                if (loaded.Speed.HasValue) Console.WriteLine($"  Speed:        {loaded.Speed}x");
+                if (loaded.Loop.HasValue) Console.WriteLine($"  Loop:         {loaded.Loop}");
+                if (loaded.Fps.HasValue) Console.WriteLine($"  FPS:          {loaded.Fps}");
+                if (loaded.WhisperModel != null) Console.WriteLine($"  WhisperModel: {loaded.WhisperModel}");
+                if (loaded.Subs != null) Console.WriteLine($"  Subs:         {loaded.Subs}");
+                if (loaded.ShowStatus == true) Console.WriteLine("  Status:       shown");
+            }
+        }
+
+        return Task.FromResult(0);
     });
 
     return cmd;

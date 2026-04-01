@@ -625,6 +625,10 @@ public static class YtdlpProvider
         // Set executable permission on Unix
         if (!OperatingSystem.IsWindows()) await SetExecutablePermissionAsync(exePath, ct);
 
+        // On macOS, remove quarantine and ad-hoc sign downloaded binary.
+        // Without this, Gatekeeper blocks execution of downloaded executables.
+        if (OperatingSystem.IsMacOS()) await RemoveMacQuarantineAsync(exePath, ct);
+
         progress?.Report(("yt-dlp ready!", 1.0));
         return exePath;
     }
@@ -646,6 +650,42 @@ public static class YtdlpProvider
         }
         catch
         {
+        }
+    }
+
+    /// <summary>
+    ///     On macOS, remove quarantine attribute and ad-hoc sign a downloaded binary.
+    ///     Downloaded files are quarantined by Gatekeeper and blocked from execution.
+    /// </summary>
+    private static async Task RemoveMacQuarantineAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            var xattr = new ProcessStartInfo("xattr", $"-d com.apple.quarantine \"{path}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var xattrProc = Process.Start(xattr);
+            if (xattrProc != null)
+                await xattrProc.WaitForExitAsync(ct);
+
+            var codesign = new ProcessStartInfo("codesign", $"--force --sign - \"{path}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var codesignProc = Process.Start(codesign);
+            if (codesignProc != null)
+                await codesignProc.WaitForExitAsync(ct);
+        }
+        catch
+        {
+            // Best effort
         }
     }
 

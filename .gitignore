@@ -3,7 +3,7 @@
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
 
 # User-specific stuff
-.idea/**/workspace.xml
+.idea/
 .idea/**/tasks.xml
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries
@@ -500,3 +500,4 @@ ConsoleImage/futurama.cidz
 ConsoleImage/matrix.gif
 ConsoleImage/scenes.gif
 ConsoleImage/star_wars.cidz
+/.idea/.idea.ConsoleImage/.idea/encodings.xml

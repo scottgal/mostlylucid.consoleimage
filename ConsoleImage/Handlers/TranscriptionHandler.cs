@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ConsoleImage.Core;
 using ConsoleImage.Transcription;
 using ConsoleImage.Video.Core;
 
@@ -15,7 +16,22 @@ public static class TranscriptionHandler
     {
         // Determine output path - default to VTT
         var outputPath = opts.OutputPath;
-        if (string.IsNullOrEmpty(outputPath)) outputPath = Path.ChangeExtension(opts.InputPath, ".vtt");
+        if (string.IsNullOrEmpty(outputPath))
+        {
+            if (IsUrl(opts.InputPath))
+            {
+                // For URLs, use a sensible local filename
+                var videoId = System.Text.RegularExpressions.Regex.Match(opts.InputPath,
+                    @"[?&]v=([a-zA-Z0-9_-]{11})|youtu\.be/([a-zA-Z0-9_-]{11})|/shorts/([a-zA-Z0-9_-]{11})");
+                var id = videoId.Groups.Cast<System.Text.RegularExpressions.Group>()
+                    .Skip(1).FirstOrDefault(g => g.Success)?.Value ?? "transcript";
+                outputPath = $"{id}.vtt";
+            }
+            else
+            {
+                outputPath = Path.ChangeExtension(opts.InputPath, ".vtt");
+            }
+        }
 
         return await GenerateSubtitlesAsync(opts, outputPath, ct);
     }
@@ -104,11 +120,31 @@ public static class TranscriptionHandler
                     }
                 }
 
+                // For YouTube URLs, resolve to a direct stream URL via yt-dlp
+                var ffmpegInputPath = opts.InputPath;
+                if (YtdlpProvider.IsYouTubeUrl(opts.InputPath))
+                {
+                    if (!quiet)
+                        Console.Error.WriteLine("Resolving YouTube URL via yt-dlp...");
+
+                    var ytdlpPath = await YtdlpProvider.GetYtdlpPathAsync(ct: ct);
+                    var streamInfo = await YtdlpProvider.GetStreamInfoAsync(opts.InputPath, ytdlpPath, ct: ct);
+                    if (streamInfo == null)
+                        throw new InvalidOperationException(
+                            "Failed to resolve YouTube URL. Check the URL is valid and yt-dlp is working.");
+
+                    // Use the audio URL if separate, otherwise the video URL contains audio
+                    ffmpegInputPath = streamInfo.AudioUrl ?? streamInfo.VideoUrl;
+
+                    if (!quiet)
+                        Console.Error.WriteLine($"Resolved: {streamInfo.Title}");
+                }
+
                 if (!quiet)
                     Console.Error.WriteLine("Extracting audio...");
                 tempAudioPath = Path.Combine(Path.GetTempPath(), $"consoleimage_audio_{Guid.NewGuid():N}.wav");
-                await ExtractAudioAsync(opts.InputPath, tempAudioPath, opts.StartTime, opts.Duration, opts.EnhanceAudio,
-                    ffmpegPath, ct);
+                await ExtractAudioAsync(ffmpegInputPath, tempAudioPath, opts.StartTime, opts.Duration,
+                    opts.EnhanceAudio, ffmpegPath, ct);
                 audioPath = tempAudioPath;
                 if (!quiet)
                     Console.Error.WriteLine("Audio extracted.");

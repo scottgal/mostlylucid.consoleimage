@@ -101,12 +101,13 @@ if ($Whisper) {
         -p:BundleWhisperRuntime=true `
         -p:DebugType=none
 } else {
-    # Native AOT build (no Whisper)
+    # Native AOT build (no Whisper bundled - runtime auto-downloads on first use)
     dotnet publish $projectPath `
         -c Release `
         -r $RID `
         --self-contained true `
         -p:PublishAot=true `
+        -p:BundleWhisperRuntime=false `
         -p:OptimizationPreference=Size `
         -p:IlcOptimizationPreference=Size `
         -p:StripSymbols=true `
