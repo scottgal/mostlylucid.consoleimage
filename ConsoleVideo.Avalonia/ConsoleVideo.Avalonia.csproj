@@ -20,7 +20,7 @@
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2"/>
         <!-- Docking layout system -->
         <PackageReference Include="Dock.Avalonia" Version="11.3.11.22"/>
-        <PackageReference Include="Dock.Model.Mvvm" Version="11.3.11.22"/>
+        <PackageReference Include="Dock.Model.Mvvm" Version="12.0.0.2"/>
         <!-- Whisper speech recognition -->
         <PackageReference Include="Whisper.net" Version="1.9.0"/>
         <PackageReference Include="Whisper.net.Runtime" Version="1.9.0"/>
