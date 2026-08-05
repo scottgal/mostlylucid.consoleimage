@@ -45,7 +45,7 @@ public static class RenderHelpers
                 "amber" => new Rgba32(255, 191, 0, 255),
                 "cyan" => new Rgba32(0, 255, 255, 255),
                 "purple" => new Rgba32(200, 0, 255, 255),
-                _ when colorName.StartsWith("#") && colorName.Length == 7 =>
+                _ when colorName.StartsWith('#') && colorName.Length == 7 =>
                     new Rgba32(
                         Convert.ToByte(colorName.Substring(1, 2), 16),
                         Convert.ToByte(colorName.Substring(3, 2), 16),

@@ -38,7 +38,7 @@ public class ConsolePreviewService
     /// <summary>
     ///     Launch consolevideo in an external terminal window.
     /// </summary>
-    public void LaunchInTerminal(string videoPath, double startTime, double endTime, RenderMode mode)
+    public static void LaunchInTerminal(string videoPath, double startTime, double endTime, RenderMode mode)
     {
         var consolevideo = GetConsoleVideoPath();
 
@@ -114,7 +114,7 @@ public class ConsolePreviewService
     /// <summary>
     ///     Launch a single frame preview (for testing render output).
     /// </summary>
-    public void LaunchSingleFramePreview(string videoPath, double timestamp, RenderMode mode)
+    public static void LaunchSingleFramePreview(string videoPath, double timestamp, RenderMode mode)
     {
         // Preview 3 seconds around the timestamp
         var start = Math.Max(0, timestamp - 1);

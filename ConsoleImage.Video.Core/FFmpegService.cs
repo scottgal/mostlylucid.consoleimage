@@ -1030,7 +1030,7 @@ public sealed class FFmpegService : IDisposable
         return results;
     }
 
-    private async Task<string> RunProcessAsync(string executable, string args, CancellationToken ct)
+    private static async Task<string> RunProcessAsync(string executable, string args, CancellationToken ct)
     {
         try
         {

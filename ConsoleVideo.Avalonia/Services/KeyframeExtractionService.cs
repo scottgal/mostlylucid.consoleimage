@@ -14,7 +14,7 @@ public class KeyframeExtractionService
     /// <summary>
     ///     Extract keyframes based on the specified settings.
     /// </summary>
-    public async Task<List<ExtractedKeyframeViewModel>> ExtractKeyframesAsync(
+    public static async Task<List<ExtractedKeyframeViewModel>> ExtractKeyframesAsync(
         string videoPath,
         ExtractionSettings settings,
         IProgress<(string Status, double Progress)>? progress = null,

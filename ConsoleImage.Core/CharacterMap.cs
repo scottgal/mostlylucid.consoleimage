@@ -25,7 +25,6 @@ namespace ConsoleImage.Core;
 public class CharacterMap
 {
     private const float SamplingRadius = 0.20f; // Radius as fraction of cell size
-    private const int SamplesPerCircle = 37; // Number of samples per circle for accuracy
 
     // Sampling circle configuration - 3x2 staggered pattern (per Alex Harri's article)
     // 3 columns, 2 rows - left circles lowered, right circles raised to minimize gaps

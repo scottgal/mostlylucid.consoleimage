@@ -305,8 +305,10 @@ public static class YtdlpProvider
         // Build cookie arguments (validated to prevent command injection)
         var cookieArgs = BuildSafeCookieArgs(cookiesFromBrowser, cookiesFile);
 
-        // Get URL and title
-        var args = $"{cookieArgs}-f \"{format}\" -g --no-warnings --no-playlist \"{youtubeUrl}\"";
+        // Single invocation: --print title emits the title first, -g emits one URL
+        // per selected format. A separate --get-title run would double extraction
+        // latency (~15s each against YouTube), freezing startup.
+        var args = $"{cookieArgs}--print title -g -f \"{format}\" --no-warnings --no-playlist \"{youtubeUrl}\"";
 
         try
         {
@@ -341,16 +343,17 @@ public static class YtdlpProvider
             if (lines.Length == 0)
                 return null;
 
-            var videoUrl = lines[0].Trim();
-            var audioUrl = lines.Length > 1 ? lines[1].Trim() : null;
-
-            // Get title separately
-            var title = await GetTitleAsync(ytdlp, youtubeUrl, cookiesFromBrowser, cookiesFile, ct);
+            // URLs contain "://"; the title is the first non-URL line (tolerant of
+            // an empty title line, which would otherwise shift the URL parsing).
+            var urls = lines.Where(l => l.Contains("://")).Select(l => l.Trim()).ToArray();
+            var title = lines.FirstOrDefault(l => !l.Contains("://"))?.Trim();
+            if (urls.Length == 0)
+                return null;
 
             return new YouTubeStreamInfo
             {
-                VideoUrl = videoUrl,
-                AudioUrl = audioUrl,
+                VideoUrl = urls[0],
+                AudioUrl = urls.Length > 1 ? urls[1] : null,
                 Title = title ?? "YouTube Video"
             };
         }
@@ -476,38 +479,6 @@ public static class YtdlpProvider
         }
 
         return null;
-    }
-
-    private static async Task<string?> GetTitleAsync(string ytdlp, string youtubeUrl, string? cookiesFromBrowser,
-        string? cookiesFile, CancellationToken ct)
-    {
-        try
-        {
-            // Build cookie arguments (validated to prevent command injection)
-            var cookieArgs = BuildSafeCookieArgs(cookiesFromBrowser, cookiesFile);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ytdlp,
-                Arguments = $"{cookieArgs}--get-title --no-warnings --no-playlist \"{youtubeUrl}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
-
-            var title = await process.StandardOutput.ReadLineAsync(ct);
-            await process.WaitForExitAsync(ct);
-
-            return title?.Trim();
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     private static string GetExecutableName()
@@ -743,9 +714,15 @@ public static class YtdlpProvider
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
+        // Download to a .part file and rename on success. IsVideoCached treats any
+        // non-empty file as a complete cache entry, so an interrupted download must
+        // never leave a partial file at the final path. yt-dlp also resumes .part
+        // files, so retries pick up where the previous attempt stopped.
+        var partPath = outputPath + ".part";
+
         // Build yt-dlp command
         var args =
-            $"{cookieArgs}-f \"{format}\" --merge-output-format mp4 --no-warnings --no-playlist -o \"{outputPath}\" \"{youtubeUrl}\"";
+            $"{cookieArgs}-f \"{format}\" --merge-output-format mp4 --no-warnings --no-playlist -o \"{partPath}\" \"{youtubeUrl}\"";
 
         try
         {
@@ -781,7 +758,11 @@ public static class YtdlpProvider
             await stderrTask;
             await process.WaitForExitAsync(ct);
 
-            return process.ExitCode == 0 && File.Exists(outputPath);
+            var success = process.ExitCode == 0 && File.Exists(partPath);
+            if (success)
+                File.Move(partPath, outputPath, true);
+
+            return success;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

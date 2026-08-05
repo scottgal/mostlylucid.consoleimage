@@ -228,6 +228,21 @@ consoleimage ./photos --shuffle
 
 ---
 
+## Paths
+
+File paths are resolved on all platforms:
+
+- **`~` expansion** - `~/Pictures/photo.jpg` works even when the path is quoted
+  (the shell can't expand it then). Also supported for options like `--output`.
+- **Relative and absolute paths** - both work, including paths with spaces.
+- **Dash-prefixed filenames** - a path starting with `-` looks like an option to
+  the parser, so pass it after a `--` separator:
+  ```bash
+  consoleimage -w 120 -- -my-photo.jpg
+  ```
+
+---
+
 ## YouTube Support
 
 Play YouTube videos directly in your terminal:
@@ -246,6 +261,10 @@ consoleimage "https://youtu.be/VIDEO_ID" -o output.gif -w 60
 # Save as document
 consoleimage "https://youtu.be/VIDEO_ID" -o video.cidz
 ```
+
+Playback starts after a single yt-dlp extraction (~10-15s, depends on your
+connection and YouTube's bot checks). Videos you've played before are cached —
+repeat plays start **instantly** without contacting yt-dlp at all.
 
 **Requirements:**
 
@@ -601,7 +620,7 @@ consoleimage transcribe <input> [options]
 | `--no-invert` | Don't invert (for light backgrounds) | Invert ON |
 | `--contrast` | Contrast power (1.0 = none) | 2.5 |
 | `--gamma` | Gamma correction (< 1.0 brightens) | 0.85 |
-| `-a, --aspect-ratio` | Character aspect ratio (width/height) | 0.5 |
+| `--char-aspect, --aspect-ratio` | Character aspect ratio (width/height) | 0.5 |
 | `--no-dither` | Disable Floyd-Steinberg dithering | Dither ON |
 | `--no-edge-chars` | Disable edge-direction characters | Edge chars ON |
 | `-e, --edge` | Enable edge detection | OFF |
@@ -630,6 +649,7 @@ consoleimage transcribe <input> [options]
 | `--no-enhance` | Disable FFmpeg audio preprocessing for Whisper | Enhance ON |
 | **Slideshow** | | |
 | `--slide-delay` | Auto-advance delay in seconds (0 = manual only) | 3 |
+| (aliases: `--delay`, `--interval`, `-d`) | | |
 | `--shuffle` | Randomize slideshow order | OFF |
 | `--hide-info` | Hide file info header in slideshow | OFF |
 | **YouTube** | | |

@@ -181,7 +181,8 @@
       "Bash(otool -L ./publish/consoleimage-osx-arm64/libggml-whisper.dylib)",
       "Bash(./publish/consoleimage-osx-arm64/consoleimage \"https://www.youtube.com/watch?v=jNQXAC9IVRw\" --subs whisper --whisper-model tiny --max-width 60 --max-height 15 -t 5)",
       "Bash(./publish/consoleimage-osx-arm64/consoleimage /tmp/test_image.jpg --max-width 40 --max-height 5 --blocks)",
-      "WebFetch(domain:www.nuget.org)"
+      "WebFetch(domain:www.nuget.org)",
+      "Skill(commit-commands:commit-push-pr)"
     ]
   },
   "enableAllProjectMcpServers": true,

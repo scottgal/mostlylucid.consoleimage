@@ -97,6 +97,9 @@ public class KeyframeDeduplicationService
     ///     Uses 9x8 grayscale comparison producing 64-bit hash.
     ///     Very fast (~1ms) and effective for near-duplicate detection.
     /// </summary>
+    // CA1822 suppressed: part of the public API surface — making it static would
+    // break binary compatibility for downstream consumers of the library.
+#pragma warning disable CA1822
     public ulong ComputeDHash(Image<Rgba32> image)
     {
         // Clone and resize to 9x8 (one extra column for gradient comparison)
@@ -121,6 +124,7 @@ public class KeyframeDeduplicationService
 
         return hash;
     }
+#pragma warning restore CA1822
 
     /// <summary>
     ///     Calculate Hamming distance between two hashes.

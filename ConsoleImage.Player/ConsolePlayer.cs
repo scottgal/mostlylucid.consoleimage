@@ -14,6 +14,8 @@ namespace ConsoleImage.Player;
 /// </summary>
 public class ConsolePlayer : IDisposable
 {
+    private static readonly string[] SrtTimestampSeparator = ["-->"];
+
     private readonly int _loopCount;
     private readonly PlayerSubtitleTrack? _subtitles;
     private readonly int _subtitleWidth;
@@ -345,7 +347,7 @@ public class ConsolePlayer : IDisposable
             // Parse timestamp line: "00:00:01,000 --> 00:00:04,000"
             if (line.Contains("-->"))
             {
-                var parts = line.Split(new[] { "-->" }, StringSplitOptions.RemoveEmptyEntries);
+                var parts = line.Split(SrtTimestampSeparator, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length >= 2)
                 {
                     var start = ParseTimestamp(parts[0].Trim());

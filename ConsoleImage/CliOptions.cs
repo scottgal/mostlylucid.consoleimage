@@ -26,7 +26,10 @@ public class CliOptions
         // Input
         Input = new Argument<string?>("input")
         {
-            Description = "Path to image, GIF, video, or cidz/json document",
+            // Note: paths beginning with '-' must be passed after a '--' separator
+            // (e.g. `consoleimage -- -myfile.png`), otherwise the shell-style option
+            // tokenizer treats them as options.
+            Description = "Path to image, GIF, video, or cidz/json document (use -- before paths starting with '-')",
             Arity = ArgumentArity.ZeroOrOne
         };
 
@@ -105,6 +108,7 @@ public class CliOptions
 
         // Render modes (braille is default - highest detail, smallest output)
         Ascii = new Option<bool>("--ascii") { Description = "Use ASCII characters instead of braille" };
+        Ascii.Aliases.Add("-a");
 
         Blocks = new Option<bool>("--blocks") { Description = "Use colored Unicode blocks instead of braille" };
         Blocks.Aliases.Add("-b");
@@ -145,6 +149,7 @@ public class CliOptions
         Gamma.Aliases.Add("-g");
 
         CharAspect = new Option<float?>("--char-aspect") { Description = "Character aspect ratio (width/height)" };
+        CharAspect.Aliases.Add("--aspect-ratio");
         Charset = new Option<string?>("--charset") { Description = "Custom character set (light to dark)" };
 
         Preset = new Option<string?>("--preset") { Description = "Preset: extended, simple, block, classic" };
@@ -301,6 +306,7 @@ public class CliOptions
             { Description = "Delay between images in seconds (0 = manual only, no auto-advance)" };
         SlideDelay.DefaultValueFactory = _ => 3.0f;
         SlideDelay.Aliases.Add("--interval");
+        SlideDelay.Aliases.Add("--delay");
         SlideDelay.Aliases.Add("-d");
 
         Shuffle = new Option<bool>("--shuffle") { Description = "Randomize image order (slideshow mode)" };

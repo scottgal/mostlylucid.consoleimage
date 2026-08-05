@@ -139,7 +139,7 @@ public class PlayerDocument
     public static PlayerDocument FromJson(string json)
     {
         // Quick check for streaming format (first line contains header type)
-        if (json.StartsWith("{") && json.Contains("\"@type\":\"ConsoleImageDocumentHeader\""))
+        if (json.StartsWith('{') && json.Contains("\"@type\":\"ConsoleImageDocumentHeader\""))
             return LoadStreamingFromString(json);
 
         // Check for optimized format

@@ -15,7 +15,7 @@ public class AsciiPreviewService
     /// <summary>
     ///     Render an image to ANSI-escaped text.
     /// </summary>
-    public string RenderToAnsi(Image<Rgba32> image, RenderMode mode, int maxWidth = 80, int maxHeight = 40)
+    public static string RenderToAnsi(Image<Rgba32> image, RenderMode mode, int maxWidth = 80, int maxHeight = 40)
     {
         var options = new RenderOptions
         {
@@ -56,7 +56,7 @@ public class AsciiPreviewService
     ///     Parse ANSI text and convert to formatted segments for display.
     ///     Each segment has text and a color.
     /// </summary>
-    public List<AnsiSegment> ParseAnsiToSegments(string ansiText)
+    public static List<AnsiSegment> ParseAnsiToSegments(string ansiText)
     {
         var segments = new List<AnsiSegment>();
         var currentColor = new AnsiColor(192, 192, 192); // Default gray

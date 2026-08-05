@@ -44,6 +44,13 @@ consoleimage movie.mp4 --subs whisper
 
 That's it! Colors and animation are enabled by default. **Braille mode is now the default** for maximum detail.
 
+**Tips:**
+
+- `~/` paths work even when quoted, and dash-prefixed filenames go after `--`
+  (`consoleimage -w 120 -- -my-file.png`).
+- YouTube videos you've already played start instantly from the local cache;
+  first plays start after a single ~10-15s yt-dlp extraction.
+
 ## Zero Setup - Everything Downloads Automatically
 
 ConsoleImage requires **zero manual setup** for common tasks. Dependencies are downloaded automatically on first use:

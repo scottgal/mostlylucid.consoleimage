@@ -344,7 +344,7 @@ public static class TranscriptionHandler
         public string? OutputPath { get; set; }
         public string ModelSize { get; set; } = "base";
         public string Language { get; set; } = "en";
-        public bool Diarize { get; set; } = false;
+        public bool Diarize { get; set; }
         public int? Threads { get; set; }
 
         /// <summary>
@@ -360,12 +360,12 @@ public static class TranscriptionHandler
         /// <summary>
         ///     Stream transcribed text to stdout as it's generated (for tool/pipe usage).
         /// </summary>
-        public bool StreamToStdout { get; set; } = false;
+        public bool StreamToStdout { get; set; }
 
         /// <summary>
         ///     Quiet mode - suppress progress messages (only output transcribed text).
         /// </summary>
-        public bool Quiet { get; set; } = false;
+        public bool Quiet { get; set; }
 
         /// <summary>
         ///     Apply FFmpeg audio preprocessing filters for better speech recognition.

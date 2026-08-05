@@ -114,13 +114,15 @@ public class OptimizedDocument
             var frame = Frames[i];
             if (frame.ContentHash == 0) continue;
 
-            if (!hashCounts.ContainsKey(frame.ContentHash))
+            if (!hashCounts.TryGetValue(frame.ContentHash, out var count))
             {
-                hashCounts[frame.ContentHash] = 0;
+                hashCounts[frame.ContentHash] = 1;
                 hashToFirstIdx[frame.ContentHash] = i;
             }
-
-            hashCounts[frame.ContentHash]++;
+            else
+            {
+                hashCounts[frame.ContentHash] = count + 1;
+            }
         }
 
         // Find top N most frequent hashes

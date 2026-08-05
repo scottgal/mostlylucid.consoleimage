@@ -56,12 +56,12 @@ public class MatrixOptions
     /// <summary>
     ///     Use ASCII characters only (no katakana). Useful when fonts don't support Japanese.
     /// </summary>
-    public bool UseAsciiOnly { get; set; } = false;
+    public bool UseAsciiOnly { get; set; }
 
     /// <summary>
     ///     Use block-based rendering (higher resolution, 2 pixels per character).
     /// </summary>
-    public bool UseBlockMode { get; set; } = false;
+    public bool UseBlockMode { get; set; }
 
     /// <summary>
     ///     Target frames per second for Matrix animation (default 20 FPS for smooth rain).
@@ -205,6 +205,25 @@ public class MatrixRenderer : IDisposable
     private static readonly char[] KatakanaCharacters = BuildKatakanaCharacterSet();
     private static readonly char[] AsciiCharacters = BuildAsciiCharacterSet();
 
+    // Constant character groups used by the character-set builders (CA1861)
+    private static readonly char[] MatrixSymbols = [':', '.', '"', '=', '*', '+', '-', '<', '>', '|', '_', '\\', '/', '^'];
+    private static readonly char[] LatinReversedUpper = ['Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M'];
+    private static readonly char[] AsciiUpperReversed =
+    [
+        'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K', 'J', 'I', 'H', 'G', 'F',
+        'E', 'D', 'C', 'B', 'A'
+    ];
+    private static readonly char[] AsciiLowerReversed =
+    [
+        'z', 'y', 'x', 'w', 'v', 'u', 't', 's', 'r', 'q', 'p', 'o', 'n', 'm', 'l', 'k', 'j', 'i', 'h', 'g', 'f',
+        'e', 'd', 'c', 'b', 'a'
+    ];
+    private static readonly char[] AsciiSymbols =
+    [
+        ':', '.', '"', '=', '*', '+', '-', '<', '>', '|', '_', '\\', '/', '^', '@', '#', '$', '%', '&', '!', '?',
+        '~', ';', '{', '}', '[', ']', '(', ')'
+    ];
+
     // Default background
     private static readonly Rgba32 BackgroundColor = new(0, 0, 0, 255);
     private readonly Rgba32 _cachedBrightColor;
@@ -334,10 +353,10 @@ public class MatrixRenderer : IDisposable
             chars.Add(c);
 
         // Some symbols used in the Matrix films
-        chars.AddRange(new[] { ':', '.', '"', '=', '*', '+', '-', '<', '>', '|', '_', '\\', '/', '^' });
+        chars.AddRange(MatrixSymbols);
 
         // Some Latin letters (often mirrored/reversed in the film, but we use normal)
-        chars.AddRange(new[] { 'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M' });
+        chars.AddRange(LatinReversedUpper);
 
         return chars.ToArray();
     }
@@ -351,25 +370,13 @@ public class MatrixRenderer : IDisposable
             chars.Add(c);
 
         // Uppercase letters (reversed style like in the film)
-        chars.AddRange(new[]
-        {
-            'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K', 'J', 'I', 'H', 'G', 'F',
-            'E', 'D', 'C', 'B', 'A'
-        });
+        chars.AddRange(AsciiUpperReversed);
 
         // Lowercase letters
-        chars.AddRange(new[]
-        {
-            'z', 'y', 'x', 'w', 'v', 'u', 't', 's', 'r', 'q', 'p', 'o', 'n', 'm', 'l', 'k', 'j', 'i', 'h', 'g', 'f',
-            'e', 'd', 'c', 'b', 'a'
-        });
+        chars.AddRange(AsciiLowerReversed);
 
         // Symbols commonly seen in code/Matrix style
-        chars.AddRange(new[]
-        {
-            ':', '.', '"', '=', '*', '+', '-', '<', '>', '|', '_', '\\', '/', '^', '@', '#', '$', '%', '&', '!', '?',
-            '~', ';', '{', '}', '[', ']', '(', ')'
-        });
+        chars.AddRange(AsciiSymbols);
 
         return chars.ToArray();
     }

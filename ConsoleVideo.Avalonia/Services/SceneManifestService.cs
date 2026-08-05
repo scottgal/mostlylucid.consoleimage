@@ -14,7 +14,7 @@ public class SceneManifestService
     /// <summary>
     ///     Create a scene manifest from extracted keyframes.
     /// </summary>
-    public SceneManifest CreateManifest(
+    public static SceneManifest CreateManifest(
         string videoPath,
         VideoInfo videoInfo,
         IReadOnlyList<CoreKeyframe> keyframes,
@@ -64,7 +64,7 @@ public class SceneManifestService
     /// <summary>
     ///     Save manifest to JSON file.
     /// </summary>
-    public async Task SaveManifestAsync(SceneManifest manifest, string outputPath, CancellationToken ct = default)
+    public static async Task SaveManifestAsync(SceneManifest manifest, string outputPath, CancellationToken ct = default)
     {
         var json = JsonSerializer.Serialize(manifest, SceneManifestJsonContext.Default.SceneManifest);
         await File.WriteAllTextAsync(outputPath, json, ct);
@@ -73,7 +73,7 @@ public class SceneManifestService
     /// <summary>
     ///     Load manifest from JSON file.
     /// </summary>
-    public async Task<SceneManifest?> LoadManifestAsync(string path, CancellationToken ct = default)
+    public static async Task<SceneManifest?> LoadManifestAsync(string path, CancellationToken ct = default)
     {
         if (!File.Exists(path)) return null;
 
@@ -84,7 +84,7 @@ public class SceneManifestService
     /// <summary>
     ///     Export complete manifest with keyframe images.
     /// </summary>
-    public async Task ExportAsync(
+    public static async Task ExportAsync(
         string videoPath,
         VideoInfo videoInfo,
         IReadOnlyList<CoreKeyframe> keyframes,

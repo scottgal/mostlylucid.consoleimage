@@ -47,7 +47,7 @@ public class VideoFrameSampler
     /// <summary>
     ///     Uniform sampling at fixed intervals.
     /// </summary>
-    private List<double> GetUniformSamples(
+    private static List<double> GetUniformSamples(
         double startTime,
         double duration,
         VideoInfo videoInfo,

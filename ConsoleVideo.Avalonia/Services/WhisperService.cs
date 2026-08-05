@@ -57,7 +57,7 @@ public class WhisperService : IDisposable
     /// <summary>
     ///     Download a Whisper model from Hugging Face.
     /// </summary>
-    public async Task DownloadModelAsync(
+    public static async Task DownloadModelAsync(
         GgmlType modelType,
         IProgress<(string Status, double Progress)>? progress = null,
         CancellationToken ct = default)
