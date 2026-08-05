@@ -15,7 +15,6 @@ namespace ConsoleVideo.Avalonia.ViewModels;
 
 public partial class MainWindowViewModel : ObservableObject
 {
-    private readonly AsciiPreviewService _asciiPreviewService = new();
     private readonly KeyframeExtractionService _extractionService;
     private readonly VideoPreviewService _previewService;
     private readonly SubtitleOverlayService _subtitleOverlayService = new();
@@ -184,7 +183,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         try
         {
-            AsciiPreview = _asciiPreviewService.RenderToAnsi(
+            AsciiPreview = AsciiPreviewService.RenderToAnsi(
                 SelectedKeyframe.OriginalImage,
                 SelectedRenderMode,
                 PreviewWidth,
@@ -197,7 +196,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task OpenVideoAsync()
+    private static async Task OpenVideoAsync()
     {
         // This will be triggered by the view's file picker
         // For now, we'll handle the path directly when set
@@ -447,7 +446,7 @@ public partial class MainWindowViewModel : ObservableObject
                 Progress = report.Progress;
             });
 
-            var extractedKeyframes = await _extractionService.ExtractKeyframesAsync(
+            var extractedKeyframes = await KeyframeExtractionService.ExtractKeyframesAsync(
                 VideoPath,
                 settings,
                 progress,
@@ -710,7 +709,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    private async Task<Bitmap?> ConvertToThumbnailAsync(Image<Rgba32> image, int maxWidth, int maxHeight)
+    private static async Task<Bitmap?> ConvertToThumbnailAsync(Image<Rgba32> image, int maxWidth, int maxHeight)
     {
         try
         {

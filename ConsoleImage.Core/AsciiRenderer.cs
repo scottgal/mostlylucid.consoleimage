@@ -427,7 +427,7 @@ public class AsciiRenderer : IDisposable
         return maxedVector.ApplyContrast(contrastPower);
     }
 
-    private void SampleExternalCircles(Image<Rgba32> image, int cellX, int cellY,
+    private static void SampleExternalCircles(Image<Rgba32> image, int cellX, int cellY,
         int cellWidth, int cellHeight,
         float[,,] externalVectors, int y, int x)
     {
@@ -920,7 +920,7 @@ public class AsciiRenderer : IDisposable
         return (avgCoverage, totalR, totalG, totalB, samples);
     }
 
-    private void SampleExternalCirclesFromBuffer(Rgba32[] pixels, int imgWidth, int imgHeight,
+    private static void SampleExternalCirclesFromBuffer(Rgba32[] pixels, int imgWidth, int imgHeight,
         int cellX, int cellY, int cellWidth, int cellHeight,
         float[,,] externalVectors, int y, int x)
     {

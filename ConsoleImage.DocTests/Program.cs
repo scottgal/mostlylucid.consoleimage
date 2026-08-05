@@ -31,7 +31,7 @@ if (File.Exists(testImage))
     Console.WriteLine("[OK] AsciiArt.Render()");
 
     // Console.WriteLine(AsciiArt.RenderColored("photo.jpg"));
-    Console.WriteLine(AsciiArt.RenderColored(testImage).Substring(0, 100) + "...");
+    Console.WriteLine(string.Concat(AsciiArt.RenderColored(testImage).AsSpan(0, 100), "..."));
     Console.WriteLine("[OK] AsciiArt.RenderColored()");
 }
 else

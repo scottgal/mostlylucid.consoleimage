@@ -165,7 +165,7 @@ public class GifWriter : IDisposable
     /// <summary>
     ///     Burn subtitle text into an image at the bottom with outline effect.
     /// </summary>
-    private void BurnSubtitleIntoImage(Image<Rgba32> image, string subtitle)
+    private static void BurnSubtitleIntoImage(Image<Rgba32> image, string subtitle)
     {
         var lines = subtitle.Split('\n', StringSplitOptions.RemoveEmptyEntries).Take(2).ToArray();
         if (lines.Length == 0) return;
@@ -1635,7 +1635,7 @@ public class GifWriterOptions
     /// <summary>
     ///     Number of times to loop (0 = infinite)
     /// </summary>
-    public int LoopCount { get; set; } = 0;
+    public int LoopCount { get; set; }
 
     /// <summary>
     ///     Scale factor for output (0.5 = half size, smaller = smaller file)

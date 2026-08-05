@@ -61,7 +61,8 @@ public sealed class PlexClient : IDisposable
         try
         {
             var xml = await _http.GetStringAsync(Url($"/library/metadata/{ratingKey}"), ct);
-            return ParseItems(xml).FirstOrDefault();
+            var items = ParseItems(xml);
+            return items.Count > 0 ? items[0] : null;
         }
         catch { return null; }
     }

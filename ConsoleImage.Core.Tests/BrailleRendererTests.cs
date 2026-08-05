@@ -94,6 +94,33 @@ public class BrailleRendererTests : IDisposable
     }
 
     [Fact]
+    public void RenderImage_WithMixedCell_ColorsFromOnPixelsOnly()
+    {
+        // A single 2x4 braille cell: one black pixel, seven bright pixels.
+        // Averaging all 8 pixels muddies the dot colour; sampling only the ON
+        // (bright) pixels must keep the red channel near the source value.
+        using var renderer = new BrailleRenderer(new RenderOptions
+        {
+            Width = 1,
+            Height = 1,
+            UseColor = true,
+            Invert = true,
+            DisableBrailleDithering = true,
+            Gamma = 1.0f
+        });
+
+        var image = CreateTestImage(2, 4, new Rgba32(240, 150, 80));
+        image[0, 0] = new Rgba32(0, 0, 0);
+        var output = renderer.RenderImage(image);
+
+        var match = Regex.Match(output, "\x1b\\[38;2;(\\d+);(\\d+);(\\d+)m");
+        Assert.True(match.Success, $"Expected a colour escape in output: {output}");
+        var r = int.Parse(match.Groups[1].Value);
+        // Full-cell average would be ~216; ON-pixel-only sampling gives ~246.
+        Assert.True(r >= 240, $"Expected bright dot colour, got r={r} in: {output}");
+    }
+
+    [Fact]
     public void RenderImage_WithoutColor_NoAnsiCodes()
     {
         using var renderer = new BrailleRenderer(new RenderOptions

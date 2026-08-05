@@ -148,8 +148,10 @@ public class CalibrationHelperTests
     {
         var output = CalibrationHelper.RenderCalibrationPattern(RenderMode.ColorBlocks, 0.5f);
 
-        // ANSI escape codes start with ESC (0x1b)
-        Assert.Contains("\x1b[", output);
+        // ANSI escape codes start with ESC (0x1b).
+        // Note: use the char overload — xunit 2.9.3's string DoesNotContain is
+        // unreliable for expected substrings containing control characters.
+        Assert.Contains('\x1b', output);
     }
 
     [Fact]
@@ -158,7 +160,7 @@ public class CalibrationHelperTests
         var output = CalibrationHelper.RenderCalibrationPattern(RenderMode.Ascii, 0.5f, false);
 
         // Should not contain ANSI escape codes
-        Assert.DoesNotContain("\x1b[", output);
+        Assert.DoesNotContain('\x1b', output);
     }
 
     [Fact]

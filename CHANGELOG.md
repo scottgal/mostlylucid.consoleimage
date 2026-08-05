@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Bug Fixes
+
+- **Braille colors sample ON pixels only** - Dot colors were averaged over all 8
+  cell pixels including background, muddying bright dots toward black (the
+  documented solarization issue). Colors now come from the pixels where dots are
+  actually displayed, matching the dual-color path. Applies to stills, GIFs, and
+  video.
+- **YouTube startup latency halved** - URL extraction and title were fetched in
+  two sequential yt-dlp runs (~15s each). A single `--print title -g` invocation
+  now returns both.
+- **Cached YouTube videos start instantly** - The cache check now happens before
+  extraction, so repeat plays skip yt-dlp entirely (0.2s vs ~15s).
+- **Cached video downloads are atomic** - Downloads write to a `.part` file and
+  rename on success, so an interrupted download can no longer leave a partial
+  file that `IsVideoCached` treats as a complete cache entry (yt-dlp also
+  resumes `.part` files on retry).
+- **`~` paths expand on Linux/macOS** - Quoted/scripted paths like `"~/x.jpg"`
+  now resolve correctly.
+- **Dash-prefixed filenames work** - Use the `--` separator
+  (`consoleimage -w 120 -- -my-file.png`); documented in the help text.
+- **Fixed broken Release builds** - Removed the CA analyzer errors
+  (CA1866/CA1823/CA1861) in `ConsoleImage.Player` that failed `dotnet build -c Release`.
+
+### New CLI Options
+
+- `-a` alias for `--ascii` (was advertised in help text but never registered).
+- `--aspect-ratio` alias for `--char-aspect`.
+- `--delay` alias for `--slide-delay`.
+
+### Documentation
+
+- All example CLI commands in the docs were verified to run; fixed the
+  `--aspect-ratio` option-table row (it claimed `-a`, which belongs to `--ascii`).
+- Added a Paths section (tilde expansion, `--` separator) and instant-start
+  caching notes to the CLI guide.
+
+### Testing
+
+- New regression test: braille cells color from ON pixels only
+  (`RenderImage_WithMixedCell_ColorsFromOnPixelsOnly`).
+- The calibration ANSI test now uses xunit's char overload - xunit 2.9.3's
+  string `DoesNotContain` misreports control-character substrings (it matched
+  `[` alone against the expected `ESC [`), failing a correct implementation.
+
 ## [5.0.0] - 2026-03-16
 
 ### Major Features

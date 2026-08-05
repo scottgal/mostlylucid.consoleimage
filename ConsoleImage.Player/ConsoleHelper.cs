@@ -16,7 +16,6 @@ public static class ConsoleHelper
 {
     private const int STD_OUTPUT_HANDLE = -11;
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
-    private const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
 
     private const uint CP_UTF8 = 65001;
 
@@ -425,7 +424,7 @@ public static class ConsoleHelper
 
             // Parse: [6;height;widtht
             var text = sb.ToString();
-            if (text.Length < 5 || text[0] != '[' || !text.EndsWith("t"))
+            if (text.Length < 5 || text[0] != '[' || !text.EndsWith('t'))
                 return null;
 
             var inner = text.Substring(1, text.Length - 2);

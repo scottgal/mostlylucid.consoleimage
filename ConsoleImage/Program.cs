@@ -510,15 +510,20 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     var isUrl = isYouTube || UrlHelper.IsUrl(inputPath);
     string inputFullPath;
     string? tempFile = null;
-    string? youtubeTitle = null;
 
     if (isYouTube)
     {
         inputPath = UrlHelper.NormalizeUrl(inputPath);
         Console.Error.WriteLine($"YouTube URL detected: {inputPath}");
 
+        // Extract video ID for caching — checked BEFORE extraction so cached videos
+        // start instantly without paying the ~15s yt-dlp page fetch.
+        var videoId = ExtractYouTubeVideoId(inputPath);
+        var cachedVideoPath = videoId != null ? SubtitleResolver.GetCachedVideoPath(videoId) : null;
+        var cacheHit = !noCacheVideo && cachedVideoPath != null && SubtitleResolver.IsVideoCached(videoId!);
+
         // Check if yt-dlp is available, offer to download if not
-        if (!YtdlpProvider.IsAvailable(ytdlpPath))
+        if (!cacheHit && !YtdlpProvider.IsAvailable(ytdlpPath))
         {
             var (needsDownload, statusMsg, downloadUrl) = YtdlpProvider.GetDownloadStatus();
 
@@ -578,40 +583,33 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             }
         }
 
-        Console.Error.Write("Extracting video stream URL... ");
-
-        // For ASCII rendering, we don't need high resolution - 480p is plenty
-        var ytMaxHeight = useBraille ? 480 : 360;
-        // Pass start time to yt-dlp so it can use download-sections for efficient seeking
-        var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, start,
-            cookiesFromBrowser, cookiesFile, cancellationToken);
-
-        if (streamInfo == null)
+        if (cacheHit)
         {
-            Console.Error.WriteLine("failed.");
-            Console.Error.WriteLine("Could not extract video stream from YouTube URL.");
-            return 1;
-        }
-
-        Console.Error.WriteLine("done.");
-        Console.Error.WriteLine($"  Title: {streamInfo.Title}");
-        youtubeTitle = streamInfo.Title;
-
-        // Extract video ID for caching
-        var videoId = ExtractYouTubeVideoId(inputPath);
-        var cachedVideoPath = videoId != null ? SubtitleResolver.GetCachedVideoPath(videoId) : null;
-        Task? backgroundDownloadTask = null;
-
-        // Caching is enabled by default (unless --no-cache specified)
-        if (!noCacheVideo && cachedVideoPath != null && SubtitleResolver.IsVideoCached(videoId!))
-        {
-            // Cache exists - use it for instant playback (zero bandwidth)
+            // Cache exists - use it for instant playback (zero bandwidth, no yt-dlp run)
             Console.Error.WriteLine("  Using cached video (instant start)");
-            inputFullPath = cachedVideoPath;
-            input = new FileInfo(cachedVideoPath);
+            inputFullPath = cachedVideoPath!;
+            input = new FileInfo(cachedVideoPath!);
         }
         else
         {
+            Console.Error.Write("Extracting video stream URL... ");
+
+            // For ASCII rendering, we don't need high resolution - 480p is plenty
+            var ytMaxHeight = useBraille ? 480 : 360;
+            // Pass start time to yt-dlp so it can use download-sections for efficient seeking
+            var streamInfo = await YtdlpProvider.GetStreamInfoAsync(inputPath, ytdlpPath, ytMaxHeight, start,
+                cookiesFromBrowser, cookiesFile, cancellationToken);
+
+            if (streamInfo == null)
+            {
+                Console.Error.WriteLine("failed.");
+                Console.Error.WriteLine("Could not extract video stream from YouTube URL.");
+                return 1;
+            }
+
+            Console.Error.WriteLine("done.");
+            Console.Error.WriteLine($"  Title: {streamInfo.Title}");
+
             // Stream directly for fast start
             inputFullPath = streamInfo.VideoUrl;
             input = new FileInfo("youtube.mp4");
@@ -631,7 +629,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
                 var dlCookiesBrowser = cookiesFromBrowser;
                 var dlCookiesFile = cookiesFile;
 
-                backgroundDownloadTask = Task.Run(async () =>
+                _ = Task.Run(async () =>
                 {
                     try
                     {
@@ -1271,7 +1269,9 @@ static (bool outputAsJson, bool outputAsCompressed, string? jsonOutputPath, stri
 
 static string? ResolveInputPath(string inputPath, FileInfo input)
 {
-    var inputFullPath = inputPath;
+    // Expand ~ (quoted/scripted paths bypass shell expansion; Windows users
+    // are unaffected — "~" isn't a Windows path convention)
+    var inputFullPath = ExpandTilde(inputPath);
 
     if (!File.Exists(inputFullPath))
         inputFullPath = input.FullName;
@@ -1317,6 +1317,15 @@ static string? ResolveInputPath(string inputPath, FileInfo input)
     }
 
     return inputFullPath;
+}
+
+static string ExpandTilde(string path)
+{
+    if (string.IsNullOrEmpty(path)) return path;
+    if (path == "~") return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    if (path.StartsWith("~/") || path.StartsWith("~\\"))
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]);
+    return path;
 }
 
 static string FormatTranscriptTime(TimeSpan ts)
@@ -2228,6 +2237,9 @@ static Command CreateToolsSubcommand()
         // --- Whisper Model ---
         Console.WriteLine("[Whisper Model]");
         Console.WriteLine($"  Cache: {ConsoleImage.Transcription.WhisperModelDownloader.CacheDirectory}");
+        // CA1861 suppressed: static fields aren't available inside the tools
+        // command lambda; the array is tiny and created once per invocation.
+#pragma warning disable CA1861
         foreach (var size in new[] { "tiny", "base", "small", "medium", "large" })
         {
             var cached = ConsoleImage.Transcription.WhisperModelDownloader.IsModelCached(size, "en");
@@ -2237,6 +2249,7 @@ static Command CreateToolsSubcommand()
             else
                 Console.WriteLine($"  {size,-8}: not downloaded (~{sizeMB}MB)");
         }
+#pragma warning restore CA1861
 
         if (redownload)
         {

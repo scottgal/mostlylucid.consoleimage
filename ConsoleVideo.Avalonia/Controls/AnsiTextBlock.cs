@@ -22,7 +22,6 @@ public class AnsiTextBlock : Control
         AvaloniaProperty.Register<AnsiTextBlock, FontFamily>(nameof(FontFamily),
             new FontFamily("Cascadia Mono, Consolas, Courier New, monospace"));
 
-    private readonly AsciiPreviewService _previewService = new();
     private List<AnsiSegment>? _segments;
 
     static AnsiTextBlock()
@@ -63,7 +62,7 @@ public class AnsiTextBlock : Control
 
     private void EnsureParsed()
     {
-        if (_segments == null && AnsiText != null) _segments = _previewService.ParseAnsiToSegments(AnsiText);
+        if (_segments == null && AnsiText != null) _segments = AsciiPreviewService.ParseAnsiToSegments(AnsiText);
     }
 
     protected override Size MeasureOverride(Size availableSize)

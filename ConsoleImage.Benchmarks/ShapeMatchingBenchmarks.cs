@@ -172,6 +172,9 @@ public class CharacterSetBenchmarks
 ///     Benchmarks for disk cache performance (CharacterMap startup).
 ///     Run with: dotnet run -c Release -- --filter *DiskCache*
 /// </summary>
+// CA1822 suppressed: BenchmarkDotNet requires instance benchmark methods —
+// it instantiates the class per benchmark run, static methods are not supported.
+#pragma warning disable CA1822
 [MemoryDiagnoser]
 [SimpleJob]
 [IterationCount(5)]
@@ -198,3 +201,4 @@ public class DiskCacheBenchmarks
         return new BrailleCharacterMap();
     }
 }
+#pragma warning restore CA1822

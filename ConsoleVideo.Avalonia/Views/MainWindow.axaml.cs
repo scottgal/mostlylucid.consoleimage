@@ -187,7 +187,7 @@ public partial class MainWindow : AppWindow
             ViewModel.IsLoading = true;
             ViewModel.StatusText = "Exporting manifest...";
 
-            await manifestService.ExportAsync(
+            await SceneManifestService.ExportAsync(
                 ViewModel.VideoPath,
                 ViewModel.VideoInfo,
                 coreKeyframes,
@@ -213,7 +213,7 @@ public partial class MainWindow : AppWindow
         if (ViewModel.VideoPath == null) return;
 
         var previewService = new ConsolePreviewService();
-        previewService.LaunchInTerminal(
+        ConsolePreviewService.LaunchInTerminal(
             ViewModel.VideoPath,
             ViewModel.RangeStart,
             ViewModel.RangeEnd,
@@ -238,7 +238,7 @@ public partial class MainWindow : AppWindow
                 var previewService = new ConsolePreviewService();
                 var segmentStart = Math.Max(0, kf.Timestamp - 2);
                 var segmentEnd = Math.Min(ViewModel.Duration, kf.Timestamp + 5);
-                previewService.LaunchInTerminal(
+                ConsolePreviewService.LaunchInTerminal(
                     ViewModel.VideoPath,
                     segmentStart,
                     segmentEnd,

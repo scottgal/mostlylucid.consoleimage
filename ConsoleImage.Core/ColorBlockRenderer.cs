@@ -20,8 +20,6 @@ public class ColorBlockRenderer : IDisposable
     // Unicode half-block characters
     private const char UpperHalfBlock = '▀'; // Upper half solid
     private const char LowerHalfBlock = '▄'; // Lower half solid
-    private const char FullBlock = '█'; // Full block
-    private const char Space = ' '; // Empty
     private readonly RenderOptions _options;
     private bool _disposed;
     private int _lastBufferSize;

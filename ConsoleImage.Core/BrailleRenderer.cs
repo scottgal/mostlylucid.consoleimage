@@ -215,6 +215,59 @@ public class BrailleRenderer : IDisposable
         return (char)(BrailleBase + code);
     }
 
+    /// <summary>
+    ///     Average the colors of the pixels where this cell's dots are actually displayed.
+    ///     Averaging all 8 cell pixels (ON + OFF) muddies dot colors — dark background
+    ///     pixels drag bright dot colors toward black, producing the flat "blocky" look.
+    ///     The dot pattern is decoded from the braille character itself, so it works for
+    ///     both dithered (binary) and ring-sampled (continuous) paths.
+    ///     Empty cells fall back to the full-cell average; their glyph is blank so the
+    ///     color is only a placeholder (the caller may turn near-black blanks into spaces).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (byte r, byte g, byte b) CollectDotColor(
+        char brailleChar, int px, int py, Rgba32[] colors, int pixelWidth, int pixelHeight)
+    {
+        var bits = brailleChar - BrailleBase;
+
+        int dotR = 0, dotG = 0, dotB = 0, dotCount = 0;
+        int allR = 0, allG = 0, allB = 0, allCount = 0;
+
+        for (var dy = 0; dy < 4; dy++)
+        {
+            var imgY = py + dy;
+            if (imgY >= pixelHeight) continue;
+            var rowOffset = imgY * pixelWidth;
+
+            for (var dx = 0; dx < 2; dx++)
+            {
+                var imgX = px + dx;
+                if (imgX >= pixelWidth) continue;
+
+                var c = colors[rowOffset + imgX];
+                allR += c.R;
+                allG += c.G;
+                allB += c.B;
+                allCount++;
+
+                // Braille bit for dot (dy, dx): left column = 1<<dy, right = 1<<(dy+3)
+                var dotBit = dx == 0 ? 1 << dy : 1 << (dy + 3);
+                if ((bits & dotBit) == 0) continue;
+
+                dotR += c.R;
+                dotG += c.G;
+                dotB += c.B;
+                dotCount++;
+            }
+        }
+
+        if (dotCount > 0)
+            return ((byte)(dotR / dotCount), (byte)(dotG / dotCount), (byte)(dotB / dotCount));
+        if (allCount > 0)
+            return ((byte)(allR / allCount), (byte)(allG / allCount), (byte)(allB / allCount));
+        return (0, 0, 0);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -301,54 +354,26 @@ public class BrailleRenderer : IDisposable
                 var brailleChar = ComputeBrailleCodeDirect(
                     brightness, pixelWidth, pixelHeight, px, py, invertMode, threshold);
 
-                // Collect average color from all pixels in cell
-                int totalR = 0, totalG = 0, totalB = 0;
-                var colorCount = 0;
+                // Color the cell from ON-pixel averages only (avoids the muddy
+                // full-cell average; see CollectDotColor)
+                var (r, g, b) = CollectDotColor(brailleChar, px, py, colors, pixelWidth, pixelHeight);
 
-                for (var dy = 0; dy < 4; dy++)
+                (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
+
+                var paletteSize = _options.ColorCount;
+                if (paletteSize.HasValue && paletteSize.Value > 0)
                 {
-                    var imgY = py + dy;
-                    if (imgY >= pixelHeight) continue;
-                    var rowOffset = imgY * pixelWidth;
-
-                    for (var dx = 0; dx < 2; dx++)
-                    {
-                        var imgX = px + dx;
-                        if (imgX >= pixelWidth) continue;
-
-                        var c = colors[rowOffset + imgX];
-                        totalR += c.R;
-                        totalG += c.G;
-                        totalB += c.B;
-                        colorCount++;
-                    }
+                    var quantStep = Math.Max(1, 256 / paletteSize.Value);
+                    r = (byte)(r / quantStep * quantStep);
+                    g = (byte)(g / quantStep * quantStep);
+                    b = (byte)(b / quantStep * quantStep);
                 }
-
-                // Calculate average color
-                byte r = 0, g = 0, b = 0;
-                if (colorCount > 0)
+                else if (_options.EnableTemporalStability)
                 {
-                    r = (byte)(totalR / colorCount);
-                    g = (byte)(totalG / colorCount);
-                    b = (byte)(totalB / colorCount);
-
-                    (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
-
-                    var paletteSize = _options.ColorCount;
-                    if (paletteSize.HasValue && paletteSize.Value > 0)
-                    {
-                        var quantStep = Math.Max(1, 256 / paletteSize.Value);
-                        r = (byte)(r / quantStep * quantStep);
-                        g = (byte)(g / quantStep * quantStep);
-                        b = (byte)(b / quantStep * quantStep);
-                    }
-                    else if (_options.EnableTemporalStability)
-                    {
-                        var quantStep = Math.Max(1, _options.ColorStabilityThreshold / 2);
-                        r = (byte)(r / quantStep * quantStep);
-                        g = (byte)(g / quantStep * quantStep);
-                        b = (byte)(b / quantStep * quantStep);
-                    }
+                    var quantStep = Math.Max(1, _options.ColorStabilityThreshold / 2);
+                    r = (byte)(r / quantStep * quantStep);
+                    g = (byte)(g / quantStep * quantStep);
+                    b = (byte)(b / quantStep * quantStep);
                 }
 
                 cells[cy, cx] = new CellData(brailleChar, r, g, b);
@@ -704,56 +729,28 @@ public class BrailleRenderer : IDisposable
                         brailleChar = _brailleMap.FindBestMatch(target8);
                     }
 
-                    // Collect average color from all pixels in cell
-                    int totalR = 0, totalG = 0, totalB = 0;
-                    var colorCount = 0;
+                    // Color the cell from ON-pixel averages only (see CollectDotColor)
+                    var (r, g, b) = CollectDotColor(brailleChar, px, py, colors, pixelWidth, pixelHeight);
+                    (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
 
-                    for (var dy = 0; dy < 4; dy++)
+                    // Skip absolute black characters (invisible on dark terminal)
+                    if (r <= 2 && g <= 2 && b <= 2 && brailleChar == BrailleBase)
                     {
-                        var imgY = py + dy;
-                        if (imgY >= pixelHeight) continue;
-                        var rowOffset = imgY * pixelWidth;
-
-                        for (var dx = 0; dx < 2; dx++)
-                        {
-                            var imgX = px + dx;
-                            if (imgX >= pixelWidth) continue;
-
-                            var c = colors[rowOffset + imgX];
-                            totalR += c.R;
-                            totalG += c.G;
-                            totalB += c.B;
-                            colorCount++;
-                        }
+                        rowSb.Append(' ');
+                        continue;
                     }
 
-                    if (colorCount > 0)
+                    var avgColor = new Rgba32(r, g, b, 255);
+
+                    if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
                     {
-                        var r = (byte)(totalR / colorCount);
-                        var g = (byte)(totalG / colorCount);
-                        var b = (byte)(totalB / colorCount);
-
-                        (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
-
-                        // Skip absolute black characters (invisible on dark terminal)
-                        if (r <= 2 && g <= 2 && b <= 2 && brailleChar == BrailleBase)
-                        {
-                            rowSb.Append(' ');
-                            continue;
-                        }
-
-                        var avgColor = new Rgba32(r, g, b, 255);
-
-                        if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
-                        {
-                            if (greyscaleAnsi)
-                                AnsiCodes.AppendForegroundGrey256(rowSb,
-                                    BrightnessHelper.ToGrayscale(avgColor));
-                            else
-                                AnsiCodes.AppendForegroundAdaptive(rowSb, avgColor.R, avgColor.G, avgColor.B,
-                                    colorDepth);
-                            lastColor = avgColor;
-                        }
+                        if (greyscaleAnsi)
+                            AnsiCodes.AppendForegroundGrey256(rowSb,
+                                BrightnessHelper.ToGrayscale(avgColor));
+                        else
+                            AnsiCodes.AppendForegroundAdaptive(rowSb, avgColor.R, avgColor.G, avgColor.B,
+                                colorDepth);
+                        lastColor = avgColor;
                     }
 
                     rowSb.Append(brailleChar);
@@ -805,55 +802,27 @@ public class BrailleRenderer : IDisposable
 
                     if (useAnsiOutput)
                     {
-                        // Collect average color from all pixels in cell
-                        int totalR = 0, totalG = 0, totalB = 0;
-                        var colorCount = 0;
+                        // Color the cell from ON-pixel averages only (see CollectDotColor)
+                        var (r, g, b) = CollectDotColor(brailleChar, px, py, colors, pixelWidth, pixelHeight);
+                        (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
 
-                        for (var dy = 0; dy < 4; dy++)
+                        if (r <= 2 && g <= 2 && b <= 2 && brailleChar == BrailleBase)
                         {
-                            var imgY = py + dy;
-                            if (imgY >= pixelHeight) continue;
-                            var rowOffset = imgY * pixelWidth;
-
-                            for (var dx = 0; dx < 2; dx++)
-                            {
-                                var imgX = px + dx;
-                                if (imgX >= pixelWidth) continue;
-
-                                var c = colors[rowOffset + imgX];
-                                totalR += c.R;
-                                totalG += c.G;
-                                totalB += c.B;
-                                colorCount++;
-                            }
+                            sb.Append(' ');
+                            continue;
                         }
 
-                        if (colorCount > 0)
+                        var avgColor = new Rgba32(r, g, b, 255);
+
+                        if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
                         {
-                            var r = (byte)(totalR / colorCount);
-                            var g = (byte)(totalG / colorCount);
-                            var b = (byte)(totalB / colorCount);
-
-                            (r, g, b) = BoostBrailleColor(r, g, b, _options.Gamma);
-
-                            if (r <= 2 && g <= 2 && b <= 2 && brailleChar == BrailleBase)
-                            {
-                                sb.Append(' ');
-                                continue;
-                            }
-
-                            var avgColor = new Rgba32(r, g, b, 255);
-
-                            if (lastColor == null || !AnsiCodes.ColorsEqual(lastColor.Value, avgColor))
-                            {
-                                if (greyscaleAnsi)
-                                    AnsiCodes.AppendForegroundGrey256(sb,
-                                        BrightnessHelper.ToGrayscale(avgColor));
-                                else
-                                    AnsiCodes.AppendForegroundAdaptive(sb, avgColor.R, avgColor.G, avgColor.B,
-                                        colorDepth);
-                                lastColor = avgColor;
-                            }
+                            if (greyscaleAnsi)
+                                AnsiCodes.AppendForegroundGrey256(sb,
+                                    BrightnessHelper.ToGrayscale(avgColor));
+                            else
+                                AnsiCodes.AppendForegroundAdaptive(sb, avgColor.R, avgColor.G, avgColor.B,
+                                    colorDepth);
+                            lastColor = avgColor;
                         }
 
                         sb.Append(brailleChar);
