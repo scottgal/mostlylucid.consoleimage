@@ -57,7 +57,7 @@
     <!-- Bundle Whisper native runtime for AOT builds when packaging the whisper variant -->
     <!-- CI passes -p:BundleWhisperRuntime=true for the whisper archive -->
     <PropertyGroup>
-        <WhisperRuntimeVersion>1.9.0</WhisperRuntimeVersion>
+        <WhisperRuntimeVersion>1.9.1</WhisperRuntimeVersion>
         <BundleWhisperRuntime Condition="'$(BundleWhisperRuntime)' == ''">false</BundleWhisperRuntime>
     </PropertyGroup>
     <!-- Bundle standard Whisper runtime (works on AVX x64 and all ARM64).
