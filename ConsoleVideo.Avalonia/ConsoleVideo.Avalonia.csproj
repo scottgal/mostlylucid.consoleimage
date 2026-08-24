@@ -12,10 +12,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="11.3.18"/>
-        <PackageReference Include="Avalonia.Desktop" Version="11.3.18"/>
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18"/>
-        <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18"/>
+        <PackageReference Include="Avalonia" Version="11.3.20"/>
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.20"/>
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.20"/>
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.20"/>
         <PackageReference Include="FluentAvaloniaUI" Version="2.5.1"/>
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2"/>
         <!-- Docking layout system -->
@@ -29,7 +29,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
+      <PackageReference Include="Tmds.DBus.Protocol" Version="0.95.0" />
         <ProjectReference Include="..\ConsoleImage.Core\ConsoleImage.Core.csproj"/>
         <ProjectReference Include="..\ConsoleImage.Video.Core\ConsoleImage.Video.Core.csproj"/>
     </ItemGroup>
